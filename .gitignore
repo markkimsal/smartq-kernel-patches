@@ -1,3 +1,14 @@
+# kernel tar file
+linux-2.6.33.tar.bz2
+
+# default scratch area for scripts/*
+tmp
+obs_auto_submit
+obs_build
+
+# backup files
 *~
+
+#failed patches
 *.rej
 *.orig
