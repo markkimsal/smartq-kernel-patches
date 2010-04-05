@@ -1,0 +1,7 @@
+# buildservice projects to build the kernel against
+OBS_BUILD_PROJECT=home:meego
+OBS_BUILD_PACKAGE=kernel
+
+# auto submit/sync to buildservice
+OBS_SUBMIT_PROJECT=kernel:devel
+OBS_SUBMIT_PACKAGE=kernel-auto-submit

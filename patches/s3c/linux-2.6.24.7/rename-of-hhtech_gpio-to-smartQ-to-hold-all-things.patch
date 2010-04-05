@@ -1,0 +1,108 @@
+From f3643b69ea3f75b6beac93c6c1cc9d1d61f322f4 Mon Sep 17 00:00:00 2001
+From: David F. Carlson <dave@chronolytics.com>
+Date: Fri, 13 Nov 2009 17:59:10 -0500
+Patch-mainline: Submitted Fri, 13 Nov 2009 17:59:10 -0500
+Subject: [PATCH 9005/9005] rename of hhtech_gpio to smartQ to hold "all things smartQ".
+
+---
+ include/asm-arm/plat-s3c64xx/smartQ.h |   88 +++++++++++++++++++++++++++++++++
+ 1 files changed, 88 insertions(+), 0 deletions(-)
+ create mode 100644 include/asm-arm/plat-s3c64xx/smartQ.h
+
+diff --git a/include/asm-arm/plat-s3c64xx/smartQ.h b/include/asm-arm/plat-s3c64xx/smartQ.h
+new file mode 100644
+index 0000000..7e7590c
+--- /dev/null
++++ b/include/asm-arm/plat-s3c64xx/smartQ.h
+@@ -0,0 +1,88 @@
++#ifndef __SMARTQ_H__
++#define __SMARTQ_H__
++/****************************************************************
++ * $ID$                                                         *
++ *                                                              *
++ * Description:                                                 *
++ *                                                              *
++ * Maintainer:  wk@hhcn.com            *
++ *                                                              *
++ * CopyRight (c)  2009  HHTech                                  *
++ *   www.hhcn.com, www.hhcn.org                                 *
++ *   All rights reserved.                                       *
++ *                                                              *
++ * This file is free software;                                  *
++ *   you are free to modify and/or redistribute it   	        *
++ *   under the terms of the GNU General Public Licence (GPL).   *
++ *                                                              *
++ * Last modified: Fri, 24 Apr 2009 09:25:41 +0800       by root #
++ ****************************************************************/
++
++
++/*====================================================================== 
++ * GPIO
++ */
++
++
++/*
++** Add more of these below as more units are supported
++*/
++enum smartQ {
++   SMARTQ5,
++   SMARTQ7,
++};
++
++extern enum smartQ smartQ;
++
++static  int isSmartQ5()
++{
++   return smartQ == SMARTQ5;
++}
++
++static  int isSmartQ7()
++{
++   return smartQ == SMARTQ7;
++}
++
++static inline isSmartQ()
++{
++   return isSmartQ5 || isSmartQ7;
++}
++
++//SD
++#define GPIO_SD_WP				S3C_GPK0     /* GPK0 ,SD write protect detect,*/
++
++//USB
++#define GPIO_USB_EN			    	S3C_GPL0     /* GPL0 USB Improving voltage Enable, 1:open 0:off */
++#define GPIO_USB_HOSTPWR_EN			S3C_GPL1     /* GPL1 1:5V on 0:5Voff */
++#define GPIO_USB_HOST_STATUS			S3C_GPL10    /* GPL10 USB protect status ,0:error*/
++#define GPIO_USB_OTG_STATUS			S3C_GPL11    /* GPL11 USB otg Over-current protection status ,0:error*/
++#define GPIO_USB_OTGDRV_EN			S3C_GPL8     /* GPL0 USB otg drv Enable, 1:open 0:off */
++
++//Headphone Sperker
++#define GPIO_HEADPHONE_S			S3C_GPL12    /* GPL12  headphone audio detect,0:insert */
++#define GPIO_SPEAKER_EN				S3C_GPK12    /* GPK12 Speaker 0:off 1:open */
++
++//Backlight
++#define GPIO_LCD_BLIGHT_EN			S3C_GPM3     /* GPM3,MP1530 LCD backlight,1:enable 0:off */
++#define GPIO_LCD_BLIGHT_S			S3C_GPM4     /* GPM4,MP1530 status */
++
++//Charging
++#define GPIO_DC_DETE				S3C_GPL13    /* GPL13 DC insert Detect */
++#define GPIO_CHARG_S1				S3C_GPK4     /* GPK4 ,Charging status 1,*/
++#define GPIO_CHARG_S2				S3C_GPK5     /* GPK5 ,Charging status 2,*/
++#define GPIO_CHARGER_EN				S3C_GPK6     /* GPK6 DC 0:200ma 1:860ma */
++
++// System Power 
++#define GPIO_PWR_EN				S3C_GPK15    /* GPK15 System power control 0:off 1:open */
++#define GPIO_PWR_HOLD				S3C_GPL14    /* GPL14 System power hold over 5 second  time,pull up GPK15  */
++
++//Vidoe amplifier
++#define GPIO_VIDEOAMP_EN			S3C_GPK13    /* GPK13,Vidoe amplifier output control,0:off*/
++
++#define GPIO_WIFI_EN				S3C_GPK1    /* Wifi  switch*/
++#define GPIO_WIFI_RESET				S3C_GPK2    /* Wifi  reset*/
++
++#define GPIO_LED1_EN				(isSmartQ5)? (S3C_GPN8) : (S3C_GPN9)
++#define GPIO_LED2_EN				(isSmartQ5)? (S3C_GPN9) : (S3C_GPN8)
++#endif /* __SMARTQ_H__ */
+-- 
+1.6.3.3
+

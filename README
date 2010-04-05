@@ -1,0 +1,163 @@
+Kernel Repository Guidelines
+============================
+
+
+Table Of Contents
+=================
+
+    Getting Started
+    Patch Headers
+    Before You Commit -- Things To Check
+    Config Option Changes
+
+Getting Started
+===============
+
+Make sure you have a decent git version (1.5.x should work) and quilt
+installed. (ketchup and gpg are optional, only if you prefer the
+scripts to help you automatically download and catch up to the latest
+Linux kernel.)
+
+Introduce yourself if you haven't done so already:
+    $ git config --global user.name "Your Name"
+    $ git config --global user.email your@email
+
+If you ommit the --global option, the setting will only apply to this
+clone.
+    
+Import the public key of Linux kernel with the following command.
+    $ gpg --keyserver wwwkeys.pgp.net --recv-keys 0x517D0F0E 
+
+Set up some git hooks and helpers:
+
+    $ ./scripts/install-git-hooks
+
+To hack on the kernel sources:
+
+    $ ./scripts/sequence-patch.sh --quilt
+    $ cd tmp/linux-$version-$branch
+    $ quilt new fix-foo-and-bar.patch
+    $ quilt edit some/file.c
+    $ ./refresh_patch.sh
+    $ quilt header -e # see next chapter
+
+Refer to quilt documentation for details. When you are done, add the
+new patch to an appropriate place in the series file, add change log
+in kernel.changes, run 'make' to update kernel.spec accordingly and
+then commit your changes.
+
+Patch Headers
+=============
+
+Each patch must have a RFC822-style header that at a minimum describes
+what the patch does, who wrote it, and who inside Intel we'll "blame"
+about problems with the patch. The rules for patch headers are:
+
+ * Each patch must have a From: tag that identifies the author of the
+   patch.
+
+ * Each patch must have a Subject: tag that briefly describes what
+   the patch does. A brief summary is it could show up in a change
+   log makes the most sense in most cases.
+
+ * Unless the author identified in the From: tag has a @intel.com,
+   address, the patch must include a Signed-off-by: or Acked-by:
+   header which identifies the person in one of these domains who
+   feels responsible for the patch inside the company.
+
+ * The patch must include a Patch-mainline: tag that identifies where
+   the patch came from (for backports from mainline), or when it is
+   expected to be added to mainline. The format is
+   Patch-mainline: <upstream version>
+   or Patch-mainline: Submitted <timestamp - destination>
+   or Patch-mainline: <guess followed by a question mark>
+   or Patch-mainline: Never <reason>
+
+   If applicable, please also include
+   Git-commit: <git hash> (there can be more than one if the patch is an
+   aggregate of multiple commits)
+
+   If the commit is from a maintainer repository or some other repository
+   that isn't Linus's:
+   Git-repo: <url to git repo>
+
+ * The patch should include a References: tag that identifies the 
+   Bugzilla bug number, FATE entry, etc. where the patch is discussed.
+   Please prefix bugzilla.moblin.org bug numbers with MB#.
+ 
+ * The patch header may (and often, should) include a more extensive
+   description of what the patch does, why, and how. The idea is to
+   allow others to quickly identify what each patch is about, and to
+   give enough information for reviewing.
+
+More details about valid patch headers can be found in
+scripts/patch-tag-template. The helper script scripts/patch-tag can be
+used for managing these tags. Documentation for patch-tag can be found
+at the top of the script itself.
+
+Example usage of scripts/patch-tag-template:
+
+    $ cp scripts/patch-tag-template ~/.patchtag
+
+    Edit ~/.patchtag with any default values you want
+
+    $ patch-tag -e file.diff
+
+Example patch header:
+
+    | Date: Fri, Sep 26 2008 15:20:10 +1000
+    | From: Peter Leckie <pleckie@sgi.com>
+    | References: SGI:PV986789 bnc#482148
+    | Subject: Clean up dquot pincount code
+    | Patch-mainline: 2.6.28
+    | 
+    | Clean up dquot pincount code.
+    | 
+    | This is a code cleanup and optimization that removes a per mount point
+    | spinlock from the quota code and cleans up the code.
+    | 
+    | The patch changes the pincount from being an int protected by a spinlock
+    | to an atomic_t allowing the pincount to be manipulated without holding
+    | the spinlock.
+    | 
+    | This cleanup also protects against random wakup's of both the aild and
+    | xfssyncd by reevaluating the pincount after been woken. Two latter patches
+    | will address the Spurious wakeups.
+    | 
+    | Signed-off-by: Peter Leckie <pleckie@sgi.com>
+    | Acked-by: Jan Kara <jack@suse.cz>
+
+
+Before You Commit -- Things To Check
+====================================
+
+Make sure that all patches still apply after your changes. One way of
+doing this is using scripts/sequence-patch.sh:
+
+    $ scripts/sequence-patch.sh
+
+Please test-compile the kernel or even test-build kernel packages,
+depending on the impact of your changes.
+
+The kernel source tree that scripts/sequence-patch.sh creates can be
+test compiled as follows:
+
+    $ make -f Makefile.config
+    $ cp kernel-netbook.config $SCRATCH_AREA/linux-$version-$branch/.config
+    $ cd $SCRATCH_AREA/linux-$version-$branch
+    $ make ARCH=x86 oldconfig
+    $ make ARCH=x86
+
+
+Config Option Changes
+=====================
+
+We are generating kernel packages for various platform from the same
+sources. Generic (common) config options are in config-generic, while
+platform specific options are kept in their own config-$platform file.
+
+When change kernel options, please update the corresponding
+config-$platform file, or config-generic if that applies to all
+platforms.
+
+

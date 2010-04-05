@@ -1,0 +1,6 @@
+initial-samsung-s3c6400-support.patch 
+smartq-add-marvell8686-and-yaffs2-support.patch
+apply-cpufreq-patch-from-gqwang.patch
+better-compatibility-with-some-memory-chips.patch
+merge-and-rename-into-smartQ.h.patch
+rename-of-hhtech_gpio-to-smartQ-to-hold-all-things.patch

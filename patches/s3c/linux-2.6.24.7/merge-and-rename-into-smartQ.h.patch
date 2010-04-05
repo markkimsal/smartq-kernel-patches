@@ -1,0 +1,81 @@
+From ddf10bd92d5d850e0593e01f890d130e9c5072f8 Mon Sep 17 00:00:00 2001
+From: David F. Carlson <dave@chronolytics.com>
+Date: Fri, 13 Nov 2009 17:58:05 -0500
+Patch-mainline: Submitted Fri, 13 Nov 2009 17:58:05 -0500
+Subject: [PATCH 9004/9005] Merge and rename into smartQ.h
+
+---
+ include/asm-arm/plat-s3c64xx/hhtech_gpio.h |   40 ++++++++++++++++++++++-----
+ 1 files changed, 32 insertions(+), 8 deletions(-)
+
+diff --git a/include/asm-arm/plat-s3c64xx/hhtech_gpio.h b/include/asm-arm/plat-s3c64xx/hhtech_gpio.h
+index 8637e5e..7e7590c 100644
+--- a/include/asm-arm/plat-s3c64xx/hhtech_gpio.h
++++ b/include/asm-arm/plat-s3c64xx/hhtech_gpio.h
+@@ -1,7 +1,9 @@
++#ifndef __SMARTQ_H__
++#define __SMARTQ_H__
+ /****************************************************************
+- * $ID: hhtech_gpio.h     三, 18  2月 2009 10:16:56 +0800  wk $ *
++ * $ID$                                                         *
+  *                                                              *
+  * Description:                                                 *
+  *                                                              *
+  * Maintainer:  wk@hhcn.com            *
+  *                                                              *
+@@ -19,10 +21,36 @@
+ 
+ /*====================================================================== 
+  * GPIO
+  */
+ 
++
++/*
++** Add more of these below as more units are supported
++*/
++enum smartQ {
++   SMARTQ5,
++   SMARTQ7,
++};
++
++extern enum smartQ smartQ;
++
++static  int isSmartQ5()
++{
++   return smartQ == SMARTQ5;
++}
++
++static  int isSmartQ7()
++{
++   return smartQ == SMARTQ7;
++}
++
++static inline isSmartQ()
++{
++   return isSmartQ5 || isSmartQ7;
++}
++
+ //SD
+ #define GPIO_SD_WP				S3C_GPK0     /* GPK0 ,SD write protect detect,*/
+ 
+ //USB
+ #define GPIO_USB_EN			    	S3C_GPL0     /* GPL0 USB Improving voltage Enable, 1:open 0:off */
+@@ -53,12 +81,8 @@
+ #define GPIO_VIDEOAMP_EN			S3C_GPK13    /* GPK13,Vidoe amplifier output control,0:off*/
+ 
+ #define GPIO_WIFI_EN				S3C_GPK1    /* Wifi  switch*/
+ #define GPIO_WIFI_RESET				S3C_GPK2    /* Wifi  reset*/
+ 
+-#if defined(CONFIG_LCD_4)
+-#define GPIO_LED1_EN				S3C_GPN8
+-#define GPIO_LED2_EN				S3C_GPN9
+-#else
+-#define GPIO_LED1_EN				S3C_GPN9
+-#define GPIO_LED2_EN				S3C_GPN8
+-#endif
++#define GPIO_LED1_EN				(isSmartQ5)? (S3C_GPN8) : (S3C_GPN9)
++#define GPIO_LED2_EN				(isSmartQ5)? (S3C_GPN9) : (S3C_GPN8)
++#endif /* __SMARTQ_H__ */
+-- 
+1.6.3.3
+
