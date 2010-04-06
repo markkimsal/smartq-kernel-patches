@@ -1,0 +1,29 @@
+From 5a1719b2e99f02aa1ec60549f5e03e10b2a121da Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Wed, 16 Dec 2009 08:53:38 +0800
+Subject: [PATCH] Keep HMDI_EN on to assure HPD_IRQ happened correctly
+
+---
+ drivers/char/hhtech_gpio.c |    6 ------
+ 1 files changed, 0 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 533623b..27f7a1e 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -1211,12 +1211,6 @@ static irqreturn_t hpd_irq(int irq, void *dev_id)
+ 	    if(gpio_get_value(GPIO_HDMI_EN)) {
+ 		tca_lcdc_setimgchenable(1, 2, 1);   // open FB2 display
+ 		tcc_lcd_on();			    // open LCD controller
+-#if defined (CONFIG_LCD_7)
+-		if(choosedevice)
+-		    gpio_direction_output(GPIO_USB_EN, 0);  // close USB power
+-#else
+-		gpio_direction_output(GPIO_USB_EN, 0);	    // close USB power
+-#endif
+ 	    }
+ 	}
+ 	enable_irq(IRQ_HPD);
+-- 
+1.6.3.3
+

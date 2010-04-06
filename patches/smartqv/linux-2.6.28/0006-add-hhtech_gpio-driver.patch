@@ -1,0 +1,1091 @@
+From f4cb1363f418393da44d0e08c0c06a6898364c0a Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Tue, 28 Jul 2009 12:54:45 +0800
+Subject: [PATCH] add hhtech_gpio driver
+
+---
+ arch/arm/mach-tcc8900/devices.c            |   14 +-
+ arch/arm/mach-tcc8900/gpio.c               |   13 +-
+ drivers/char/Kconfig                       |   14 +
+ drivers/char/Makefile                      |    6 +-
+ drivers/char/hhtech_gpio.c                 |  820 ++++++++++++++++++++++++++++
+ drivers/input/touchscreen/tcc_ts.c         |   43 +-
+ include/asm-arm/plat-tcc8900/hhtech_gpio.h |   63 +++
+ 7 files changed, 950 insertions(+), 23 deletions(-)
+ create mode 100755 drivers/char/hhtech_gpio.c
+ create mode 100644 include/asm-arm/plat-tcc8900/hhtech_gpio.h
+
+diff --git a/arch/arm/mach-tcc8900/devices.c b/arch/arm/mach-tcc8900/devices.c
+index ec2e158..8b909aa 100644
+--- a/arch/arm/mach-tcc8900/devices.c
++++ b/arch/arm/mach-tcc8900/devices.c
+@@ -48,6 +48,17 @@ static struct resource tcc8900_touch_resources[] = {
+         .flags = IORESOURCE_IRQ,
+     },
+ };
++static struct platform_device hhtech_gpio_device = {
++	.name			= "hhtech_gpio",
++	.id			= -1,
++	.resource		= NULL,
++	.num_resources	= 0,
++};
++
++static inline void tcc8900_init_hhtech_gpio(void)
++{
++	platform_device_register(&hhtech_gpio_device);
++}
+ 
+ static struct platform_device tcc8900_touchscreen_device = {
+ 	.name			= "tcc-ts",
+@@ -663,6 +674,8 @@ static inline void tcc8900_init_dwc_otg(void)
+  */
+ static int __init tcc8900_init_devices(void)
+ {
++	tcc8900_init_hhtech_gpio();
++
+ #if defined(CONFIG_I2C_TCC) || defined(CONFIG_I2C_TCC_MODULE)
+ 	tcc8900_init_i2c();
+ #endif
+@@ -706,7 +719,6 @@ static int __init tcc8900_init_devices(void)
+ #if defined(CONFIG_SATA_TCC) || defined(CONFIG_SATA_TCC_MODULE)
+     tcc8900_init_sata();
+ #endif
+-
+     return 0;
+ }
+ 
+diff --git a/arch/arm/mach-tcc8900/gpio.c b/arch/arm/mach-tcc8900/gpio.c
+index c3f7609..d3327fa 100644
+--- a/arch/arm/mach-tcc8900/gpio.c
++++ b/arch/arm/mach-tcc8900/gpio.c
+@@ -175,7 +175,18 @@ EXPORT_SYMBOL(tcc_gpio_direction_output);
+ 
+ int gpio_to_irq(unsigned int pin)
+ {
+-    return 13;
++    switch(pin)
++    {
++	case TCC_GPD17:
++	    return 11;
++	case TCC_GPD18:
++	    return 12;
++	case TCC_GPD19:
++	    return 13;
++	case TCC_GPF10:
++	    return 14;
++    }
++    return 0;
+ }
+ EXPORT_SYMBOL(gpio_to_irq);
+ 
+diff --git a/drivers/char/Kconfig b/drivers/char/Kconfig
+index bf0fade..b0e4bbc 100644
+--- a/drivers/char/Kconfig
++++ b/drivers/char/Kconfig
+@@ -1102,5 +1102,19 @@ config TCC_POWER_CTL
+ 	help
+ 	  If you say Y here, you can use power ctl driver.
+ 
++choice
++	prompt "HHTECH MID GPIO"
++	help
++	    Select LCD either  4.3''  or 7 ''
++    config LCD_4
++	bool "Support for 4.3 inch LCD"
++	help
++	    for HHTECH 4.3 inch, provide sysfs interface to APP
++    config LCD_7
++	bool "Support for 7 inch LCD"
++	help
++	    for HHTECH 7 inch LCD
++endchoice
++
+ endmenu
+ 
+diff --git a/drivers/char/Makefile b/drivers/char/Makefile
+index fc3628b..fe7f2d4 100644
+--- a/drivers/char/Makefile
++++ b/drivers/char/Makefile
+@@ -9,6 +9,10 @@ FONTMAPFILE = cp437.uni
+ 
+ obj-y	 += mem.o random.o tty_io.o n_tty.o tty_ioctl.o tty_ldisc.o tty_buffer.o tty_port.o
+ 
++#Makesure gpio init first
++obj-$(CONFIG_LCD_4)		+= hhtech_gpio.o
++obj-$(CONFIG_LCD_7)		+= hhtech_gpio.o
++
+ obj-$(CONFIG_LEGACY_PTYS)	+= pty.o
+ obj-$(CONFIG_UNIX98_PTYS)	+= pty.o
+ obj-y				+= misc.o
+@@ -115,7 +119,7 @@ js-rtc-y = rtc.o
+ obj-$(CONFIG_TCC_CKC_IOCTL)	+= tcc_ckc_ioctl.o 
+ obj-$(CONFIG_TCC_USER_INTR)	+= tcc_intr.o
+ obj-$(CONFIG_TCC_BL)		+= tcc_backlight.o tca_backlight.o
+-obj-y						+= tcc_proc.o
++obj-y				+= tcc_proc.o
+ 
+ # Files generated that shall be removed upon make clean
+ clean-files := consolemap_deftbl.c defkeymap.c
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+new file mode 100755
+index 0000000..22016d5
+--- /dev/null
++++ b/drivers/char/hhtech_gpio.c
+@@ -0,0 +1,820 @@
++/*
++ *  TCC8900 GPIO Driver
++ *
++ *  Copyright (C) 2008 - 2009 HHTECH.
++ *
++ *  Author: <wk@hhcn.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this progSoftwareram; if not, write to the Free Software
++ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ */
++#include <linux/module.h>
++#include <linux/version.h>
++#include <linux/platform_device.h>
++#include <linux/workqueue.h>
++#include <linux/sysfs.h>
++#include <linux/sysdev.h>
++#include <linux/fs.h>
++#include <linux/gpio_keys.h>
++#include <linux/delay.h>
++#include <asm/io.h>
++#include <linux/interrupt.h>
++#include <linux/init.h>
++#include <linux/reboot.h>
++#include <linux/suspend.h>
++#include <asm/plat-tcc8900/hhtech_gpio.h>
++#include <asm/plat-tcc8900/gpio.h>
++#include <mach/TCC89x_Structures.h>
++#include <mach/globals.h>
++
++#define IRQ_HEADPHONE INT_EI7
++
++#if defined(CONFIG_LCD_4)
++static unsigned int system_flag = 0;
++#else
++static unsigned int system_flag = 1;
++#endif
++
++//static struct delayed_work headp_detect_work;
++static struct delayed_work battery_work;
++int current_battery = 0;
++EXPORT_SYMBOL(current_battery);
++static int user_disable_speaker = 0;
++
++unsigned long rtc_wakeup_time = 30 * 60;
++EXPORT_SYMBOL(rtc_wakeup_time);
++
++unsigned int wakeup_status = 0;	// 0: waked up by external IRQ; 1: waked up by RTC
++EXPORT_SYMBOL(wakeup_status);
++
++/*           #################     setting     ##################        */
++
++// HHTECH set system power enable
++static void  set_sys_power(int sw)
++{
++	if (sw)
++		gpio_set_value(GPIO_PWR_EN, 1);		    //power on
++	else
++		gpio_set_value(GPIO_PWR_EN, 0);		    //pwoer off
++}
++
++// HHTECH set Charging mode
++static void set_charge_mode(int sw)
++{
++	if (sw)
++		gpio_set_value(GPIO_CHARGER_EN, 1);	    //860ma
++	else
++		gpio_set_value(GPIO_CHARGER_EN, 0);	    //200ma
++}
++
++// HHTECH set TV-OUT switch
++static void set_tv_out(int sw)
++{
++	if (sw)
++		gpio_set_value(GPIO_TVOUT_EN, 1);	    //open
++	else
++		gpio_set_value(GPIO_TVOUT_EN, 0);	    //close
++}
++
++// HHTECH set USB system (HOST and OTG)  power enable
++static void set_usb_syspwr_en(int sw)
++{
++	if (sw)
++		gpio_set_value(GPIO_USB_EN, 1);		    //open
++	else
++		gpio_set_value(GPIO_USB_EN, 0);		    //close
++}
++
++// HHTECH set USB HOST  power enable
++static void set_usb_hostpwr_en(int sw)
++{
++	if (sw)
++		gpio_set_value(GPIO_USB_HOSTPWR_EN, 1);	    //open
++	else
++		gpio_set_value(GPIO_USB_HOSTPWR_EN, 0);	    //close
++}
++
++// HHTECH set USB OTG  DRV enable
++static void set_usb_otgdrv_en(int sw)
++{
++	if (sw)
++		gpio_set_value(GPIO_USB_OTGDRV_EN, 1);	    //open
++	else
++		gpio_set_value(GPIO_USB_OTGDRV_EN, 0);	    //close
++}
++
++// HHTECH set speaker 
++static void set_speaker_en(int sw)
++{
++	if (sw)
++		gpio_set_value(GPIO_SPEAKER_EN, 1);	    //open
++	else
++		gpio_set_value(GPIO_SPEAKER_EN, 0);	    //close
++}
++
++// HHTECH set wifi 
++static void set_wifi_en(int sw)
++{
++	if (sw)
++		gpio_direction_output(GPIO_WIFI_EN, 1);	    //open
++	else
++		gpio_direction_output(GPIO_WIFI_EN, 0);	    //close
++}
++
++// HHTECH set hdmi 
++static void set_hdmi_en(int sw)
++{
++	if (sw)
++		gpio_direction_output(GPIO_HDMI_EN, 1);	    //open
++	else
++		gpio_direction_output(GPIO_HDMI_EN, 0);	    //close
++}
++
++// HHTECH set led1 and led2 
++static void set_led1_en(int sw)
++{
++	if (sw)
++		gpio_direction_output(GPIO_LED1_EN, 0);	    //turn on
++	else
++		gpio_direction_output(GPIO_LED1_EN, 1);	    //turn off
++}
++
++static void set_led2_en(int sw)
++{
++	if (sw)
++		gpio_set_value(GPIO_LED2_EN, 0);
++	else
++		gpio_set_value(GPIO_LED2_EN, 1);
++}
++
++/*@@@@@@@@@@@@@@@@@@@@@@@	sysfs interface   @@@@@@@@@@@*/
++
++#ifdef CONFIG_SYSFS
++static ssize_t hhtech_sysfs_show_dc(struct device *dev,
++				    struct device_attribute *attr, char *buf)
++{
++	strcpy(buf, gpio_get_value(GPIO_DC_DETE) ? "off" : "on");
++	strcat(buf, "\n");
++	return strlen(buf);
++}
++
++static ssize_t hhtech_sysfs_show_sd(struct device *dev,
++				    struct device_attribute *attr, char *buf)
++{
++	strcpy(buf, gpio_get_value(GPIO_SD_WP) ? "off" : "on");
++	strcat(buf, "\n");
++	return strlen(buf);
++}
++
++static ssize_t hhtech_sysfs_show_system_flag(struct device *dev,
++					     struct device_attribute *attr, char *buf)
++{
++	strcpy(buf, system_flag ? "1" : "0");
++	strcat(buf, "\n");
++	return strlen(buf);
++}
++
++static ssize_t hhtech_sysfs_show_headp(struct device *dev,
++				       struct device_attribute *attr, char *buf)
++{
++	strcpy(buf, gpio_get_value(GPIO_HEADPHONE_S) ? "on" : "off");
++	strcat(buf, "\n");
++	return strlen(buf);
++}
++
++extern unsigned int tcc_adc_value(unsigned int tcc_adc_port);
++static int read_battery(void)
++{
++	int battery_life = 0, reference_value = 0;
++	static int old_battery_life = 0, old_reference_value = 0;
++
++	//ref voltage:2.4V,battery max :4.2V
++	if ((battery_life = tcc_adc_value(0)) == 0) {
++		if (old_battery_life == 0) {
++			while (!(battery_life = tcc_adc_value(0)));
++			old_battery_life = battery_life;
++		} else
++			battery_life = old_battery_life;
++	}
++	if ((reference_value = tcc_adc_value(1)) == 0) {
++		if (old_reference_value == 0) {
++			while (!(reference_value = tcc_adc_value(1)));
++			old_reference_value = reference_value;
++		} else
++			reference_value	= old_reference_value;
++	}
++	battery_life = (battery_life * 24000) / (reference_value * 42);
++
++	return battery_life;
++}
++
++static int get_battery_life(void)
++{
++	int i;
++	int count = 0;
++	int battery_life = 1000;//Default max power
++	int battery_life_sum = 0;
++	for (i = 0; i < 10; i++) {
++		int tmp = read_battery();
++		if (tmp < 700 || tmp > 1000)
++			continue;
++		battery_life_sum += tmp;
++		count++;
++	}
++	if (count)
++		battery_life = battery_life_sum / count;
++	return battery_life;
++}
++
++static void battery_update_work(struct work_struct* work)
++{
++	int dc_status;
++
++	dc_status = gpio_get_value(GPIO_DC_DETE) ? 0 : 1;
++
++	current_battery = get_battery_life();
++	if (current_battery < 785 && dc_status == 0)
++		set_sys_power(0);
++	schedule_delayed_work(&battery_work, 30 * HZ);
++}
++
++static ssize_t hhtech_sysfs_show_battery(struct device *dev,
++					 struct device_attribute *attr, char *buf)
++{
++	char s[20];
++
++	sprintf(s,"%d", current_battery);
++	strcpy(buf, s);
++	strcat(buf, "\n");
++	return strlen(buf);
++}
++
++static ssize_t hhtech_sysfs_charge_s(struct device *dev,
++				     struct device_attribute *attr, char *buf)
++{
++	int s=(gpio_get_value(GPIO_CHARG_S1)<<1) + gpio_get_value(GPIO_CHARG_S2);
++	switch (s) {
++	case 0:
++		strcpy(buf,"0");
++		break;
++	case 1:
++		strcpy(buf,"1");        
++		break;
++	case 2:
++		strcpy(buf,"2");
++		break;
++	case 3:
++		strcpy(buf,"3");
++		break;
++	}
++	strcat(buf, "\n");
++	return strlen(buf);
++}
++
++static int hhtech_sysfs_show_power(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_PWR_EN));
++}
++
++static ssize_t hhtech_sysfs_store_power(struct device *dev,
++					struct device_attribute *attr, const char *buf, size_t len)
++{
++//	int val = simple_strtoul(buf, NULL, 0);
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0)
++		set_sys_power(1);	//poweron
++	else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0)
++		set_sys_power(0);	//poweroff
++	else
++		return -EINVAL;
++	return len;
++}
++
++static int hhtech_sysfs_show_charge(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_CHARGER_EN));
++}
++
++static ssize_t hhtech_sysfs_store_charge(struct device *dev,
++					 struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0)
++		set_charge_mode(1);	//860ma
++	else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0)
++		set_charge_mode(0);	//200ma
++	else
++		return -EINVAL;
++	return len;
++}
++
++extern void tca_bkl_setpowerval(int inValue, unsigned int tmr_vaddr);
++extern void bl_control(bool flag);
++static int curblight = 100;
++
++static int hhtech_sysfs_show_blight(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", curblight);
++}
++
++static ssize_t hhtech_sysfs_store_blight(struct device *dev,
++					 struct device_attribute *attr, const char *buf, size_t len)
++{
++	unsigned long value = simple_strtoul(buf, NULL, 10);
++	PTIMER vTimerAddr; 	
++
++	if (len < 1)
++		return -EINVAL;
++
++	value = simple_strtoul(buf, NULL, 10);
++	if(!value)
++    	{
++	    if(curblight)
++		bl_control(0);
++	    curblight = 0;
++	
++	}else if((value <= 100)&&(value > 0))
++	      {
++		  if(!curblight)
++		      bl_control(1);
++		  vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
++		  tca_bkl_setpowerval(value,(unsigned int)vTimerAddr);
++		  curblight = value;	      
++	      }else 
++		  return -EINVAL;	
++	
++	return len;
++}
++
++static int hhtech_sysfs_show_tvout(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_TVOUT_EN));
++}
++
++static ssize_t hhtech_sysfs_store_tvout(struct device *dev,
++				      struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0)
++		set_tv_out(1);	// open tv out
++	else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0)
++		set_tv_out(0);	// close
++	else
++		return -EINVAL;
++	return len;
++}
++
++static int hhtech_sysfs_show_usbpwr(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_USB_EN));
++}
++
++static ssize_t hhtech_sysfs_store_usbpwr(struct device *dev,
++					 struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0)
++		set_usb_syspwr_en(1);		// USB system power enable
++	else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0)
++		set_usb_syspwr_en(0);		// disable
++	else
++		return -EINVAL;
++	return len;
++}
++
++static int hhtech_sysfs_show_usbhostpwr(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_USB_HOSTPWR_EN));
++}
++
++static ssize_t hhtech_sysfs_store_usbhostpwr(struct device *dev,
++					     struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0)
++		set_usb_hostpwr_en(1);		// USB system power enable
++	else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0)
++		set_usb_hostpwr_en(0);		// disable
++	else
++		return -EINVAL;
++	return len;
++}
++
++static int hhtech_sysfs_show_usbotgdrv(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_USB_OTGDRV_EN));
++}
++
++static ssize_t hhtech_sysfs_store_usbotgdrv(struct device *dev,
++					    struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0)
++		set_usb_otgdrv_en(1);
++	else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0)
++		set_usb_otgdrv_en(0);
++	else
++		return -EINVAL;
++	return len;
++}
++
++static int hhtech_sysfs_show_speaker(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_SPEAKER_EN));
++}
++
++static ssize_t hhtech_sysfs_store_speaker(struct device *dev,
++					  struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0) {
++		if (!gpio_get_value(GPIO_HEADPHONE_S))
++			set_speaker_en(1);	    // speaker enable
++		user_disable_speaker = 0;
++	} else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0) {
++		set_speaker_en(0);	// disable
++		user_disable_speaker = 1;
++	} else
++		return -EINVAL;
++	return len;
++}
++
++static int hhtech_sysfs_show_wifi(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_WIFI_EN));
++}
++
++static ssize_t hhtech_sysfs_store_wifi(struct device *dev,
++				       struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0)
++		set_wifi_en(1);		// wifi enable
++	else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0)
++		set_wifi_en(0);		// disable
++	else
++		return -EINVAL;
++	return len;
++}
++
++static int hhtech_sysfs_show_hdmi(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_HDMI_EN));
++}
++
++static ssize_t hhtech_sysfs_store_hdmi(struct device *dev,
++				       struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0)
++		set_hdmi_en(1);		// hdmi enable
++	else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0)
++		set_hdmi_en(0);		// disable
++	else
++		return -EINVAL;
++	return len;
++}
++
++static int hhtech_sysfs_show_led1(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", !gpio_get_value(GPIO_LED1_EN));
++}
++
++static ssize_t hhtech_sysfs_store_led1(struct device *dev,
++				       struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0)
++		set_led1_en(1);
++	else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0)
++		set_led1_en(0);
++	else
++		return -EINVAL;
++	return len;
++}
++
++static int hhtech_sysfs_show_led2(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", !gpio_get_value(GPIO_LED2_EN));
++}
++
++static ssize_t hhtech_sysfs_store_led2(struct device *dev,
++				       struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "on", 2) == 0 || strnicmp(buf, "1", 1) == 0)
++		set_led2_en(1);
++	else if (strnicmp(buf, "off", 3) == 0 || strnicmp(buf, "0", 1) == 0)
++		set_led2_en(0);
++	else
++		return -EINVAL;
++	return len;
++}
++
++static int hhtech_sysfs_show_rtc_wk_time(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%ld\n", rtc_wakeup_time);
++}
++
++static ssize_t hhtech_sysfs_store_rtc_wk_time(struct device *dev,
++					      struct device_attribute *attr, const char *buf, size_t len)
++{
++	unsigned long value = simple_strtoul(buf, NULL, 10);
++
++	if (len < 1)
++		return -EINVAL;
++
++	if (value < 0 || value > 2 * 60 * 60)
++		return -ERANGE;
++	else
++		rtc_wakeup_time	= value;
++	return len;
++}
++
++static int hhtech_sysfs_show_wk_status(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", wakeup_status);
++}
++
++//extern void headp_update_volume(struct work_struct* work);
++static void headp_update_volume(struct work_struct* work)
++{
++}
++/*   headphone plug in and out  Interrupt handle  */
++static irqreturn_t headp_irq(int irq, void *dev_id)
++{
++	volatile PPIC pPIC = (volatile PPIC)tcc_p2v(HwPIC_BASE);
++
++	disable_irq(IRQ_HEADPHONE);
++	BITSET(pPIC->CLR0, 1<<IRQ_HEADPHONE);
++	if (user_disable_speaker == 0) {
++		if (gpio_get_value(GPIO_HEADPHONE_S))
++			gpio_set_value(GPIO_SPEAKER_EN, 0);
++		else
++			gpio_set_value(GPIO_SPEAKER_EN, 1);
++	}
++	//cancel_delayed_work(&headp_detect_work);
++	//schedule_delayed_work(&headp_detect_work, msecs_to_jiffies(80));
++	enable_irq(IRQ_HEADPHONE);
++
++	return IRQ_HANDLED;
++}
++
++static DEVICE_ATTR(system_flag, 0444, hhtech_sysfs_show_system_flag, NULL);
++static DEVICE_ATTR(headphone_s, 0444, hhtech_sysfs_show_headp, NULL);
++static DEVICE_ATTR(dc_s, 0444, hhtech_sysfs_show_dc, NULL);
++static DEVICE_ATTR(sd_s, 0444, hhtech_sysfs_show_sd, NULL);
++static DEVICE_ATTR(charge_s, 0444,hhtech_sysfs_charge_s , NULL);
++static DEVICE_ATTR(battery_s, 0444, hhtech_sysfs_show_battery, NULL);
++static DEVICE_ATTR(pwr_en, 0666, hhtech_sysfs_show_power, hhtech_sysfs_store_power);
++static DEVICE_ATTR(charge_en, 0666, hhtech_sysfs_show_charge, hhtech_sysfs_store_charge);
++static DEVICE_ATTR(backlight_level, 0666,hhtech_sysfs_show_blight, hhtech_sysfs_store_blight);
++static DEVICE_ATTR(tvout_en, 0666,hhtech_sysfs_show_tvout, hhtech_sysfs_store_tvout);
++static DEVICE_ATTR(usbpwr_en, 0666, hhtech_sysfs_show_usbpwr, hhtech_sysfs_store_usbpwr);
++static DEVICE_ATTR(usbhostpwr_en, 0666, hhtech_sysfs_show_usbhostpwr, hhtech_sysfs_store_usbhostpwr);
++static DEVICE_ATTR(usbotgdrv_en, 0666, hhtech_sysfs_show_usbotgdrv, hhtech_sysfs_store_usbotgdrv);
++static DEVICE_ATTR(speaker_en, 0666, hhtech_sysfs_show_speaker, hhtech_sysfs_store_speaker);
++static DEVICE_ATTR(wifi_en, 0666, hhtech_sysfs_show_wifi, hhtech_sysfs_store_wifi);
++static DEVICE_ATTR(hdmi_en, 0666, hhtech_sysfs_show_hdmi, hhtech_sysfs_store_hdmi);
++static DEVICE_ATTR(led1_en, 0666, hhtech_sysfs_show_led1, hhtech_sysfs_store_led1);
++static DEVICE_ATTR(led2_en, 0666, hhtech_sysfs_show_led2, hhtech_sysfs_store_led2);
++static DEVICE_ATTR(rtc_wk_time, 0666, hhtech_sysfs_show_rtc_wk_time, hhtech_sysfs_store_rtc_wk_time);
++static DEVICE_ATTR(wk_status, 0666, hhtech_sysfs_show_wk_status, NULL);
++
++static struct attribute *attrs[] = {
++	&dev_attr_system_flag.attr,
++	&dev_attr_headphone_s.attr,
++	&dev_attr_dc_s.attr,
++	&dev_attr_sd_s.attr,
++	&dev_attr_charge_s.attr,
++	&dev_attr_battery_s.attr,
++	&dev_attr_pwr_en.attr,
++	&dev_attr_charge_en.attr,
++	&dev_attr_backlight_level.attr,
++	&dev_attr_tvout_en.attr,
++	&dev_attr_usbpwr_en.attr,
++	&dev_attr_usbhostpwr_en.attr,
++	&dev_attr_usbotgdrv_en.attr,
++	&dev_attr_speaker_en.attr,
++	&dev_attr_wifi_en.attr,
++	&dev_attr_hdmi_en.attr,
++	&dev_attr_led1_en.attr,
++	&dev_attr_led2_en.attr,
++	&dev_attr_rtc_wk_time.attr,
++	&dev_attr_wk_status.attr,
++	NULL,
++};
++
++static struct attribute_group attr_group = {
++	.attrs = attrs,
++};
++
++static int hhtech_gpio_sysfs_register(struct device* dev)
++{
++	return sysfs_create_group(&dev->kobj, &attr_group);
++}
++#else
++static int hhtech_gpio_sysfs_register(struct device* dev)
++{
++	return 0;
++}
++#endif
++
++static int hhtech_gpio_probe(struct platform_device *pdev)
++{
++	int retval;
++	volatile PGPIO pGPIO = (volatile PGPIO)tcc_p2v(HwGPIO_BASE);
++	volatile PPIC pPIC = (volatile PPIC)tcc_p2v(HwPIC_BASE);
++	
++	retval = hhtech_gpio_sysfs_register(&pdev->dev);
++	if (retval < 0) {
++		printk(KERN_ERR "Create sys fs fail\n");
++		return -1;
++	}
++
++	gpio_direction_input(GPIO_SD_WP);
++	gpio_direction_input(GPIO_HEADPHONE_S);
++	gpio_direction_input(GPIO_DC_DETE);
++	gpio_direction_input(GPIO_CHARG_S1);
++	gpio_direction_input(GPIO_CHARG_S2);
++	gpio_direction_input(GPIO_PWR_HOLD);
++	
++#if defined (CONFIG_LCD_4)
++	gpio_direction_output(GPIO_USB_EN, 0);		//close
++	gpio_direction_output(GPIO_USB_HOSTPWR_EN, 0);	//close
++#else
++	gpio_direction_output(GPIO_USB_EN, 1);		//open
++	gpio_direction_output(GPIO_USB_HOSTPWR_EN, 1);	//open
++#endif
++	gpio_direction_output(GPIO_USB_OTGDRV_EN, 0);	//close
++	gpio_direction_output(GPIO_CHARGER_EN, 0);	//200ma
++	gpio_direction_output(GPIO_TVOUT_EN, 0);	//close
++	gpio_direction_output(GPIO_WIFI_EN, 1);		//open
++	gpio_direction_output(GPIO_HDMI_EN, 0);		//close
++	gpio_direction_output(GPIO_LED1_EN, 0);		//turn on
++	if (NULL == strstr(saved_command_line, "rdinit"))
++		gpio_direction_output(GPIO_LED2_EN, 1);	//turn off
++	else
++		gpio_direction_output(GPIO_LED2_EN, 0);	//turn on
++	
++	/* Set GPIOD[7](18) to the interrupt source of INT_EI7 */
++	BITCSET(pGPIO->EINTSEL1, Hw30-Hw24, 18<<24);
++	BITSET(pPIC->INTMSK0, 1<<IRQ_HEADPHONE);    // unmask the interrupt
++	BITCLR(pPIC->MODE0, 1<<IRQ_HEADPHONE);	    // set interrupt as edge-triggered mode
++	BITSET(pPIC->MODEA0, 1<<IRQ_HEADPHONE);	    // set interrupt as both edge triggered mode
++	if (gpio_get_value(GPIO_HEADPHONE_S))	    // headphone inserted
++	    gpio_set_value(GPIO_SPEAKER_EN, 0);	    // close speaker
++	else					    // headphone out
++	    gpio_set_value(GPIO_SPEAKER_EN, 1);	    // open speaker
++	
++	retval = request_irq(IRQ_HEADPHONE, headp_irq,
++			     IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "Headphone detect", NULL);
++	if (retval) {
++		printk(KERN_ERR "Request headphone detect fail\n");
++		goto error1;
++	}
++
++	//INIT_DELAYED_WORK(&headp_detect_work, headp_update_volume);	
++	INIT_DELAYED_WORK(&battery_work, battery_update_work);
++	battery_update_work(NULL);
++	
++	return 0;
++
++	free_irq(IRQ_HEADPHONE, NULL);
++error1:
++	return retval;
++}
++
++static int hhtech_gpio_remove(struct platform_device *dev)
++{
++	free_irq(IRQ_HEADPHONE, NULL);
++	return 0;
++}
++
++#ifdef CONFIG_PM
++#define SAVE_ITEM(x) \
++	{ .reg = (unsigned long)(x) }
++struct sleep_save_phy {
++    unsigned long   reg;
++    unsigned long   val;
++};
++static struct sleep_save_phy save_gpio[] =  {
++	SAVE_ITEM(GPIO_USB_HOSTPWR_EN),
++	SAVE_ITEM(GPIO_USB_OTGDRV_EN),
++	SAVE_ITEM(GPIO_USB_EN),
++};
++
++static void gpio_do_save(struct sleep_save_phy *ptr, int count)
++{
++	for (; count > 0; count--, ptr++)
++		ptr->val = gpio_get_value(ptr->reg);
++}
++
++static void gpio_do_load(struct sleep_save_phy *ptr, int count)
++{
++	for (; count > 0; count--, ptr++)
++		gpio_set_value(ptr->reg, ptr->val);
++}
++
++static int hhtech_gpio_suspend(struct platform_device *dev, pm_message_t state)
++{
++	/* Becareful: MMC must be suspended after this driver */
++	set_wifi_en(0);
++	/* Close USB Power */
++	gpio_do_save(save_gpio, ARRAY_SIZE(save_gpio));
++	set_usb_hostpwr_en(0);
++	set_usb_otgdrv_en(0);
++	set_usb_syspwr_en(0);
++	return 0;
++}
++extern void __iomem *tcc_rtc_base;
++
++#define RTCPEND 0x48
++#define TCC_INTP_ALM (1<<6)
++
++static int hhtech_gpio_resume(struct platform_device *dev)
++{
++	int dc_status;
++
++	dc_status = gpio_get_value(GPIO_DC_DETE) ? 0 : 1;
++	wakeup_status = 0;
++
++	/*if (0 == dc_status) {
++		if (get_battery_life() < 833)	// battery volume < 3.5 V
++			set_sys_power(0);
++		if (readb(tcc_rtc_base + RTCPEND) & TCC_INTP_ALM)
++			wakeup_status = 1;
++	}*/
++
++	gpio_do_load(save_gpio, ARRAY_SIZE(save_gpio));
++	set_wifi_en(1);
++	return 0;
++}
++#else
++#define hhtech_gpio_suspend NULL
++#define hhtech_gpio_resume NULL
++#endif
++
++
++static struct platform_driver hhtech_gpio = {
++	.probe = hhtech_gpio_probe,
++	.remove = hhtech_gpio_remove,
++	.suspend = hhtech_gpio_suspend,
++	.resume = hhtech_gpio_resume,
++	.driver =  {
++		.name = "hhtech_gpio",
++		.owner = THIS_MODULE,
++	},
++};
++
++static int __init hhtech_gpio_init(void)
++{
++	user_disable_speaker = 0;
++	printk("hhtech_gpio_init\n");
++	return platform_driver_register(&hhtech_gpio);
++}
++
++static void __exit hhtech_gpio_exit(void)
++{
++	platform_driver_unregister(&hhtech_gpio);
++}
++
++module_init(hhtech_gpio_init);
++module_exit(hhtech_gpio_exit);
++
++MODULE_AUTHOR("gqwang");
++MODULE_DESCRIPTION("TCC8900 GPIO driver");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/input/touchscreen/tcc_ts.c b/drivers/input/touchscreen/tcc_ts.c
+index 34062e1..9790006 100644
+--- a/drivers/input/touchscreen/tcc_ts.c
++++ b/drivers/input/touchscreen/tcc_ts.c
+@@ -164,37 +164,40 @@ static void tcc_adc_restore_SFR_on_ADC(void)
+ 
+ unsigned int tcc_adc_value(unsigned int tcc_adc_port)
+ {
+-        unsigned int adc_return;
+-        unsigned long data0;
+-        unsigned long data1;
++    unsigned int adc_return;
++    unsigned long data0;
++    unsigned long data1;
+ 
+-	if(ADCTSC_WAIT_PENDOWN != readl(ts_base+ADCTSC))
+-	    return 0;
++    if (ts_base == NULL)
++        return 1000;
+ 
+-	del_timer(&ts_timer);
++    if(ADCTSC_WAIT_PENDOWN != readl(ts_base+ADCTSC))
++        return 0;
++
++    del_timer(&ts_timer);
+ 
+-	tcc_adc_save_SFR_on_ADC();
++    tcc_adc_save_SFR_on_ADC();
+ 
+-	writel(0x58, ts_base+ADCTSC);
++    writel(0x58, ts_base+ADCTSC);
+ 
+-	writel(readl(ts_base+ADCCON)|ADCCON_SELMUX(tcc_adc_port), ts_base+ADCCON);
+-        udelay(10);
++    writel(readl(ts_base+ADCCON)|ADCCON_SELMUX(tcc_adc_port), ts_base+ADCCON);
++    udelay(10);
+ 
+-        writel(readl(ts_base+ADCCON)|ADCCON_ENABLE_START, ts_base+ADCCON);
++    writel(readl(ts_base+ADCCON)|ADCCON_ENABLE_START, ts_base+ADCCON);
+ 
+-	do {
+-                data0 = readl(ts_base+ADCCON);
+-		writel(CLEAR_ADC_INT, ts_base + ADCCLRINT);
+-		writel(CLEAR_ADCWK_INT, ts_base + ADCCLRUPDN);
+-        } while(!(data0 & ADCCON_ECFLG));
++    do {
++        data0 = readl(ts_base+ADCCON);
++        writel(CLEAR_ADC_INT, ts_base + ADCCLRINT);
++        writel(CLEAR_ADCWK_INT, ts_base + ADCCLRUPDN);
++    } while(!(data0 & ADCCON_ECFLG));
+ 
+-        data1 = readl(ts_base+ADCDAT0);
++    data1 = readl(ts_base+ADCDAT0);
+ 
+-	tcc_adc_restore_SFR_on_ADC();
++    tcc_adc_restore_SFR_on_ADC();
+ 
+-	adc_return = D_XPDATA_MASK12(data1);
++    adc_return = D_XPDATA_MASK12(data1);
+ 
+-        return adc_return;
++    return adc_return;
+ }
+ EXPORT_SYMBOL(tcc_adc_value);
+ 
+diff --git a/include/asm-arm/plat-tcc8900/hhtech_gpio.h b/include/asm-arm/plat-tcc8900/hhtech_gpio.h
+new file mode 100644
+index 0000000..22632f8
+--- /dev/null
++++ b/include/asm-arm/plat-tcc8900/hhtech_gpio.h
+@@ -0,0 +1,63 @@
++/****************************************************************
++ * $ID: hhtech_gpio.h     三, 18  2月 2009 10:16:56 +0800  wk $ *
++ *                                                              *
++ * Description:                                                 *
++ *                                                              *
++ * Maintainer:  wk@hhcn.com            *
++ *                                                              *
++ * CopyRight (c)  2009  HHTech                                  *
++ *   www.hhcn.com, www.hhcn.org                                 *
++ *   All rights reserved.                                       *
++ *                                                              *
++ * This file is free software;                                  *
++ *   you are free to modify and/or redistribute it   	        *
++ *   under the terms of the GNU General Public Licence (GPL).   *
++ *                                                              *
++ * Last modified: 二, 28  7月 2009 12:47:43 +0800     by root #
++ ****************************************************************/
++
++#ifndef __HHTECH_GPIO_H
++#define __HHTECH_GPIO_H
++
++/*====================================================================== 
++ * GPIO
++ */
++
++//SD
++#define GPIO_SD_WP				TCC_GPF12   /* SD write protect detect, 1:protected */
++#define GPIO_SD_DETE				TCC_GPF13   /* SD insert detect, 0:inserted */
++
++//USB
++#define GPIO_USB_EN			    	TCC_GPA12   /* USB Improving voltage Enable, 1:open 0:off */
++#define GPIO_USB_HOSTPWR_EN			TCC_GPA15   /* USB Host drv Enable 1:open 0:off */
++#define GPIO_USB_OTGDRV_EN			TCC_GPA15   /* USB otg drv Enable, 1:open 0:off */
++
++//Headphone and Speaker
++#define GPIO_HEADPHONE_S			TCC_GPD7    /* Headphone insert detect, 0:inserted */
++#define GPIO_SPEAKER_EN				TCC_GPD8    /* Speaker Enable 0:off 1:open */
++
++//Charging
++#define GPIO_DC_DETE				TCC_GPF8    /* DC insert Detect, 0:inserted */
++#define GPIO_CHARG_S1				TCC_GPF1    /* Charging status 1,*/
++#define GPIO_CHARG_S2				TCC_GPF3    /* Charging status 2,*/
++#define GPIO_CHARGER_EN				TCC_GPF0    /* Quick charging mode enable, 1:open */
++
++//System Power 
++#define GPIO_PWR_EN				TCC_GPF6    /* System power control, 0:off 1:open */
++#define GPIO_PWR_HOLD				TCC_GPF10   /* System power detect, 0:detected */
++
++//TVOUT
++#define GPIO_TVOUT_EN				TCC_GPD9    /* Video TVOUT control, 1:open */
++
++//Wifi
++#define GPIO_WIFI_EN				TCC_GPB15   /* Wifi power control, 1:on */
++
++//HDMI
++#define GPIO_HDMI_EN				TCC_GPF25   /* HDMI power control, 1:on */
++
++//LED
++#define GPIO_LED1_EN				TCC_GPE6    /* Green LED, 0:on */
++#define GPIO_LED2_EN				TCC_GPE7    /* Red LED, 0:on */
++
++#endif
++
+-- 
+1.6.3.3
+

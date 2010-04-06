@@ -1,0 +1,88 @@
+From 6078a2a6c7a8b28b1795c272a8d19250fe9460a0 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Tue, 10 Nov 2009 13:34:49 +0800
+Subject: [PATCH] bug fix of otg when suspend and resume for v7
+
+---
+ drivers/usb/dwc_otg/dwc_otg_driver.c |   23 +++++++++++++++++++++++
+ 1 files changed, 23 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/usb/dwc_otg/dwc_otg_driver.c b/drivers/usb/dwc_otg/dwc_otg_driver.c
+index 050c29e..cbadc83 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_driver.c
++++ b/drivers/usb/dwc_otg/dwc_otg_driver.c
+@@ -86,6 +86,7 @@
+ #define DWC_DRIVER_DESC		"HS OTG USB Controller driver"
+ 
+ extern int choosedevice;
++static int bak_choosedevice = 0;
+ 
+ static const char dwc_driver_name[] = "dwc_otg";
+ /* For Signature */
+@@ -358,6 +359,10 @@ static int otg_pwr_ctl(void *h_private, int cmd, void *p_out)
+ 		
+ 		dwc_otg_device->flagMode = 1;
+ 		/* wait for change mode */
++#ifdef CONFIG_LCD_7
++		bak_choosedevice = choosedevice;
++		choosedevice = 1;
++#endif
+ 		while (dwc_otg_device->flagID == 0) {
+ 			msleep_interruptible(200);
+ 		}
+@@ -382,6 +387,9 @@ static int otg_pwr_ctl(void *h_private, int cmd, void *p_out)
+ 
+ 		dwc_otg_device->flagMode = 1;
+ 		/* wait for change mode */
++#ifdef CONFIG_LCD_7
++		choosedevice = 1;
++#endif
+ 		while (dwc_otg_device->flagID == 0) {
+ 			msleep_interruptible(200);
+ 		}
+@@ -389,6 +397,10 @@ static int otg_pwr_ctl(void *h_private, int cmd, void *p_out)
+ 
+ 		dwc_otg_device->flagMode = dwc_otg_device->flagMode_backup;
+ 
++#ifdef CONFIG_LCD_7
++		choosedevice = bak_choosedevice;
++#endif
++
+ 		break;
+ 	case PWR_CMD_GETSTATUS:
+ 		//printk("PWR_CMD_GETSTATUS command ==> [%d], status:[%d]\n", cmd, pwrinfo.status);
+@@ -1222,6 +1234,10 @@ static int dwc_otg_driver_suspend(struct platform_device *pdev, pm_message_t sta
+ 	/* device mode change & wait */
+ 	dwc_otg_device->flagMode_backup = dwc_otg_device->flagMode;
+ 	dwc_otg_device->flagMode = 1;
++#ifdef CONFIG_LCD_7
++	bak_choosedevice = choosedevice;
++	choosedevice = 1;
++#endif
+ 	while (dwc_otg_device->flagID == 0) {
+ 		msleep_interruptible(200);
+ 	}
+@@ -1244,6 +1260,9 @@ static int dwc_otg_driver_resume(struct platform_device *pdev)
+ 
+ 	/* device mode change & wait */
+ 	dwc_otg_device->flagMode = 1;
++#ifdef CONFIG_LCD_7
++	choosedevice = 1;
++#endif
+ 	while (dwc_otg_device->flagID == 0) {
+ 		msleep_interruptible(200);
+ 	}
+@@ -1253,6 +1272,10 @@ static int dwc_otg_driver_resume(struct platform_device *pdev)
+ 	dwc_otg_device->flagMode = dwc_otg_device->flagMode_backup;
+ #endif
+ 
++#ifdef CONFIG_LCD_7
++	choosedevice = bak_choosedevice;
++#endif
++
+ 	return 0;
+ }
+ #else
+-- 
+1.6.3.3
+

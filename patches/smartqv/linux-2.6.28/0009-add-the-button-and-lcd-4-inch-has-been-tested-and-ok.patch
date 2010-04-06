@@ -1,0 +1,570 @@
+From 84db6c85fc4c53394ee221475db12c094b087e07 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Tue, 28 Jul 2009 16:32:47 +0800
+Subject: [PATCH] add the button and lcd(4 inch has been tested and ok)
+
+---
+ arch/arm/Kconfig                   |    2 +-
+ arch/arm/mach-tcc8900/devices.c    |   64 ++++++++++++++++++++-
+ arch/arm/mach-tcc8900/irq.c        |   47 +++++++++++++---
+ drivers/input/keyboard/gpio_keys.c |    8 ++-
+ drivers/video/Kconfig              |   16 +++++
+ drivers/video/Makefile             |    4 +-
+ drivers/video/tcc-lcd.h            |   18 ++++--
+ drivers/video/tccfb.c              |    8 ++-
+ drivers/video/tccfb_a070vw04.c     |   96 ++++++++++++++++++++++++++++++++
+ drivers/video/tccfb_td043mtex.c    |  108 ++++++++++++++++++++++++++++++++++++
+ 10 files changed, 348 insertions(+), 23 deletions(-)
+ create mode 100644 drivers/video/tccfb_a070vw04.c
+ create mode 100644 drivers/video/tccfb_td043mtex.c
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index 1869bb8..d969ba7 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -34,7 +34,7 @@ config SYS_SUPPORTS_APM_EMULATION
+ 
+ config GENERIC_GPIO
+ 	bool
+-	default n
++	default y
+ 
+ config GENERIC_TIME
+ 	bool
+diff --git a/arch/arm/mach-tcc8900/devices.c b/arch/arm/mach-tcc8900/devices.c
+index fd5608a..0405335 100644
+--- a/arch/arm/mach-tcc8900/devices.c
++++ b/arch/arm/mach-tcc8900/devices.c
+@@ -680,7 +680,64 @@ static inline void tcc8900_init_dwc_otg(void)
+ }
+ #endif
+ 
+-
++static struct gpio_keys_button hhmid_buttons[] = {
++        {
++                .gpio           = TCC_GPD17,			//32*16 + 2
++                .code		= KEY_PAGEUP,
++                .desc           = "Button 3",
++                .active_low     = 1,
++                .debounce_interval = 5,
++        },
++	{
++                .gpio           = TCC_GPD18,			//32*16 + 2
++                .code		= KEY_LEFTALT,
++                .desc           = "Button 1",
++                .active_low     = 1,
++                .debounce_interval = 5,
++        },
++	{
++                .gpio           = TCC_GPD19,			//32*16 + 2
++                .code		= KEY_PAGEDOWN,
++                .desc           = "Button 2",
++                .active_low     = 1,
++                .debounce_interval = 5,
++        },
++	{
++                .gpio           = TCC_GPF10,			//32*16 + 2
++                .code		= KEY_POWER,
++                .desc           = "Button 0",
++                .active_low     = 1,
++                .debounce_interval = 5,
++        },
++//	{
++//                .gpio           = S3C_GPN12,
++//                .code		= KEY_PAGEUP,
++//                .desc           = "Button 3",
++//                .active_low     = 1,
++//                .debounce_interval = 5,
++//        },
++};
++
++//static struct gpio_keys_platform_data hhmid_button_data __initdata = {
++static struct gpio_keys_platform_data hhmid_button_data  = {
++        .buttons        = hhmid_buttons,
++        .nbuttons       = ARRAY_SIZE(hhmid_buttons),
++};
++
++static struct platform_device hhmid_button_device  = {
++        .name           = "gpio-keys",
++        .id             = 0,
++        .num_resources  = 0,
++        .dev            = {
++        .platform_data  = &hhmid_button_data,
++        }
++};
++
++static inline void tcc8900_init_hhmid_button(void)
++{
++	int ret;
++	ret = platform_device_register(&hhmid_button_device);
++}
+ /*
+  * This gets called after board-specific INIT_MACHINE, and initializes most
+  * on-chip peripherals accessible on this board (except for few like USB):
+@@ -737,7 +794,7 @@ static int __init tcc8900_init_devices(void)
+ #if defined(CONFIG_TOUCHSCREEN_TCCTS) || defined(CONFIG_TOUCHSCREEN_TCCTS_MODULE)
+     tcc8900_init_touch_ts();
+ #endif
+-
++    
+ #if defined(CONFIG_USB_OHCI_HCD) || defined(CONFIG_USB_OHCI_HCD_MODULE)
+ 	tcc8900_init_usbhost();
+ #endif
+@@ -752,6 +809,9 @@ static int __init tcc8900_init_devices(void)
+ #if defined(CONFIG_SATA_TCC) || defined(CONFIG_SATA_TCC_MODULE)
+     tcc8900_init_sata();
+ #endif
++
++    tcc8900_init_hhmid_button();
++
+     return 0;
+ }
+ 
+diff --git a/arch/arm/mach-tcc8900/irq.c b/arch/arm/mach-tcc8900/irq.c
+index 305b009..0396ece 100644
+--- a/arch/arm/mach-tcc8900/irq.c
++++ b/arch/arm/mach-tcc8900/irq.c
+@@ -37,9 +37,10 @@
+ #include <asm/io.h>
+ 
+ #include <bsp.h>
+-
++#include <asm-arm/plat-tcc8900/gpio.h>
+ 
+ // Global 
++static volatile PGPIO pGPIO;
+ static volatile PPIC pPIC;
+ static volatile PVIC pVIC;
+ static volatile PGPSBPORTCFG pPGPSBPORTCFG;
+@@ -431,6 +432,7 @@ void __init tcc8900_irq_init(void)
+ 	printk("%s\n", __func__);
+ 
+ 	//reset interrupt 
++	pGPIO = (volatile PGPIO)tcc_p2v(HwGPIO_BASE);
+ 	pPIC = (volatile PPIC)tcc_p2v(HwPIC_BASE);
+ 	pVIC = (volatile PVIC)tcc_p2v(HwVIC_BASE);
+ 	pPGPSBPORTCFG = (volatile PGPSBPORTCFG)tcc_p2v(HwGPSBPORTCFG_BASE);
+@@ -535,14 +537,43 @@ void __init tcc8900_irq_init(void)
+ 
+ 
+     /* IEN SET */
+-	BITSET(pPIC->IEN1,      Hw15);	/* UART */
+-	BITSET(pPIC->INTMSK1,   Hw15);
+-	BITSET(pPIC->IEN1,      Hw4);	/* GPSB */
+-	BITSET(pPIC->INTMSK1,   Hw4);
+-	BITSET(pPIC->IEN0,      Hw29);	/* DMA */
+-	BITSET(pPIC->INTMSK0,   Hw29);
+-	BITSET(pPIC->IEN0,		Hw0);	/* TC0 */
++	BITSET(pPIC->IEN1,      Hw15);   /* UART */
++	BITSET(pPIC->INTMSK1,   Hw15);   /* UART */
++	BITSET(pPIC->IEN1,      Hw4);    /* GPSB */
++	BITSET(pPIC->INTMSK1,   Hw4);    /* GPSB */
++	BITSET(pPIC->IEN0,      Hw29);   /* DMA */
++	BITSET(pPIC->INTMSK0,   Hw29);   /* DMA */
++	BITSET(pPIC->IEN0,	Hw0);	/* TC0 */
+ 	BITSET(pPIC->INTMSK0,	Hw0);
++
++	BITCSET(pGPIO->EINTSEL2, Hw6-Hw0, 26<<0);
++	BITSET(pPIC->INTMSK0, 1<<INT_EI8);
++	BITCLR(pPIC->MODE0, 1<<INT_EI8);
++	BITSET(pPIC->POL0, 1<<INT_EI8);
++	BITSET(pPIC->MODEA0, 1<<INT_EI8);
++	gpio_direction_input(TCC_GPD17);
++
++	BITCSET(pGPIO->EINTSEL2, Hw14-Hw8, 27<<8);
++	BITSET(pPIC->INTMSK0, 1<<INT_EI9);
++	BITCLR(pPIC->MODE0, 1<<INT_EI9);
++	BITSET(pPIC->POL0, 1<<INT_EI9);
++	BITSET(pPIC->MODEA0, 1<<INT_EI9);
++	gpio_direction_input(TCC_GPD18);
++	gpio_direction_input(TCC_GPE4);
++
++	BITCSET(pGPIO->EINTSEL2, Hw22-Hw16, 28<<16);
++	BITSET(pPIC->INTMSK0, 1<<INT_EI10);
++	BITCLR(pPIC->MODE0, 1<<INT_EI10);
++	BITSET(pPIC->POL0, 1<<INT_EI10);
++	BITSET(pPIC->MODEA0, 1<<INT_EI10);
++	gpio_direction_input(TCC_GPD19);
++
++	BITCSET(pGPIO->EINTSEL2, Hw30-Hw24, 38<<24);
++	BITSET(pPIC->INTMSK0, 1<<INT_EI11);
++	BITCLR(pPIC->MODE0, 1<<INT_EI11);
++	BITSET(pPIC->POL0, 1<<INT_EI11);
++	BITSET(pPIC->MODEA0, 1<<INT_EI11);
++	gpio_direction_input(TCC_GPF10);
+ }
+ 
+ /* end of file */
+diff --git a/drivers/input/keyboard/gpio_keys.c b/drivers/input/keyboard/gpio_keys.c
+index 05f3f43..d5e377d 100644
+--- a/drivers/input/keyboard/gpio_keys.c
++++ b/drivers/input/keyboard/gpio_keys.c
+@@ -23,7 +23,9 @@
+ #include <linux/input.h>
+ #include <linux/gpio_keys.h>
+ 
+-#include <asm/gpio.h>
++//#include <asm/gpio.h>
++//#include <asm/plat-tcc8900/hhtech_gpio.h>
++#include <asm-arm/plat-tcc8900/gpio.h>
+ 
+ struct gpio_button_data {
+ 	struct gpio_keys_button *button;
+@@ -59,7 +61,7 @@ static irqreturn_t gpio_keys_isr(int irq, void *dev_id)
+ 	struct gpio_button_data *bdata = dev_id;
+ 	struct gpio_keys_button *button = bdata->button;
+ 
+-	BUG_ON(irq != gpio_to_irq(button->gpio));
++//	BUG_ON(irq != gpio_to_irq(button->gpio));
+ 
+ 	if (button->debounce_interval)
+ 		mod_timer(&bdata->timer,
+@@ -267,7 +269,7 @@ static void __exit gpio_keys_exit(void)
+ 	platform_driver_unregister(&gpio_keys_device_driver);
+ }
+ 
+-module_init(gpio_keys_init);
++late_initcall(gpio_keys_init);
+ module_exit(gpio_keys_exit);
+ 
+ MODULE_LICENSE("GPL");
+diff --git a/drivers/video/Kconfig b/drivers/video/Kconfig
+index c6b1179..c8a540b 100644
+--- a/drivers/video/Kconfig
++++ b/drivers/video/Kconfig
+@@ -1900,6 +1900,22 @@ config FB_TCC8900
+ 
+ 		If unsure, say N.
+ 
++choice
++    prompt "Select LCD Type"
++    depends on FB_TCC8900
++    default FB_TCC_TD043MTEX
++
++config FB_TCC_A070VW04
++	bool "A070VW04"
++	---help---
++	TBA
++
++config FB_TCC_TD043MTEX
++	bool "TD043MTEX"
++	---help---
++	TBA
++
++endchoice
+ 
+ config FB_SH_MOBILE_LCDC
+ 	tristate "SuperH Mobile LCDC framebuffer support"
+diff --git a/drivers/video/Makefile b/drivers/video/Makefile
+index cf2bc5d..90e1097 100644
+--- a/drivers/video/Makefile
++++ b/drivers/video/Makefile
+@@ -123,7 +123,9 @@ obj-$(CONFIG_FB_OMAP)             += omap/
+ obj-$(CONFIG_XEN_FBDEV_FRONTEND)  += xen-fbfront.o
+ obj-$(CONFIG_FB_CARMINE)          += carminefb.o
+ obj-$(CONFIG_FB_MB862XX)	  += mb862xx/
+-obj-$(CONFIG_FB_TCC8900)		  += tccfb.o tca_lcdc.o tca_tvout.o
++obj-$(CONFIG_FB_TCC8900)	  += tccfb.o tca_lcdc.o tca_tvout.o
++obj-$(CONFIG_FB_TCC_A070VW04)     += tccfb_a070vw04.o
++obj-$(CONFIG_FB_TCC_TD043MTEX)    += tccfb_td043mtex.o
+ 
+ # Platform or fallback drivers go here
+ obj-$(CONFIG_FB_UVESA)            += uvesafb.o
+diff --git a/drivers/video/tcc-lcd.h b/drivers/video/tcc-lcd.h
+index 21c4ddb..83bc786 100644
+--- a/drivers/video/tcc-lcd.h
++++ b/drivers/video/tcc-lcd.h
+@@ -51,21 +51,29 @@ typedef struct {
+ 
+ } lcd_cfg_t;
+ 
+-
++#ifdef CONFIG_LCD_4
+ static lcd_cfg_t	lcd_cfg[3] = 
+ {
+ //////	W		H		DIV		VPW		VBP		VFP		HPW		HBP		HFP		PWDX	//
+-
+-//	[TCCXXXX_LCD_4.8WVGA&24B_SV0.1]
+-	{	800,	480,	3,		3,		5,		5,		3,		13,		8,		0xC		},	
+-
++{800, 480, 2, 1, 35, 10, 1, 216, 40, 0xC},
+ //	[CLAA104XA01CW 10"4 Color TFT LCD (LVDS)]
+ 	{	1024,	768,	1,		1,		1,		36,		1,		1,		318,	0xC		},
+ 
+ //	[HT121WX2-103 12"1 Color TFT LCD (LVDS)]
+ 	{	1280,	800,	1,		1,		3,		20,		1,		10,		150,	0xC		},
+ };
++#else
++static lcd_cfg_t	lcd_cfg[3] = 
++{
++//////	W		H		DIV		VPW		VBP		VFP		HPW		HBP		HFP		PWDX	//
++{800, 480, 3, 10, 5, 3, 3, 20, 1, 0x3},
++//	[CLAA104XA01CW 10"4 Color TFT LCD (LVDS)]
++	{	1024,	768,	1,		1,		1,		36,		1,		1,		318,	0xC		},
+ 
++//	[HT121WX2-103 12"1 Color TFT LCD (LVDS)]
++	{	1280,	800,	1,		1,		3,		20,		1,		10,		150,	0xC		},
++};
++#endif
+ 
+ #if !defined(USED_IN_KERNEL)
+ 
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index c7b6bb5..f755b01 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -369,7 +369,7 @@ void tcc_lcd_on(void)
+ 
+ #else
+ //	LCD_DISP On
+-	BITSET(pGPIO->GPCDAT, Hw28);
++	BITSET(pGPIO->GPADAT, Hw6);
+ 
+ //	LCD_BL_EN(Backlight) On
+ 	BITSET(pGPIO->GPADAT, Hw7);
+@@ -485,7 +485,7 @@ void tcc_lcd_off(void)
+ 	PGPIO	pGPIO 	= (GPIO *)&HwGPIO_BASE;
+ 
+ //	LCD_DISP Off
+-	BITCLR(pGPIO->GPCDAT, Hw28);
++	BITCLR(pGPIO->GPADAT, Hw6);
+ 
+ //	LCD_BL_EN(Backlight) Off
+ 	BITCLR(pGPIO->GPADAT, Hw7);
+@@ -2760,6 +2760,8 @@ static int __init tccfb_probe(struct platform_device *pdev)
+ 		strcpy(fbinfo->fix.id, tccfb_driver_name);
+ 
+ 		//info->mach_info		    = pdev->dev.platform_data;
++		//init the lcd
++		lcd_init_hw();
+ 
+ 		fbinfo->fix.type			= FB_TYPE_PACKED_PIXELS;
+ 		fbinfo->fix.type_aux		= 0;
+@@ -2875,7 +2877,7 @@ static int __init tccfb_probe(struct platform_device *pdev)
+     tcc_start_lcd_int_dd();
+     tcc_set_reg_for_int_dd();
+     */
+-
++	tcc_lcd_on();
+ 	dprintk("-probe\n");
+ 	return 0;
+ 
+diff --git a/drivers/video/tccfb_a070vw04.c b/drivers/video/tccfb_a070vw04.c
+new file mode 100644
+index 0000000..30a13ae
+--- /dev/null
++++ b/drivers/video/tccfb_a070vw04.c
+@@ -0,0 +1,96 @@
++
++#include <linux/wait.h>
++#include <linux/fb.h>
++#include <linux/delay.h>
++#include <linux/platform_device.h>
++#include <asm-arm/plat-tcc8900/gpio.h>
++
++#define LCD_SCEN    TCC_GPC29
++#define LCD_SCL	    TCC_GPC30
++#define LCD_SDA	    TCC_GPC31
++
++static void us_delay(unsigned int dly)
++{
++    udelay(dly);
++}
++
++static void write_bit(unsigned char  val)
++{
++    gpio_set_value(S3C_GPM1, 0);	    // SCL = 0
++    gpio_set_value(S3C_GPM2, val);	    // SDA = val
++    us_delay(1000);
++    gpio_set_value(S3C_GPM1, 1);	    // SCL = 1
++    us_delay(1000);
++}
++
++static unsigned int read_bit()
++{
++    gpio_set_value(S3C_GPM1, 0);	    // SCL = 0
++    unsigned int data = tcc_gpio_getpin(S3C_GPM2);	// SDA
++    us_delay(1000);
++    gpio_set_value(S3C_GPM1, 1);	    // SCL = 1
++    us_delay(1000);
++    return data;
++}
++
++static void write_reg(unsigned char addr, unsigned short data)
++{
++    unsigned char  i;
++    gpio_set_value(LCD_SCEN, 0);    // CSB pin of LCD = 0
++    /* transfer the register address bits (4 bit) */
++    for(i=0; i<4; i++) {
++	if(addr & 0x8)
++	    write_bit(1);
++	else
++	    write_bit(0);
++	addr <<= 1;
++    }
++    /* transfer the write mode bit (1 bit) */
++    write_bit(0);
++    /* transfer the data bits (11 bits) */
++    write_bit(0);
++    for(i=0; i<10; i++) {
++        if(data & 0x200) 
++            write_bit(1);
++        else 
++            write_bit(0);
++        data <<= 1;
++    }
++    gpio_set_value(LCD_SCEN, 1);    // CSB pin of LCD = 1
++}
++
++static unsigned int read_reg(unsigned char addr)
++{
++    unsigned char  i;
++    unsigned int data = 0x0;
++    gpio_set_value(LCD_SCEN, 0);    // CSB pin of LCD = 0
++    /* transfer the register address bits (4 bit) */
++    for(i=0; i<4; i++) {
++	if(addr & 0x8)
++	    write_bit(1);
++	else
++	    write_bit(0);
++	addr <<= 1;
++    }
++    /* transfer the read or read mode (1 bit) */
++    write_bit(1);
++    /* transfer the data (11 bits) */
++    write_bit(0);
++    for(i=0; i<10; i++) {
++	data |= (read_bit() << i);
++    }
++    gpio_set_value(LCD_SCEN, 1);    // CSB pin of LCD = 1
++
++    return data;
++}
++
++void lcd_init_hw(void)
++{
++    gpio_direction_output(LCD_SCEN, 1);	// GPM0 <---> CSB pin of LCD
++    gpio_direction_output(S3C_GPM1, 1); // GPM1 <---> SCL pin of LCD
++    gpio_direction_output(S3C_GPM2, 1);	// GPM2 <---> SDA pin of LCD
++    write_reg(0x0, 0x2d3);
++    //write_reg(0x1, 0x181);
++    write_reg(0x4, 0x19f);
++}
++
+diff --git a/drivers/video/tccfb_td043mtex.c b/drivers/video/tccfb_td043mtex.c
+new file mode 100644
+index 0000000..1e8bfad
+--- /dev/null
++++ b/drivers/video/tccfb_td043mtex.c
+@@ -0,0 +1,108 @@
++#include <linux/wait.h>
++#include <linux/fb.h>
++#include <linux/delay.h>
++#include <linux/platform_device.h>
++#include <asm-arm/plat-tcc8900/gpio.h>
++
++#define LCD_SCEN TCC_GPC29
++#define LCD_SCL TCC_GPC30
++#define LCD_SDA TCC_GPC31
++#define S3C_GPIO_OUTP 1
++#define S3C_GPIO_INP  0
++
++static int lcd_write(unsigned char,unsigned char);
++static void lcd_spi_stop(void);
++static void lcd_spi_start(void);
++static void lcd_spi_start(void)
++{
++	gpio_direction_output(LCD_SCEN, 0);
++}
++
++static void lcd_spi_stop(void)
++{
++	gpio_direction_output(LCD_SCEN, 1);
++	gpio_set_value(LCD_SCL,0);
++	gpio_set_value(LCD_SDA,0);
++	gpio_direction_input(LCD_SCL);
++	gpio_direction_input(LCD_SDA);
++}
++
++static int lcd_write(unsigned char addr,unsigned char data)
++{
++	unsigned char myaddr,mydata,i;
++	myaddr = (addr&0x3f)<<1 ;
++	myaddr <<= 1;
++	myaddr |= 0x1;
++	lcd_spi_start();
++
++	gpio_direction_output(LCD_SCL, 0);
++	tcc_gpio_cfgpin(LCD_SDA, 0, TCC_GPIO_OUTPUT);
++
++	for(i=0;i<8;i++){
++	    gpio_set_value(LCD_SCL,0);
++	    udelay(1);
++	    gpio_set_value(LCD_SDA,(myaddr&0x80)>>7);
++	    myaddr <<= 1 ;
++	    udelay(1);
++	    gpio_set_value(LCD_SCL,1);
++	    udelay(1);
++	} //8nd is null turn
++	mydata = data;
++	for(i=0;i<8;i++){
++	    gpio_set_value(LCD_SCL,0);
++	    udelay(1);
++	    gpio_set_value(LCD_SDA,(mydata&0x80)>>7);
++	    mydata <<= 1;
++	    udelay(1);
++	    gpio_set_value(LCD_SCL,1);
++	    udelay(1);
++	}
++
++	lcd_spi_stop();
++
++	return 0;
++}
++
++void lcd_init_hw(void)
++{
++	lcd_spi_stop();
++
++	lcd_write(0x02,0x07);
++	lcd_write(0x03,0x5f);
++	lcd_write(0x04,0x17);
++
++	lcd_write(0x05,0x20);
++	lcd_write(0x06,0x08);
++
++	lcd_write(0x07,0x20);
++	lcd_write(0x08,0x20);
++	lcd_write(0x09,0x20);
++	lcd_write(0x0a,0x20);
++
++	lcd_write(0x0b,0x20);
++	lcd_write(0x0c,0x20);
++	lcd_write(0x0d,0x22);
++
++	lcd_write(0x0e,0x10);
++	lcd_write(0x0f,0x10);
++	lcd_write(0x10,0x10);
++
++	lcd_write(0x11,0x15);
++	lcd_write(0x12,0xaa);
++	lcd_write(0x13,0xff);
++	lcd_write(0x14,0x86);
++	lcd_write(0x15,0x89);
++	lcd_write(0x16,0xc6);
++	lcd_write(0x17,0xea);
++	lcd_write(0x18,0x0c);
++	lcd_write(0x19,0x33);
++	lcd_write(0x1a,0x5e);
++	lcd_write(0x1b,0xd0);
++	lcd_write(0x1c,0x33);
++	lcd_write(0x1d,0x7e);
++	lcd_write(0x1e,0xb3);
++	lcd_write(0x1f,0xff);
++	lcd_write(0x20,0xf0);
++	lcd_write(0x21,0xf0);
++	lcd_write(0x22,0x08);
++}
+-- 
+1.6.3.3
+

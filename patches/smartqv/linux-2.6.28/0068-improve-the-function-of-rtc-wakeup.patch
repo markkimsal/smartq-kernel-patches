@@ -1,0 +1,254 @@
+From 3f63473cfc9cd82fb08beac37670af0f72efa347 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Thu, 29 Oct 2009 11:33:09 +0800
+Subject: [PATCH] improve the function of rtc wakeup
+
+---
+ drivers/char/hhtech_gpio.c      |   48 +++++++++++++++++++++++++++++---------
+ drivers/rtc/rtc-tcc.c           |    3 --
+ drivers/rtc/tcc8900/tca_alarm.c |   20 +++++++++++++++-
+ 3 files changed, 55 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 1dde1a0..526658f 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -45,6 +45,7 @@
+ 
+ #include <../drivers/usb/dwc_otg/dwc_otg_driver.h>
+ #include <mach/globals.h>
++#include <bsp.h>
+ 
+ #define IRQ_HEADPHONE INT_EI7
+ #define HPD_MINOR       244 /* Major 10, Minor 244, /dev/tv_hpd */
+@@ -284,7 +285,7 @@ static void shutdown_unused_devices(void)
+ 	*(volatile unsigned long *)0xF0510000 = 0x0;//mpefec off
+ 	*(volatile unsigned long *)0xF0240004 |= 0x80;//shut down clk of TV-OUT
+ 	*(volatile unsigned long *)0xF0200000 &= ~(0x1);//disable LCD0
+-	*(volatile unsigned long *)0xF0251030 = 0x47;//shut down power of CIF,VIQE,LCDC0,MSCL1
++//	*(volatile unsigned long *)0xF0251030 = 0x45;//shut down power of CIF,LCDC0,MSCL1
+ 
+ 	//below is stop the peri clock
+ 	for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++)
+@@ -375,7 +376,7 @@ static ssize_t hhtech_sysfs_store_power(struct device *dev,
+ 
+ extern void memchange(unsigned int freq);
+ static unsigned long now_memfreq = 3300000;
+-static int hhtech_sysfs_show_memfreq(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_memfreq(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", now_memfreq);
+ }
+@@ -395,9 +396,27 @@ static ssize_t hhtech_sysfs_store_memfreq(struct device *dev, struct device_attr
+     return len;
+ }
+ 
++static void __iomem *rtc_base;
++static void __iomem *vic_base;
++char wakeup_time[50];
++EXPORT_SYMBOL(wakeup_time);
++extern VOLATILE void tca_alarm_setpmwkup(unsigned int rtcbaseaddresss,unsigned int vicbaseaddresss);
++static int hhtech_sysfs_show_rtc_wakeup(struct device *dev, struct device_attribute *attr, char *buf)
++{
++    volatile rtctime lpTime;
++    tca_rtc_gettime(rtc_base, (rtctime *)&lpTime);
++    printk(KERN_EMERG"!!!dcs: %d-%d-%d-%d-%d-%d-%d\n",lpTime.wYear,lpTime.wMonth,lpTime.wDayOfWeek,lpTime.wDay,lpTime.wHour,lpTime.wMinute,lpTime.wSecond);
++    return 0;
++}
++static int hhtech_sysfs_store_rtc_wakeup(struct device *dev, struct device_attribute *attr, char *buf)
++{ 
++    memcpy(wakeup_time,buf,strlen(buf));
++    tca_alarm_setpmwkup((unsigned int)rtc_base,(unsigned int)vic_base); 
++}
++
+ //vbus pm ops 
+ static int vb_st;
+-static int hhtech_sysfs_show_vb(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_vb(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     vb_st = !!(PMU_PWROFF & 0x40);
+     return snprintf(buf, PAGE_SIZE, "%d\n", vb_st);
+@@ -430,7 +449,7 @@ static ssize_t hhtech_sysfs_store_vb(struct device *dev, struct device_attribute
+ //dbus pm ops
+ char lcd_buff[0x124];
+ static int db_st;
+-static int hhtech_sysfs_show_db(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_db(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     db_st = !!(PMU_PWROFF & 0x80);
+     return snprintf(buf, PAGE_SIZE, "%d\n", db_st);
+@@ -475,7 +494,7 @@ static ssize_t hhtech_sysfs_store_db(struct device *dev, struct device_attribute
+ //gbus pm ops
+ static int gb_st = 0;
+ static unsigned long gbpd;
+-static int hhtech_sysfs_show_gb(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_gb(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", gb_st);
+ }
+@@ -508,7 +527,7 @@ static ssize_t hhtech_sysfs_store_gb(struct device *dev, struct device_attribute
+ 
+ //hdmi ops
+ static int hd_st = 0;
+-static int hhtech_sysfs_show_hd(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_hd(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", hd_st);
+ }
+@@ -541,7 +560,7 @@ static ssize_t hhtech_sysfs_store_hd(struct device *dev, struct device_attribute
+ 
+ //iobus pm ops
+ static int io_st = 0;
+-static int hhtech_sysfs_show_io(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_io(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", io_st);
+ }
+@@ -581,7 +600,7 @@ static ssize_t hhtech_sysfs_store_io(struct device *dev, struct device_attribute
+ static unsigned int vpu_bus_clock_addr = 0xF0702000;
+ static unsigned int vpu_core_clock_addr = 0xF0400018;
+ static int vpu_on_st;
+-static int hhtech_sysfs_show_vpu_on(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_vpu_on(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     if(!!(PMU_PWROFF & 0x40))
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", 0);
+@@ -626,7 +645,7 @@ static ssize_t hhtech_sysfs_store_vpu_on(struct device *dev, struct device_attri
+ 
+ //lcd pm ops
+ static int lcd_on = 1;
+-static int hhtech_sysfs_show_lcd(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_lcd(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", lcd_on);
+ }
+@@ -647,7 +666,7 @@ static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribut
+ 
+ int video_on = 0;
+ EXPORT_SYMBOL(video_on);
+-static int hhtech_sysfs_show_play_video(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_play_video(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", video_on);    
+ }
+@@ -696,7 +715,7 @@ static ssize_t hhtech_sysfs_store_play_video(struct device *dev, struct device_a
+ //before sleep
+ int sleep_type = 0;
+ EXPORT_SYMBOL(sleep_type);
+-static int hhtech_sysfs_show_sleep_type(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_sleep_type(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", sleep_type);
+ }
+@@ -714,7 +733,7 @@ static ssize_t hhtech_sysfs_store_sleep_type(struct device *dev, struct device_a
+     return len;
+ }
+ 
+-static int hhtech_sysfs_show_otgmode(struct device *dev, struct device_attribute *attr, char*buf)
++static int hhtech_sysfs_show_otgmode(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", choosedevice);
+ }
+@@ -1040,6 +1059,7 @@ static DEVICE_ATTR(charge_s, 0444,hhtech_sysfs_charge_s , NULL);
+ static DEVICE_ATTR(battery_s, 0444, hhtech_sysfs_show_battery, NULL);
+ static DEVICE_ATTR(pwr_en, 0666, hhtech_sysfs_show_power, hhtech_sysfs_store_power);
+ static DEVICE_ATTR(memfreq, 0666, hhtech_sysfs_show_memfreq, hhtech_sysfs_store_memfreq);
++static DEVICE_ATTR(rtc_wakeup, 0666, hhtech_sysfs_show_rtc_wakeup, hhtech_sysfs_store_rtc_wakeup);
+ static DEVICE_ATTR(vb_pwoff, 0666, hhtech_sysfs_show_vb, hhtech_sysfs_store_vb);
+ static DEVICE_ATTR(db_pwoff, 0666, hhtech_sysfs_show_db, hhtech_sysfs_store_db);
+ static DEVICE_ATTR(gb_pwoff, 0666, hhtech_sysfs_show_gb, hhtech_sysfs_store_gb);
+@@ -1073,6 +1093,7 @@ static struct attribute *attrs[] = {
+ 	&dev_attr_battery_s.attr,
+ 	&dev_attr_pwr_en.attr,
+ 	&dev_attr_memfreq.attr,
++	&dev_attr_rtc_wakeup.attr,
+ 	&dev_attr_vb_pwoff.attr,
+ 	&dev_attr_db_pwoff.attr,
+ 	&dev_attr_gb_pwoff.attr,
+@@ -1169,6 +1190,9 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 		return -1;
+ 	}
+ 
++	rtc_base = (void __iomem *)tcc_p2v(HwRTC_BASE);
++	vic_base = (void __iomem *)tcc_p2v(HwVIC_BASE);
++
+ 	gpio_direction_input(GPIO_SD_WP);
+ 	gpio_direction_input(GPIO_HEADPHONE_S);
+ 	gpio_direction_input(GPIO_DC_DETE);
+diff --git a/drivers/rtc/rtc-tcc.c b/drivers/rtc/rtc-tcc.c
+index 7fbc0f9..e91f48a 100644
+--- a/drivers/rtc/rtc-tcc.c
++++ b/drivers/rtc/rtc-tcc.c
+@@ -84,7 +84,6 @@ volatile struct tcc_rtc_regs *rtc_regs;
+ #endif
+ 
+ static void __iomem *rtc_base;
+-static void __iomem *vic_base;
+ static int tcc_rtc_alarmno = NO_IRQ;
+ 
+ 
+@@ -291,7 +290,6 @@ static int tcc_rtc_ioctl(struct device *dev,
+     case RTC_UIE_ON:
+         break;
+     case RTC_UIE_OFF:
+-	    tca_alarm_setpmwkup((unsigned int)rtc_base,(unsigned int)vic_base);
+         break;
+         ret = -EINVAL;
+     }
+@@ -346,7 +344,6 @@ static int tcc_rtc_probe(struct platform_device *pdev)
+     pIOBUSCFG->HCLKEN0 |= Hw26;
+ 
+ 	rtc_base = (void __iomem *)tcc_p2v(HwRTC_BASE);
+-	vic_base = (void __iomem *)tcc_p2v(HwVIC_BASE);
+ 
+ 	if (rtc_base == NULL) {
+         printk("failed ioremap()\n"); 
+diff --git a/drivers/rtc/tcc8900/tca_alarm.c b/drivers/rtc/tcc8900/tca_alarm.c
+index 6844aec..6a5a6f2 100644
+--- a/drivers/rtc/tcc8900/tca_alarm.c
++++ b/drivers/rtc/tcc8900/tca_alarm.c
+@@ -238,6 +238,7 @@ VOLATILE void tca_alarm_setint(unsigned int devbaseaddresss)
+ * DESCRIPTION	: 
+ *
+ ************************************************************************************************/
++extern char wakeup_time[50];
+ VOLATILE void tca_alarm_setpmwkup(unsigned int rtcbaseaddresss,unsigned int vicbaseaddresss)
+ {
+ 	volatile rtctime lpTime;
+@@ -245,8 +246,16 @@ VOLATILE void tca_alarm_setpmwkup(unsigned int rtcbaseaddresss,unsigned int vicb
+ 	PRTC	pRTC = (PRTC)rtcbaseaddresss;
+ 	PPIC    pPIC = (PPIC)vicbaseaddresss;
+ 
++	int year,month,day,hour,minute,second;
++
++	sscanf(wakeup_time,"%d-%d-%d %d:%d:%d",&year,&month,&day,&hour,&minute,&second);
++//	printk(KERN_EMERG"%d,%d,%d,%d,%d,%d\n",year,month,day,hour,minute,second);
+ 	//Set Alarm
+-    tca_rtc_gettime(rtcbaseaddresss, (rtctime *)&lpTime);
++	tca_rtc_gettime(rtcbaseaddresss, (rtctime *)&lpTime);
++//	printk(KERN_EMERG"!!!dcs: %d-%d-%d-%d-%d-%d-%d\n",lpTime.wYear,lpTime.wMonth,lpTime.wDayOfWeek,lpTime.wDay,lpTime.wHour,lpTime.wMinute,lpTime.wSecond);
++
++	if(((year == 60)||(month == 60)||(day == 60)||(hour == 60)||(minute == 60)||(second == 60)))
++	{
+ 	
+ #if defined(WINCE_ONLY)
+ 	
+@@ -275,6 +284,15 @@ VOLATILE void tca_alarm_setpmwkup(unsigned int rtcbaseaddresss,unsigned int vicb
+ 	if(lpTime.wSecond < 55)
+ 		lpTime.wSecond += 5;
+ #endif
++	}else
++	{
++		lpTime.wYear = year;
++		lpTime.wMonth = month;
++		lpTime.wDay = day;
++		lpTime.wHour = hour;
++		lpTime.wMinute = minute;
++		lpTime.wSecond = second;
++	}
+ 
+ 	tca_alarm_settime(rtcbaseaddresss, (rtctime *)&lpTime);
+ 
+-- 
+1.6.3.3
+

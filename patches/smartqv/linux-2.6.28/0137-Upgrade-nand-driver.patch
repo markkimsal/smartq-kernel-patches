@@ -1,0 +1,961 @@
+From 88c52dcfb1132d861510931944c05fd300a4def1 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Fri, 8 Jan 2010 10:44:27 +0800
+Subject: [PATCH] Upgrade nand driver
+
+---
+ drivers/block/tcc/inc/fwdn/fwdn_drv_v3.h           |   10 +-
+ drivers/block/tcc/inc/tnftl/nand_io_v7.h           |   12 +-
+ drivers/block/tcc/inc/tnftl/tnftl_v7.h             |    2 +-
+ drivers/block/tcc/init_ddr2.c                      |   46 ++++-
+ drivers/block/tcc/init_mddr.c                      |   64 +++++--
+ drivers/block/tcc/kernel_nand_drv.c                |    7 +
+ .../tcc/libtnftl/libtnftl_V7010_TCC8900.o_shipped  |  Bin 204044 -> 204076 bytes
+ drivers/block/tcc/nand_drv_v7.c                    |   54 ++++--
+ drivers/block/tcc/nand_io_v7.c                     |  218 ++++++++++++++++++--
+ 9 files changed, 351 insertions(+), 62 deletions(-)
+
+diff --git a/drivers/block/tcc/inc/fwdn/fwdn_drv_v3.h b/drivers/block/tcc/inc/fwdn/fwdn_drv_v3.h
+index 8434401..2aa3f09 100644
+--- a/drivers/block/tcc/inc/fwdn/fwdn_drv_v3.h
++++ b/drivers/block/tcc/inc/fwdn/fwdn_drv_v3.h
+@@ -84,11 +84,17 @@ typedef struct _tag_NAND_DISK_INFO_T {
+ } NAND_DISK_INFO_T;
+ 
+ typedef	struct	__NAND_DeviceInfo {
++	unsigned short int	DevID[8];
++	unsigned int		MediaNums;			// Media Number of NANDFLASH
++	unsigned int		MAX_ROMSize;
++	unsigned int		ExtendedPartitionNum;
++	unsigned int		ExtPartitionSize[12];
++	unsigned int		ExtPartitionWCacheNum[12];
++	unsigned int		ROAreaSize;
+ 	unsigned short int  		PBpV;				// Physical all Block Number
+ 	unsigned short int  		PpB;				// Page Number Per Block
+ 	unsigned short int  		PageSize;			// Page Size
+-	unsigned short int  		SpareSize;			// Spare Size
+-	unsigned short int			MediaNums;			// Media Number of NANDFLASH
++	unsigned short int  SpareSize;		
+ } NAND_DEVICE_INFO, *pNAND_DEVICE_INFO;
+ 
+ //==============================================================
+diff --git a/drivers/block/tcc/inc/tnftl/nand_io_v7.h b/drivers/block/tcc/inc/tnftl/nand_io_v7.h
+index 0655838..a41c835 100644
+--- a/drivers/block/tcc/inc/tnftl/nand_io_v7.h
++++ b/drivers/block/tcc/inc/tnftl/nand_io_v7.h
+@@ -22,9 +22,12 @@
+ // In the case of LINUX, it is defined config.h
+ #define NAND_2CS_ONLY
+ #define NAND_8BIT_ONLY
+-#else
+-#define NAND_2CS_ONLY
++#elif defined(_LINUX_)
++#define NAND_2CS_ONLY		// for IDE CS#
+ #define NAND_8BIT_ONLY
++#else
++//#define NAND_2CS_ONLY
++//#define NAND_8BIT_ONLY
+ #endif
+ 
+ //**********************************************************************
+@@ -289,11 +292,11 @@ enum LBA_NAND_HIDDEN_INFO
+ #define ST_NAND_MAKER_ID						0x20
+ #define MICRON_NAND_MAKER_ID					0x2C
+ 
+-#define MAX_SUPPORT_SAMSUNG_NAND				25
++#define MAX_SUPPORT_SAMSUNG_NAND				26
+ #define MAX_SUPPORT_TOSHIBA_NAND				17
+ #define MAX_SUPPORT_HYNIX_NAND					25
+ #define MAX_SUPPORT_ST_NAND						14
+-#define MAX_SUPPORT_MICRON_NAND					10
++#define MAX_SUPPORT_MICRON_NAND					12
+ 	
+ /* LBA NAND FLASH */
+ #define MAX_SUPPORT_TOSHIBA_LBA_NAND			3
+@@ -809,6 +812,7 @@ extern void					NAND_IO_ReadID( U16 nChipNo, NAND_IO_DEVID *nDeviceCode, int nMo
+ 
+ extern NAND_IO_ERROR		NAND_IO_ReadSpare( NAND_IO_DEVINFO *nDevInfo, U32 nPageAddr, U8 *nSpareBuffer );
+ extern NAND_IO_ERROR		NAND_IO_ReadPage( NAND_IO_DEVINFO *nDevInfo, U32 nPageAddr, U16 nStartPPage, U16 nReadPPSize, U8 *nPageBuffer, U8 *nSpareBuffer, int nEccOnOff );
++extern NAND_IO_ERROR		NAND_IO_ReadPhyPage( NAND_IO_DEVINFO *nDevInfo, U32 nPageAddr, U16 nStartPPage, U16 nReadPPSize, U8 *nPageBuffer, U8 *nSpareBuffer, int nEccOnOff );
+ extern NAND_IO_ERROR		NAND_IO_ReadPageMTD(NAND_IO_DEVINFO * nDevInfo, U32 nPageAddr, U16 nStartPPage, U16 nReadPPSize, U8 * nPageBuffer, U8 * nSpareBuffer, int nEccOnOff);
+ extern NAND_IO_ERROR		NAND_IO_ReadTwoPlanePage(NAND_IO_DEVINFO * nDevInfo, U32 nPageAddr, U32 nSecondPageAddr, U16 nStartPPage, U16 nReadPPSize, U8 * nPageBuffer, U8 * nSpareBuffer, int nEccOnOff);
+ extern NAND_IO_ERROR		NAND_IO_ReadTwoPlaneLastPage(NAND_IO_DEVINFO * nDevInfo, U32 nPageAddr, U16 nStartPPage, U16 nReadPPSize, U8 * nPageBuffer, U8 * nSpareBuffer, int nEccOnOff);
+diff --git a/drivers/block/tcc/inc/tnftl/tnftl_v7.h b/drivers/block/tcc/inc/tnftl/tnftl_v7.h
+index 3382435..ed0fe05 100644
+--- a/drivers/block/tcc/inc/tnftl/tnftl_v7.h
++++ b/drivers/block/tcc/inc/tnftl/tnftl_v7.h
+@@ -180,7 +180,7 @@ typedef enum
+ #define TNFTL_MAX_SUPPORT_NAND_IO_PAGE_SIZE						32768		// 8192*2(Parallel)*2(MultiPlane)
+ #define TNFTL_MAX_SUPPORT_NAND_IO_SPARE_SIZE					2048		// 436(:=512)*4
+ #define TNFTL_MAX_SUPPORT_NAND_IO_SECTOR_SIZE_PER_1PAGE			32			// 16384 / 512
+-#define TNFTL_MAX_SUPPORT_NAND_IO_PAGE_SIZE_PER_1BLOCK			512			// PpB * 2 (Multi-Plane) * 2 (InterLeave)
++#define TNFTL_MAX_SUPPORT_NAND_IO_PAGE_SIZE_PER_1BLOCK			1024		// PpB * 2 (Multi-Plane) * 2 (InterLeave)
+ #define TNFTL_MAX_SUPPORT_MULTI_PLANE							4
+ #define TNFTL_MAX_SUPPORT_SHIFT_MULTI_PLANE						2
+ #define TNFTL_MAX_SUPPORT_BAD_BLOCKS_IN_1ZONE					20
+diff --git a/drivers/block/tcc/init_ddr2.c b/drivers/block/tcc/init_ddr2.c
+index a964ecd..5f82db0 100644
+--- a/drivers/block/tcc/init_ddr2.c
++++ b/drivers/block/tcc/init_ddr2.c
+@@ -17,6 +17,10 @@
+ 
+ #if defined(DRAM_DDR2)
+ 
++#define DRAM_AUTOPD_ENABLE Hw13
++#define DRAM_AUTOPD_PERIOD 7<<7 // must larger than CAS latency
++#define DRAM_SET_AUTOPD DRAM_AUTOPD_ENABLE|DRAM_AUTOPD_PERIOD
++
+ #define	repeat(n) { volatile int i; for (i=0; i<=n; i++); }
+ #define DDR_DELAY	1
+ /****************************************************************************************
+@@ -95,10 +99,10 @@ volatile void InitRoutine_Start(void)
+ 		*(volatile unsigned long *) 0xf0302004=0x00000004; // PL341_CONFIGURE
+ 
+ // memory arb.
+-		*(volatile unsigned long *) 0xf030200c=0x00140000; // config0 - qos master bits set
++		*(volatile unsigned long *) 0xf030200c=0x00140000|DRAM_SET_AUTOPD; // config0 - qos master bits set
+ // memory arb. end
+ 	// Samsung/ Hynix	
+-		*(volatile unsigned long *)0xF030200C = 0x00150012; 		// config0 cas 10bit, ras 13bit
++		*(volatile unsigned long *)0xF030200C = 0x00150012|DRAM_SET_AUTOPD; 		// config0 cas 10bit, ras 13bit
+ 	// ELPIDA 256MB
+ 	//	*(volatile unsigned long *)0xF030200C = 0x0015001A; 		// config0 cas 10bit, ras 14bit
+ 			
+@@ -135,7 +139,14 @@ volatile void InitRoutine_Start(void)
+ 		//i = 3200;
+ 		//while(i)
+ 		//	i--;
+-		*(volatile unsigned long *) 0xf0302200=0x000040f0; // config_chip0 - CS0 - 0x40000000~0x47ffffff
++		// 1CS
++		#if defined(DRAM_SIZE_128)
++		*(volatile unsigned long *) 0xf0302200=0x000040F8; // config_chip0 - CS0 - 0x40000000~0x47ffffff
++		#endif
++		#if defined(DRAM_SIZE_256)
++		*(volatile unsigned long *) 0xf0302200=0x000040F0; // config_chip0 - CS0 - 0x40000000~0x47ffffff
++		#endif
++
+ 
+ 		i = 3200;
+ 		while(i)
+@@ -478,6 +489,14 @@ volatile void init_bootddr(void)
+ 
+ // Core
+ 	#define lcore_div	16	
++	
++#elif defined(FMBUS_352MHZ_INCLUDE)  && defined(FCPU_704MHZ_INCLUDE)
++	#define lpll0		704
++	#define lpll1		540
++	#define lmem_source 0 
++
++// Core
++	#define lcore_div	16	
+ 
+ #else // FMBUS 330 or 280 Mhz
+ 
+@@ -506,7 +525,7 @@ volatile void init_bootddr(void)
+ 		#define lpll1		560
+ 		#define lmem_source 1 // 0 : PLL0 , 1 : PLL1	
+ 	#endif
+-	
++
+ #endif
+ 
+ 	#define lmem_div	2
+@@ -570,6 +589,11 @@ volatile void init_bootddr(void)
+ 		*(volatile unsigned long *)0xF0400020= 0x0100F002;		// pms - pllout_720M
+ 		*(volatile unsigned long *)0xF0400020= 0x8100F002;		//	pll pwr on	
+ 	}
++	else if(lpll0 == 704)
++	{
++		*(volatile unsigned long *)0xF0400020= 0x01016003;		// pms - pllout_704M
++		*(volatile unsigned long *)0xF0400020= 0x81016003;		//	pll pwr on	
++	}
+ 	else if(lpll0 == 600)
+ 	{
+ 		*(volatile unsigned long *)0xF0400020= 0x0100C802;		// pms - pllout_600M
+@@ -638,7 +662,7 @@ volatile void init_bootddr(void)
+ 	*(volatile unsigned long *) 0xf0302004=0x00000004;			// PL341_CONFIGURE
+ 	while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=0); //Wait PL34X_STATUS_CONFIG
+ // memory arb.
+-	*(volatile unsigned long *)0xF030200C |= 0x00140000; 
++	*(volatile unsigned long *)0xF030200C |= 0x00140000|DRAM_SET_AUTOPD; 
+ /*
+ 	*(volatile unsigned long *) 0xf0302100=0x0000002b; // (10<<2)(1<<1)(1<<0) - video codec + jpeg encoder
+ 	*(volatile unsigned long *) 0xf0302104=0x0000002b; // (10<<2)(1<<1)(1<<0) - video cache + jpeg decoder
+@@ -661,7 +685,7 @@ volatile void init_bootddr(void)
+ 	*(volatile unsigned long *) 0xF0303010 |= 0x80800000;		// bit23 enable -synopt enable
+ 	
+ // Samsung/ Hynix	
+-	*(volatile unsigned long *)0xF030200C = 0x00150012; 		// config0 cas 10bit, ras 13bit
++	*(volatile unsigned long *)0xF030200C = 0x00150012|DRAM_SET_AUTOPD; 		// config0 cas 10bit, ras 13bit
+ // ELPIDA 256MB
+ //	*(volatile unsigned long *)0xF030200C = 0x0015001A; 		// config0 cas 10bit, ras 14bit
+ 
+@@ -759,8 +783,14 @@ volatile void init_bootddr(void)
+ 	while(i)
+ 		i--;
+ 
+-	*(volatile unsigned long *)0xF0302200 = 0x000040f0; 		// config_chip0
+-//	*(volatile unsigned long *)0xF0302200 = 0x000040f8; 		// config_chip0  //soc1-3
++	// 1CS
++	#if defined(DRAM_SIZE_128)
++	*(volatile unsigned long *) 0xf0302200=0x000040F8; // config_chip0 - CS0 - 0x40000000~0x47ffffff
++	#endif
++	#if defined(DRAM_SIZE_256)
++	*(volatile unsigned long *) 0xf0302200=0x000040F0; // config_chip0 - CS0 - 0x40000000~0x47ffffff
++	#endif
++		
+ 	i = 3200;
+ 	while(i)
+ 		i--;
+diff --git a/drivers/block/tcc/init_mddr.c b/drivers/block/tcc/init_mddr.c
+index 749a4e7..631ce53 100644
+--- a/drivers/block/tcc/init_mddr.c
++++ b/drivers/block/tcc/init_mddr.c
+@@ -16,6 +16,9 @@
+ #endif
+ 
+ #if defined(DRAM_MDDR)
++#define DRAM_AUTOPD_ENABLE Hw13
++#define DRAM_AUTOPD_PERIOD 4<<7 // must larger than CAS latency
++#define DRAM_SET_AUTOPD DRAM_AUTOPD_ENABLE|DRAM_AUTOPD_PERIOD
+ 
+ #define	repeat(n) { volatile int i; for (i=0; i<=n; i++); }
+ #define DDR_DELAY	1
+@@ -96,6 +99,7 @@ volatile void InitRoutine_Start(void)
+ 	i = 3200;
+ 	while(i)
+ 		i--;
++
+ 	i = 100;
+ 	while(i)
+ 	{
+@@ -107,8 +111,14 @@ volatile void InitRoutine_Start(void)
+ 	while (((*(volatile unsigned long *)0xF0301000) & 0x3)!=0); //Wait PL34X_STATUS_CONFIG
+ 
+ 	// MEMCFG0
++#if defined(DRAM_RAS14)
++	// clumn_bits=3, row_bits=2, ap_bit=0, mem_burst=2,active.chips=0
++	*(volatile unsigned long *)0xF030100c = 0x0001001A|DRAM_SET_AUTOPD;
++#else
+ 	// clumn_bits=2, row_bits=2, ap_bit=0, mem_burst=2,active.chips=0
+-	*(volatile unsigned long *)0xF030100c = 0x00010012;
++	*(volatile unsigned long *)0xF030100c = 0x00010012|DRAM_SET_AUTOPD;
++#endif
++
+ 	// MEMCFG1
+ 	// mem_width=1, mem_type=3,read_delay=1, Sync = 1
+ 	*(volatile unsigned long *)0xF030104c = 0x000002d1;
+@@ -117,9 +127,12 @@ volatile void InitRoutine_Start(void)
+ 	*(volatile unsigned long *)0xF030101C = 0x00000002; // tMRD=3
+ 	*(volatile unsigned long *)0xF0301020 = 0x00000005; // tRAS=6
+ 	*(volatile unsigned long *)0xF0301024 = 0x00000007; // tRC=11
+-	*(volatile unsigned long *)0xF0301028 = 0x00000003; // tRCD=3<<3|5<<0
+-	*(volatile unsigned long *)0xF030102c = 0x00000B0E; // tRFC=(19<<8|21<<0)
+-	*(volatile unsigned long *)0xF0301030 = 0x00000003; // tRP=3<<3|5<<0
++//	*(volatile unsigned long *)0xF0301028 = 0x00000003; // tRCD=3<<3|5<<0
++	*(volatile unsigned long *)0xF0301028 = 0x0000000B; // tRCD=3<<3|5<<0
++//	*(volatile unsigned long *)0xF030102c = 0x00000B0E; // tRFC=(19<<5|21<<0)
++	*(volatile unsigned long *)0xF030102c = 0x0000016E; // tRFC=(B<<5|E<<0)
++//	*(volatile unsigned long *)0xF0301030 = 0x00000003; // tRP=3<<3|5<<0
++	*(volatile unsigned long *)0xF0301030 = 0x0000000B; // tRP=3<<3|5<<0
+ 	*(volatile unsigned long *)0xF0301034 = 0x00000001; // tRRD=2
+ 	*(volatile unsigned long *)0xF0301038 = 0x00000002; // tWR=5
+ 	*(volatile unsigned long *)0xF030103c = 0x00000001; // tWTR=4
+@@ -127,7 +140,13 @@ volatile void InitRoutine_Start(void)
+ 	*(volatile unsigned long *)0xF0301044 = 0x00000012; // tXSR=14
+ 	*(volatile unsigned long *)0xF0301048 = 0x00000032; // tESR=200
+ 	// CHIP0 address_match=0x40, address_mask=0x40
+-	*(volatile unsigned long *)0xF0301200 = 0x000040F0;
++	// 1CS
++	#if defined(DRAM_SIZE_128)
++	*(volatile unsigned long *) 0xF0301200=0x000040F8; // config_chip0 - CS0 - 0x40000000~0x47ffffff
++	#endif
++	#if defined(DRAM_SIZE_256)
++	*(volatile unsigned long *) 0xF0301200=0x000040F0; // config_chip0 - CS0 - 0x40000000~0x47ffffff
++	#endif
+ 
+ /*
+ 	i = 3200;
+@@ -167,9 +186,9 @@ volatile void InitRoutine_Start(void)
+ 	//	i--;
+ 
+ 	//HwPL340->direct_cmd = 		
+-	*(volatile unsigned long *)0xF0301008 = 0x00000032;
+-	*(volatile unsigned long *)0xF0301008 = 0x000a0000;
+-	*(volatile unsigned long *)0xF0301008 = 0x00080032;
++	*(volatile unsigned long *)0xF0301008 = 0x00000032; // ECMD : 0 , MCMD : 00 - Prechargeall 
++	*(volatile unsigned long *)0xF0301008 = 0x000a0000; // ECMD : 0 , MCMD : 10 - Modereg or extended modereg access  -------EMRS
++	*(volatile unsigned long *)0xF0301008 = 0x00080032; //ECMD : 0 , MCMD : 10 - Modereg or extended modereg access  --------MRS
+ 
+ 
+ 	i = 50;
+@@ -183,6 +202,7 @@ volatile void InitRoutine_Start(void)
+ 
+ 	*(volatile unsigned long *) 0xF0301004=0x00000000; // PL341_GO
+ 		while (((*(volatile unsigned long *)0xF0301000) & (0x03)) != 1);	// Wait until READY
++
+ }
+ #pragma optimize( "g", on )
+ 
+@@ -534,8 +554,6 @@ void init_bootddr(void)
+ 	while(i)
+ 		i--;
+ 	*(volatile unsigned long *)0xF0400000 = (0x00200000 | (lindex[lcore_div] << 4));		// CKC-CLKCTRL0 - Core
+-//	*(volatile unsigned long *)0xF0400000 = (0x00301A00 );		// CKC-CLKCTRL0 - Core
+-//	*(volatile unsigned long *)0xF0400000 = (0x00301600 );		// CKC-CLKCTRL0 - Core
+ 	*(volatile unsigned long *)0xF0400008 = (0x00200000 | ((lmem_div-1) << 4)|lmem_source); // CKC-CLKCTRL2 - Mem
+ 	i = 3200;
+ 	while(i)
+@@ -581,8 +599,14 @@ void init_bootddr(void)
+ 	*(volatile unsigned long *) 0xF0301004=0x00000004;			// PL341_CONFIGURE
+ 	while (((*(volatile unsigned long *)0xF0301000) & 0x3)!=0); //Wait PL34X_STATUS_CONFIG
+ 
++#if defined(DRAM_RAS14)
++	// clumn_bits=3, row_bits=2, ap_bit=0, mem_burst=2,active.chips=0
++	*(volatile unsigned long *)0xF030100C = 0x0021001A|DRAM_SET_AUTOPD; 		// config0 cas 10bit, ras 13bit , AP bit 10, Burst 4, 2chips
++#else
++	// clumn_bits=2, row_bits=2, ap_bit=0, mem_burst=2,active.chips=0
++	*(volatile unsigned long *)0xF030100C = 0x00210012|DRAM_SET_AUTOPD; 		// config0 cas 10bit, ras 13bit , AP bit 10, Burst 4, 2chips
++#endif
+ 
+-	*(volatile unsigned long *)0xF030100C = 0x00210012; 		// config0 cas 10bit, ras 13bit , AP bit 10, Burst 4, 2chips
+ 
+ 	*(volatile unsigned long *) 0xF0303000 |= 0x00800000;		// bit23 enable -synopt enable
+ 	*(volatile unsigned long *) 0xF0303010 |= 0x00800000;		// bit23 enable -synopt enable
+@@ -602,9 +626,12 @@ void init_bootddr(void)
+ 	*(volatile unsigned long *)0xF030101C = 0x00000002; // tMRD 2tck 
+ 	*(volatile unsigned long *)0xF0301020 = 0x0000000A; // tRAS 42ns
+ 	*(volatile unsigned long *)0xF0301024 = 0x0000000F; // tRC 60ns
+-	*(volatile unsigned long *)0xF0301028 = 0x00000014; // tRCD 18ns
+-	*(volatile unsigned long *)0xF030102c = 0x00000E11; // tRFC 72ns
+-	*(volatile unsigned long *)0xF0301030 = 0x00000014; // tRP 18ns
++//	*(volatile unsigned long *)0xF0301028 = 0x00000014; // tRCD 18ns
++	*(volatile unsigned long *)0xF0301028 = 0x0000000C; // tRCD 18ns
++//	*(volatile unsigned long *)0xF030102c = 0x00000E11; // tRFC 72ns
++	*(volatile unsigned long *)0xF030102c = 0x000001D1; // tRFC 72ns
++//	*(volatile unsigned long *)0xF0301030 = 0x00000014; // tRP 18ns
++	*(volatile unsigned long *)0xF0301030 = 0x0000000C; // tRP 18ns
+ 	*(volatile unsigned long *)0xF0301034 = 0x00000001; // tRRD 12ns
+ 	*(volatile unsigned long *)0xF0301038 = 0x00000002; // tWR 15ns
+ 	*(volatile unsigned long *)0xF030103c = 0x00000001; // tWTR 1tck
+@@ -616,8 +643,13 @@ void init_bootddr(void)
+ 	while(i)
+ 		i--;
+ 
+-	//*(volatile unsigned long *)0xF0301200 = 0x00004040; // Chip 0
+-	*(volatile unsigned long *)0xF0301200 = 0x000040F0; // Chip 0
++	// 1CS
++	#if defined(DRAM_SIZE_128)
++	*(volatile unsigned long *) 0xF0301200=0x000040F8; // config_chip0 - CS0 - 0x40000000~0x47ffffff
++	#endif
++	#if defined(DRAM_SIZE_256)
++	*(volatile unsigned long *) 0xF0301200=0x000040F0; // config_chip0 - CS0 - 0x40000000~0x47ffffff
++	#endif
+ 	
+ 	i = 3200;
+ 	while(i)
+diff --git a/drivers/block/tcc/kernel_nand_drv.c b/drivers/block/tcc/kernel_nand_drv.c
+index 01b0940..3a153c2 100644
+--- a/drivers/block/tcc/kernel_nand_drv.c
++++ b/drivers/block/tcc/kernel_nand_drv.c
+@@ -88,6 +88,7 @@ extern unsigned char gNAND_PartitionInfoLoadFlag;
+ #define IOCTL_NDD_BOOT_WRITE		_IO(NDD_DEV_MAJOR, 4)
+ #define IOCTL_NDD_HD_WRITE			_IO(NDD_DEV_MAJOR, 5)
+ #define IOCTL_NDD_HD_READ			_IO(NDD_DEV_MAJOR, 6)
++#define IOCTL_NDD_ALIGN_CACHE		_IO(NDD_DEV_MAJOR, 7)
+ 
+ struct ndd_data {
+ 	loff_t i_size;
+@@ -324,6 +325,12 @@ static int ndd_ioctl (struct block_device *bdev, struct file *filp, unsigned int
+ 			break;
+ 		}
+ 
++		case IOCTL_NDD_ALIGN_CACHE:
++		{
++			NAND_Ioctl(DEV_SET_ALIGEN_CACHE,(void *)arg);
++			break;
++		}
++
+ 		case IOCTL_STORAGE_PING:
+ 		{
+ 			// ping
+diff --git a/drivers/block/tcc/libtnftl/libtnftl_V7010_TCC8900.o_shipped b/drivers/block/tcc/libtnftl/libtnftl_V7010_TCC8900.o_shipped
+index 7b7905f760c9ca8703aee67b155ea6c220671329..1d08de90a99228d073a077c9f931b1400198ba56 100644
+GIT binary patch
+delta 7972
+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
+REvL5gw6*UYJnt_^`+q^TLTdm3
+
+delta 7949
+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
+NTK3KOi@z-8{{hbmHE{p{
+
+diff --git a/drivers/block/tcc/nand_drv_v7.c b/drivers/block/tcc/nand_drv_v7.c
+index 57d13b7..f99b8d5 100644
+--- a/drivers/block/tcc/nand_drv_v7.c
++++ b/drivers/block/tcc/nand_drv_v7.c
+@@ -46,6 +46,7 @@
+ //#define NAND_DRV_PORT_DEBUG
+ 
+ //#define TNFTL_READ_CACHE_INCLUDE
++#define TNFTL_ALIGN_CACHE_INCLUDE
+ 
+ #ifdef BOOTCRCCHEK
+ 	typedef struct _BootCRC
+@@ -59,11 +60,11 @@
+ #ifndef WITHOUT_FILESYSTEM
+ 
+ #if defined( FWDN_DOWNLOADER_INCLUDE )
+-const unsigned char	NANDDRV_Library_Version[] = { "SIGBYAHONG_NANDDRV_FWDN_V007009" };
++const unsigned char	NANDDRV_Library_Version[] = { "SIGBYAHONG_NANDDRV_FWDN_V007010" };
+ #elif defined(TCC92XX)
+-const unsigned char	NANDDRV_Library_Version[] = { "SIGBYAHONG_NANDDRV_TCC92XX_V007009" };
++const unsigned char	NANDDRV_Library_Version[] = { "SIGBYAHONG_NANDDRV_TCC92XX_V007010" };
+ #elif defined(TCC89XX)
+-const unsigned char	NANDDRV_Library_Version[] = { "SIGBYAHONG_NANDDRV_TCC89XX_V007009" };
++const unsigned char	NANDDRV_Library_Version[] = { "SIGBYAHONG_NANDDRV_TCC89XX_V007010" };
+ #endif
+ 
+ //=============================================================================
+@@ -303,9 +304,13 @@ void NAND_Init( void )
+ 	TNFTL_SetStEdOfCS( NAND_DRV_0, NAND_IO_DRV0_START_CS, NAND_IO_DRV0_END_CS );
+ 
+ 	TNFTL_AllocMemAndLinkForPageBuffer( NAND_DRV_0, gNAND_PageBuffer );
++
+ 	#if defined( TNFTL_READ_CACHE_INCLUDE )
+ 	TNFTL_AllocMemAndLinkForRCacheBuffer( NAND_DRV_0, &gTNFTL_DrvInfo[NAND_DRV_0].PriPartition, gNAND_RCacheDTAreaBuffer, TNFTL_MAX_SUPPORT_RCACHE_MEMORY_SIZE );
+ 	TNFTL_SetUseAreaReadCacheMode( gNAND_DrvInfo[NAND_DRV_0].NFTLDrvInfo, &gTNFTL_DrvInfo[NAND_DRV_0].PriPartition, ENABLE );
++	#endif
++	
++	#if defined( TNFTL_ALIGN_CACHE_INCLUDE )
+ 	TNFTL_AllocMemAndLinkForAlignCacheBuffer( NAND_DRV_0, gNAND_AlignBuffer, TNFTL_MAX_SUPPORT_ALIGNCACHE_MEMORY_SIZE );
+ 	#endif
+ 
+@@ -1226,13 +1231,6 @@ NAND_ERROR NAND_DriveStatusControl( int nMode )
+ {
+ 	unsigned int 		nStructureIndex = 0;
+ 	NAND_ERROR			res;
+-	#if defined(_WINCE_)
+-	#if defined(USE_V_ADDRESS)
+-	pSYS_PARAM_NAND_DRV	= (tSYSTEM_PARAM*)tcc_allocbaseaddress((unsigned int)SYSTEM_PARAM_BASEADDRESS);
+-	#else
+-	pSYS_PARAM_NAND_DRV	= (tSYSTEM_PARAM*)(SYSTEM_PARAM_BASEADDRESS);
+-	#endif
+-	#endif
+ 	
+ 	if ( nMode == NAND_DRVINFO_SAVE )
+ 	{
+@@ -1371,6 +1369,15 @@ int NAND_Ioctl( int function, void *param )
+ 	{
+ 		case	DEV_INITIALIZE:
+ 			{
++
++				#if defined(_WINCE_)
++				#if defined(USE_V_ADDRESS)
++				pSYS_PARAM_NAND_DRV	= (tSYSTEM_PARAM*)tcc_allocbaseaddress((unsigned int)SYSTEM_PARAM_BASEADDRESS);
++				#else
++				pSYS_PARAM_NAND_DRV	= (tSYSTEM_PARAM*)(SYSTEM_PARAM_BASEADDRESS);
++				#endif
++				#endif
++								
+ 				#if defined(_WINCE_)
+ 				#if defined(USE_V_ADDRESS)
+ 				if ( pSYS_PARAM_NAND_DRV->NAND_INFO.sNandInitStatus == ENABLE )
+@@ -1393,13 +1400,28 @@ int NAND_Ioctl( int function, void *param )
+ 
+ 				if ( gNAND_DrvInfo[0].NFTLDrvInfo->NANDType == NAND_TYPE_PURE_NAND )
+ 				{
+-					for ( i = 0; i < gTNFTL_ExtPartitionInfo[NAND_DRV_0].ExtendedPartitionNum; ++i )
++					#if defined(_WINCE_)
++					#if defined(USE_V_ADDRESS)
++					if ( pSYS_PARAM_NAND_DRV->NAND_INFO.sNandInitStatus != ENABLE )
+ 					{
+-						TNFTL_AREASetTotalSectorSize( gNAND_DrvInfo[0].NFTLDrvInfo,
+-													  &gNAND_DrvInfo[0].NFTLDrvInfo->ExtPartition[i],
+-													  gTNFTL_ExtPartitionInfo[NAND_DRV_0].ExtPartitionSize[i] );
++						for ( i = 0; i < gTNFTL_ExtPartitionInfo[NAND_DRV_0].ExtendedPartitionNum; ++i )
++						{
++							TNFTL_AREASetTotalSectorSize( gNAND_DrvInfo[0].NFTLDrvInfo,
++														  &gNAND_DrvInfo[0].NFTLDrvInfo->ExtPartition[i],
++														  gTNFTL_ExtPartitionInfo[NAND_DRV_0].ExtPartitionSize[i] );
++						}
++
++						 if (usbFirmwareDownloadMode & Hw7)
++					    {
++						    BITCLR(usbFirmwareDownloadMode, Hw7);
++
++							TNFTL_ScanDevice( gNAND_DrvInfo[0].NFTLDrvInfo );
++							return SUCCESS;
++					    }
+ 					}
+-
++					#endif
++					#endif
++					
+ 				    gNAND_DrvInfo[0].DrvStatus = DISABLE;
+ 
+ 				    if ( NAND_InitDrive(0) != SUCCESS )
+@@ -1655,7 +1677,7 @@ int NAND_Ioctl( int function, void *param )
+ 			}
+ 			break;
+ 		#endif
+-		#if defined( TNFTL_V5_INCLUDE ) || defined(TNFTL_V6_INCLUDE)
++		#if defined( TNFTL_ALIGN_CACHE_INCLUDE )
+ 		case	DEV_SET_ALIGEN_CACHE:
+ 			{
+ 				unsigned short	mode = *((unsigned short *)param);
+diff --git a/drivers/block/tcc/nand_io_v7.c b/drivers/block/tcc/nand_io_v7.c
+index 0252267..6a221d5 100644
+--- a/drivers/block/tcc/nand_io_v7.c
++++ b/drivers/block/tcc/nand_io_v7.c
+@@ -53,7 +53,7 @@
+ // Version Signature
+ //
+ //=============================================================================
+-#define NAND_IO_VERSION		'V','7','0','1','0'
++#define NAND_IO_VERSION		'V','7','0','1','1'
+ 
+ static const unsigned char 	NANDIO_Library_Version[] = 
+ { 	
+@@ -315,6 +315,8 @@ const NAND_IO_FEATURE	SAMSUNG_NAND_DevInfo[] =
+     { 0xEC, 0xDA, 0x00, 0x15, 0x00, 0x00, 2048,  20,  64, 2048,   64,  2,  3, 50,  	0, 35, 15,  0, 35, 15, A_08BIT|A_SLC	 	|A_BIG  |S_NOR|S_CB|S_CP 	},
+ 	// [256MB] K9F2G08U0A
+     { 0xEC, 0xDA, 0x10, 0x95, 0x44, 0x00, 2048,  20,  64, 2048,   64,  2,  3, 25,  	0, 15, 10,  0, 15, 10, A_08BIT|A_SLC     	|A_BIG  |S_NOR|S_MP	  		},
++    // [512MB] K524G2GACB (mddr MCP)
++    { 0xEC, 0xBC, 0x00, 0x55, 0x54, 0x00, 4096,  20,  64, 2048,   64,  2,  3, 40,  	0, 21, 10,  0, 21, 10, A_16BIT|A_SLC	 	|A_BIG  |S_NOR			   	},
+     // [512MB] K9K4G08U0M
+     { 0xEC, 0xDC, 0xC1, 0x15, 0x00, 0x00, 4096,  20,  64, 2048,   64,  2,  3, 30,  	0, 20, 10,  0, 20, 10, A_08BIT|A_SLC	 	|A_BIG  |S_NOR|S_CB|S_CP   	},
+     // [512MB] K9F4G08U0M
+@@ -374,8 +376,12 @@ const NAND_IO_FEATURE	MICRON_NAND_DevInfo[] =
+ 	{ 0x2C, 0xD7, 0xD5, 0x3E, 0x78, 0x00, 8192,  25, 128, 4096,  218,  2,  3, 25,	 0, 15, 10,  0, 15, 10, A_08BIT|A_MLC_8BIT	|A_BIG  |S_NOR|S_MP|S_IL	},
+ 	// [  4GB] 29F32G08CBAAA, 	[  8GB] 29F64G08CFAAA 
+ 	{ 0x2C, 0xD7, 0x94, 0x3E, 0x84, 0x00, 8192,  25, 128, 4096,  218,  2,  3, 25,	 0, 15, 10,  0, 15, 10, A_08BIT|A_MLC_12BIT	|A_BIG  |S_NOR|S_MCP		},
++	// [  4GB] 29F32G08CBABA, 	[  8GB] 29F64G08CFABA 
++	{ 0x2C, 0x68, 0x04, 0x46, 0x89, 0x00, 4096,  25, 256, 4096,  224,  2,  3, 25,	 0, 15, 10,  0, 15, 10, A_08BIT|A_MLC_12BIT	|A_BIG  |S_NOR|S_MCP		},
+ 	// [ 16GB] 29F128G08CJAA 
+-	{ 0x2C, 0xD9, 0xD5, 0x3E, 0x88, 0x00,16384,  25, 128, 4096,  218,  2,  3, 25,	 0, 15, 10,  0, 15, 10, A_08BIT|A_MLC_12BIT	|A_BIG  |S_NOR|S_MP|S_IL	}	
++	{ 0x2C, 0xD9, 0xD5, 0x3E, 0x88, 0x00,16384,  25, 128, 4096,  218,  2,  3, 25,	 0, 15, 10,  0, 15, 10, A_08BIT|A_MLC_12BIT	|A_BIG  |S_NOR|S_MP|S_IL	},
++	// [ 16GB] 29F128G08CJBA 
++	{ 0x2C, 0x88, 0x05, 0xC6, 0x89, 0x00, 8192,  25, 256, 4096,  224,  2,  3, 25,	 0, 15, 10,  0, 15, 10, A_08BIT|A_MLC_12BIT	|A_BIG  |S_NOR|S_MP|S_IL	}	
+ };
+ 
+ const NAND_IO_MAKERINFO	NAND_SupportMakerInfo =
+@@ -1099,6 +1105,8 @@ NAND_IO_ERROR NAND_IO_SetCycle( NAND_IO_DEVINFO *nDevInfo )
+ 	ReadCycleTime.STP	= (U8)(nMCycleSTP + nSCycleSTP);
+ 	ReadCycleTime.HLD	= (U8)(nMCycleHLD + nSCycleHLD);
+ 	ReadCycleTime.PW	= (U8)(nMCyclePW + nSCyclePW + (( nDevInfo->Feature.MediaType & A_PARALLEL ) ? 1: 0 ));
++	if ( nMaxBusClkMHZ < 100 )
++		ReadCycleTime.PW += 1;
+ 
+ 	/* Write Cycle */
+ 	nDevSTP				= nDevInfo->Feature.WriteSTP * nTickRange;
+@@ -1306,8 +1314,10 @@ NAND_IO_ERROR NAND_IO_GetDeviceInfo( U16 nChipNo, NAND_IO_DEVINFO *nDevInfo )
+ 			}
+ 				
+ 			if ( bFindMakerNo >= MAX_SUPPORT_MAKER_NAND )
++			{
++				BITCLR( pNFC->NFC_CTRL, HwNFC_CTRL_MASK_EN );
+ 				continue;
+-
++			}
+ 			/* Check Device ID */
+ 			for ( k = 0; k < NAND_SupportMakerInfo.MaxSupportNAND[bFindMakerNo]; ++k )
+ 			{
+@@ -1335,6 +1345,8 @@ NAND_IO_ERROR NAND_IO_GetDeviceInfo( U16 nChipNo, NAND_IO_DEVINFO *nDevInfo )
+ 			/* Found NAND Device */
+ 			if ( bFindMedia == TRUE )
+ 				break;
++			else
++				BITCLR( pNFC->NFC_CTRL, HwNFC_CTRL_MASK_EN );
+ 		}
+ 	}
+ 
+@@ -1654,10 +1666,10 @@ void NAND_IO_Init( void )
+ 			//pEDI->EDI_CSNCFG0	= 0x00403265;
+ 			BITCSET(pEDI->EDI_CSNCFG0, 0xFFFF, 0x8765 );
+ 			
+-			pGPIO->GPBFN0 		= 0x11112222;	//NANDXD[7:4]
+-			pGPIO->GPBFN1		= 0x00221111;	//NANDXD[3:0]
+-			pGPIO->GPBFN2 		= 0x10111010;	//NANDXD[11:8],[7:4]
+-			pGPIO->GPBFN3 		= 0x00010111;	//NANDXD[15:12],[3:0]
++			pGPIO->GPBFN0           = 0x11112222;   //NANDXD[7:4]
++			pGPIO->GPBFN1           = 0x00221111;   //NANDXD[3:0]
++			pGPIO->GPBFN2           = 0x10111010;   //NANDXD[11:8],[7:4]
++			pGPIO->GPBFN3           = 0x00010111;   //NANDXD[15:12],[3:0]
+ 
+ 			// Write Protect Pin: Output Mode
+ 			BITSET( pGPIO->GPBEN, NAND_IO_NFC_nWPBit );
+@@ -2177,6 +2189,189 @@ ErrorReadPage:
+    	return (NAND_IO_ERROR)SUCCESS;
+ }
+ 
++
++/******************************************************************************
++*
++*	NAND_IO_ERROR	NAND_IO_ReadPhyPage
++*
++*	Input	:
++*	Output	:
++*	Return	:
++*
++*	Description :
++*
++*******************************************************************************/
++NAND_IO_ERROR NAND_IO_ReadPhyPage(	NAND_IO_DEVINFO *nDevInfo, U32 nPageAddr,
++									U16 nStartPPage, U16 nReadPPSize,
++									U8 *nPageBuffer, U8 *nSpareBuffer, int nEccOnOff )
++{
++	unsigned int		RowAddr, ColumnAddr;
++	unsigned int		nSpareOnOff;
++	NAND_IO_ERROR		res;
++	
++	//=============================================	
++	// Check Device and Parameter
++	//=============================================	
++	if ( !( nDevInfo->IoStatus & NAND_IO_STATUS_ENABLE ) )
++		return ERR_NAND_IO_NOT_READY_DEVICE_IO;
++
++	if ( ( nStartPPage + nReadPPSize ) > ( nDevInfo->Feature.PageSize >> 9 ) )
++		return ERR_NAND_IO_WRONG_PARAMETER;
++	
++	//=============================================
++	// PreProcess
++	// Set Setup and Hold Time
++	// Enable Chip Select
++	// FORCE TO SET WP LOW
++	//=============================================	
++	NAND_IO_PreProcess();
++	NAND_IO_BusControl(nDevInfo);
++	NAND_IO_SetCommCycleTime();
++	
++	//=============================================
++	// Read Status
++	//=============================================
++	/*  Wait until it is ready */
++	if ( ( ( gDevInfo->Feature.MediaType & S_IL ) || ( gDevInfo->ExtInterleaveUsable == TRUE ) ) && 
++	   ( gInterLeaveIoStatus & NAND_IO_STATUS_INTERLEAVING_MASK ) )
++		NAND_IO_ClearInterleaveStatus( nDevInfo );
++	else
++		NAND_IO_EnableChipSelect( nDevInfo->ChipNo );
++
++	NAND_IO_EnableWriteProtect();
++
++	#ifdef READ_SPEED_CHECK
++	BITCLR(pGPIO->GPBDAT, Hw13);
++	BITCLR(pGPIO->GPBDAT, Hw15);
++	#endif
++
++	//=============================================
++	// Read Data
++	//=============================================	
++	/* Generate Row and Column Address */
++	if ( ( nDevInfo->Feature.MediaType  & A_BIG ) || (( nDevInfo->Feature.MediaType  & A_SMALL ) && ( nDevInfo->Feature.MediaType  & A_PARALLEL )))
++		res = NAND_IO_GenerateRowColAddrForRead( nPageAddr, nDevInfo->Feature.PageSize, &RowAddr, &ColumnAddr, nDevInfo );
++	else
++		res = NAND_IO_GenerateRowColAddrForRead( nPageAddr, ( nStartPPage << 9 ), &RowAddr, &ColumnAddr, nDevInfo );
++	if ( res != SUCCESS )
++		goto ErrorReadPage;
++
++	/* Write Row and Column Address	*/
++	NAND_IO_WriteRowColAddr( RowAddr, ColumnAddr, nDevInfo );
++
++	/* Command READ2 [ 0x30 ] for Advance NandFlash */
++	if ( nDevInfo->Feature.MediaType & A_BIG )
++		pNFC->NFC_CMD = nDevInfo->CmdMask & 0x3030;
++
++	#ifdef READ_SPEED_CHECK
++	NAND_IO_GPIO_Toggle(Hw15);
++	#endif
++	
++	/* Wait until it is ready */
++	NAND_IO_WaitBusy( nDevInfo->ChipNo );
++
++	#ifdef READ_SPEED_CHECK
++	NAND_IO_GPIO_Toggle(Hw15);
++	#endif
++	
++	/* Change Cycle */
++	NAND_IO_SetReadCycleTime();
++
++	/* Read Page Size data from NANDFLASH */
++	nSpareOnOff = TNFTL_READ_SPARE_ON;
++
++	if ( nDevInfo->Feature.MediaType & A_BIG )
++	{
++		//res = NAND_IO_ReadSpareData( nDevInfo, nSpareBuffer, PAGE_ECC_ON );
++		res = NAND_IO_ReadUserSizeData( nDevInfo, ( nDevInfo->PPages << 9 ), nDevInfo->Feature.SpareSize, nSpareBuffer );
++		if ( res != SUCCESS )
++			goto ErrorReadPage;
++
++		/* Change Cycle */
++		NAND_IO_SetCommCycleTime();
++		
++		/* Command Random Data Output [ 0x05 ] for Advance NandFlash */
++		pNFC->NFC_CMD = nDevInfo->CmdMask & 0x0505;
++		
++		ColumnAddr = ( nStartPPage << 9 );
++		ColumnAddr	= ( nDevInfo->Feature.MediaType & A_DATA_WITDH_16BIT ) ? (ColumnAddr >> 1) : ColumnAddr;
++
++		NAND_IO_WriteColAddr( ColumnAddr, nDevInfo );
++
++		/* Command Random Data Output [ 0xE0 ] for Advance NandFlash */
++		pNFC->NFC_CMD = nDevInfo->CmdMask & 0xE0E0;
++
++		/* Change Cycle */
++		NAND_IO_SetReadCycleTime();
++	}
++	else if (( nDevInfo->Feature.MediaType  & A_SMALL ) && ( nDevInfo->Feature.MediaType  & A_PARALLEL ))
++	{
++		res = NAND_IO_ReadUserSizeData( nDevInfo, ( nDevInfo->PPages << 9 ), nDevInfo->Feature.SpareSize, nSpareBuffer );
++		if ( res != SUCCESS )
++			goto ErrorReadPage;
++
++		/* Change Cycle */
++		NAND_IO_SetCommCycleTime();
++
++		res = NAND_IO_GenerateRowColAddrForRead( nPageAddr, ( nStartPPage << 9 ), &RowAddr, &ColumnAddr, nDevInfo );
++		if ( res != SUCCESS )
++			goto ErrorReadPage;
++
++		/* Write Row and Column Address	*/
++		NAND_IO_WriteRowColAddr( RowAddr, ColumnAddr, nDevInfo );
++
++		/* Wait until it is ready */
++		NAND_IO_WaitBusy( nDevInfo->ChipNo );
++
++		/* Change Cycle */
++		NAND_IO_SetReadCycleTime();
++	}
++	
++	#ifdef READ_SPEED_CHECK
++	BITCLR(pGPIO->GPBDAT, Hw15);
++	NAND_IO_GPIO_Toggle(Hw15);
++	#endif
++
++	#if defined(NAND_IO_USE_DMA_DOUBLE_BUF)
++	res = NAND_IO_Read512DataDoubleBuf( nDevInfo,
++									    nStartPPage,
++									    nReadPPSize,
++									    nPageBuffer,
++									    nSpareBuffer,
++									    nEccOnOff,
++									    TNFTL_READ_SPARE_ON );
++	#else	
++	res = NAND_IO_Read512Data( nDevInfo,
++							   nStartPPage,
++							   nReadPPSize,
++							   nPageBuffer,
++							   nSpareBuffer,
++							   nEccOnOff,
++							   TNFTL_READ_SPARE_ON );		
++	#endif
++	
++	#ifdef READ_SPEED_CHECK
++	NAND_IO_GPIO_Toggle(Hw15);
++	#endif
++
++	/* Change Cycle */
++	NAND_IO_SetCommCycleTime();
++							
++ErrorReadPage:
++	//=============================================
++	// Disable Chip Select
++	// PostProcess
++	//=============================================	
++	NAND_IO_DisableChipSelect();
++	NAND_IO_PostProcess();
++	
++	if ( res != SUCCESS )
++		return res;
++
++   	return (NAND_IO_ERROR)SUCCESS;
++}
++
++
+ /******************************************************************************
+ *
+ *	NAND_IO_ERROR	NAND_IO_ReadPageMTD
+@@ -4691,15 +4886,8 @@ static __inline void NAND_IO_BusControl( NAND_IO_DEVINFO *nDevInfo )
+ 		if ( ( gMaxBusClkMHZ != 0 ) && ( nMaxBusClkMHZ != gMaxBusClkMHZ ) )
+ 			NAND_IO_SetCycle( nDevInfo );
+ 		}			
+-	//==============================================
+-	// SET NFC BUS WIDTH
+-	//==============================================
+-	if ( nDevInfo->Feature.MediaType & A_08BIT )	
+-		BITCLR( pNFC->NFC_CTRL, HwNFC_CTRL_MASK_EN );
+-	else
+-		BITSET( pNFC->NFC_CTRL, HwNFC_CTRL_MASK_EN );
+-
+ }
++
+ /**************************************************************************
+ *  FUNCTION NAME : 
+ *      static __inline void NAND_IO_EnableChipSelect( U16 nChipNo );
+-- 
+1.6.3.3
+

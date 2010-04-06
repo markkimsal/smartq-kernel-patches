@@ -1,0 +1,273 @@
+From 010a00ad0213f377eea3d76ca7777835df8fe3d0 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Wed, 6 Jan 2010 09:58:46 +0800
+Subject: [PATCH] improve power control and back uart driver to before
+
+---
+ arch/arm/mach-tcc8900/pm.c   |    9 ++++-
+ drivers/char/hhtech_gpio.c   |   24 ++++++++++----
+ drivers/char/tcc_backlight.c |    1 +
+ drivers/serial/tcc_serial.c  |   71 ++++++++++++++++++++++++++++++------------
+ 4 files changed, 76 insertions(+), 29 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/pm.c b/arch/arm/mach-tcc8900/pm.c
+index 559d191..efa8601 100644
+--- a/arch/arm/mach-tcc8900/pm.c
++++ b/arch/arm/mach-tcc8900/pm.c
+@@ -831,7 +831,7 @@ static void copy_func_to_sram(int mode)
+ {
+ 	volatile unsigned int *fPtr, *p;
+ 	int i, hdmi_change = 0;
+-	
++	unsigned int pwdn;	
+ 	PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
+         PGPIO vGpioAddr = (PGPIO)((unsigned int)&HwGPIO_BASE);
+ 	/*
+@@ -861,10 +861,15 @@ static void copy_func_to_sram(int mode)
+ 		*(volatile unsigned long *)0xF0102024 &= ~(0xff0000);// set gpio func
+ 		*(volatile unsigned long *)0xF0102004 |= 0x30;// set GPIOA4 and GPIOA5 as output
+ 		*(volatile unsigned long *)0xF0102000 &= ~(0x30);//turn off lcd power and backlight
++		
++		pwdn = *(volatile unsigned long *)0xF0251030;
++		*(volatile unsigned long *)0xF0251030 = 0x1ff;
+ 
+ 		// Jump to SRAM excute self-refresh mode
+ 		lpSelfRefresh(sleep_type);
+ 
++		*(volatile unsigned long *)0xF0251030 = pwdn;
++
+ 		*(volatile unsigned long *)0xF0102000 |= 0x10;//turn on a4 
+ 		tca_bkl_powerup((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);//turn on backlight
+ 
+@@ -918,7 +923,7 @@ void enter_sleep_mode(void)
+ 	temp =	*(volatile unsigned long *)0xF0304428;
+ 
+ 	pLCDC_BASE1->LCTRL &= ~Hw0;
+-	pLCDC_BASE0->LCTRL &= ~Hw0;
++//	pLCDC_BASE0->LCTRL &= ~Hw0;
+ 
+ 	copy_func_to_sram(BSP_SLEEP_KEY);
+ 
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 4e37b5c..98ab606 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -323,9 +323,13 @@ static int get_battery_life(void)
+ 	return battery_life;
+ }
+ 
++static unsigned int vpu_core_clock_addr = 0xF0400018;
++static unsigned int vpu_bus_clock_addr = 0xF0400014;
++
+ static void shutdown_unused_devices(struct work_struct* work)
+ {
+ 	unsigned int i,reg_val,addr;
++        unsigned long reg_write_value, reg_read_value;
+ 
+ 	//disable the uart 1-5
+ 	for(i = 1; i < 6; i++)
+@@ -340,7 +344,7 @@ static void shutdown_unused_devices(struct work_struct* work)
+ 	*(volatile unsigned long *)0xF0510000 = 0x0;//mpefec off
+ 	*(volatile unsigned long *)0xF0240004 |= 0x80;//shut down clk of TV-OUT
+ 	*(volatile unsigned long *)0xF0200000 &= ~(0x1);//disable LCD0
+-	*(volatile unsigned long *)0xF0251030 = 0x45;//shut down power of CIF,LCDC0,MSCL1
++	*(volatile unsigned long *)0xF0251030 = 0x67;//shut down power of CIF,VIQE,LCDC0,MSCL1
+ 
+ 	//below is stop the peri clock
+ 	for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++)
+@@ -362,6 +366,16 @@ static void shutdown_unused_devices(struct work_struct* work)
+ 	}
+ 	
+ 	set_hdmipwr_en(0);
++
++	reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
++	reg_write_value = reg_read_value & 0xFFDFFFFF;
++	*((volatile unsigned int *) vpu_core_clock_addr) = (unsigned int)reg_write_value;
++
++	reg_read_value = *(volatile unsigned int *)vpu_bus_clock_addr;
++	reg_write_value = reg_read_value & 0xFFDFFFFF;
++	*((volatile unsigned int *) vpu_bus_clock_addr) = (unsigned int)reg_write_value;
++
++
+ }
+ 
+ static void battery_update_work(struct work_struct* work)
+@@ -664,8 +678,6 @@ static ssize_t hhtech_sysfs_store_io(struct device *dev, struct device_attribute
+ }
+ 
+ static unsigned int vpu_bus_codec_addr = 0xF0702000;
+-static unsigned int vpu_core_clock_addr = 0xF0400018;
+-static unsigned int vpu_bus_clock_addr = 0xF0400014;
+ static int vpu_on_st;
+ static ssize_t hhtech_sysfs_show_vpu_on(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+@@ -752,7 +764,6 @@ static ssize_t hhtech_sysfs_store_play_video(struct device *dev, struct device_a
+ 		return -EINVAL;
+ 
+ 	value = simple_strtoul(buf, NULL, 10);
+-
+ 	if(value) {
+ 		video_on = 1;
+ 	} else {
+@@ -768,7 +779,7 @@ static ssize_t hhtech_sysfs_store_play_video(struct device *dev, struct device_a
+ 
+ 		//turn off video codec power and vbus & codec clock
+ 		reg_read_value = *(volatile unsigned int *)vpu_bus_codec_addr;
+-		reg_write_value = reg_read_value | (1 << 2);
++		reg_write_value = reg_read_value | (0xf);
+ 		*((volatile unsigned int *) vpu_bus_codec_addr) = (unsigned int)reg_write_value;
+ 		reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
+ 		reg_write_value = reg_read_value & 0xFFDFFFFF;
+@@ -780,8 +791,7 @@ static ssize_t hhtech_sysfs_store_play_video(struct device *dev, struct device_a
+ 		//turn off video bus power
+ 		PMU_PWROFF |= 0x40;   
+ 		*(volatile unsigned long *)0xF0200000 &= ~(0x1);//disable LCD0
+-		*(volatile unsigned long *)0xF0251030 = 0x45;//shut down power of CIF,LCDC0,MSCL1
+-
++		*(volatile unsigned long *)0xF0251030 |= 0x67;//shut down power of CIF,VIQE,LCDC0,MSCL1
+ 	}
+ 
+ 	return len;
+diff --git a/drivers/char/tcc_backlight.c b/drivers/char/tcc_backlight.c
+index f59de6c..f73ab13 100644
+--- a/drivers/char/tcc_backlight.c
++++ b/drivers/char/tcc_backlight.c
+@@ -244,6 +244,7 @@ void bl_control(bool flag)
+ 		} 
+ 
+ 		gpio_direction_output(GPIO_LCD_PWR_EN, 0);
++		*(volatile unsigned long *)0xF0200000 &= ~(0x1);
+ 
+ 		if((!bl_count)&&(!video_on)&&(!gpio_get_value(GPIO_HDMI_EN))&&(!gpio_get_value(GPIO_TVOUT_EN)))
+ 		{
+diff --git a/drivers/serial/tcc_serial.c b/drivers/serial/tcc_serial.c
+index 7c93253..821985b 100644
+--- a/drivers/serial/tcc_serial.c
++++ b/drivers/serial/tcc_serial.c
+@@ -638,7 +638,6 @@ static void tcc_serial_stop_rx(struct uart_port *port)
+ 	dbg("%s\n", __func__);
+     if (rx_enabled(port)) {
+         disable_irq(port->irq);
+-        mdelay(10);
+ #ifdef CONFIG_SERIAL_TCC_DMA_TX
+        // disable_irq(DMA_TX_INT);
+ #endif
+@@ -1366,6 +1365,12 @@ static int tcc_serial_remove(struct platform_device *dev)
+     volatile PGDMACTRL pDMA = (volatile PGDMACTRL)tcc_p2v(HwGDMA_BASE);
+ #endif
+  
++    if(port->line == UART1){
++        tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, BT_ON, OUTPUT, LOW, SET_DIRECTION|SET_VALUE);
++        dbg("tcc_uart: BT power %s\n", (tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, 0, OUTPUT, 0, GET_VALUE)&BT_ON)?"ON":"OFF");
++    }
++
++
+ 	if (port)
+ 		uart_remove_one_port(&tcc_uart_drv, port);
+ 
+@@ -1397,16 +1402,30 @@ static int tcc_serial_remove(struct platform_device *dev)
+ static int tcc_serial_suspend(struct platform_device *dev, pm_message_t state)
+ {
+ 	struct uart_port *port = tcc_dev_to_port(&dev->dev);
++	struct tcc_reg_info *reg = &tcc_serial_ports[port->line].reg;
+ 
+-	if (port) {
++	if (port && port_used(port)) {
+ 		port->suspended = 1;
+ 
+-		uart_suspend_port(&tcc_uart_drv, port);
++		// disable interrupt
++		wr_regl(port, OFFSET_IER, (rd_regl(port, OFFSET_IER) & (~UART_IER_ELSI)));
+ 
+-        if(port->line == UART1){
+-            tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, BT_ON, OUTPUT, LOW, SET_DIRECTION|SET_VALUE);
+-        }
+-    }
++		reg->bLCR = rd_regl(port, OFFSET_LCR);
++
++		// DLAB = 0
++		wr_regl(port, OFFSET_LCR, (reg->bLCR & (~Hw7)));
++		reg->bIER = rd_regl(port, OFFSET_IER);
++
++		// DLAB = 1
++		wr_regl(port, OFFSET_LCR, (reg->bLCR | Hw7));
++//		reg->bFCR = 0x07;						// set in tcc_serial_startup()			
++		reg->bDLL = rd_regl(port, OFFSET_DLL);
++		reg->bDLM = rd_regl(port, OFFSET_DLM);
++
++		reg->bMCR = rd_regl(port, OFFSET_MCR);
++		reg->bAFT = rd_regl(port, OFFSET_AFT);
++		reg->bUCR = rd_regl(port, OFFSET_UCR);
++	}
+ 	
+ 	return 0;
+ }
+@@ -1414,20 +1433,33 @@ static int tcc_serial_suspend(struct platform_device *dev, pm_message_t state)
+ static int tcc_serial_resume(struct platform_device *dev)
+ {
+ 	struct uart_port *port = tcc_dev_to_port(&dev->dev);
++	struct tcc_reg_info *reg = &tcc_serial_ports[port->line].reg;
+ 
+-    if(port) {
++	if (port && port_used(port)) {
+ 		if (port->suspended) {
++			// DLAB = 0
++			wr_regl(port, OFFSET_LCR, (reg->bLCR & (~Hw7)));
++			wr_regl(port, OFFSET_IER, reg->bIER);
+ 
+-            if(port->line == UART1){
+-                tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, BT_ON, OUTPUT, HIGH, SET_DIRECTION|SET_VALUE);
+-            }
++			// DLAB = 1
++			wr_regl(port, OFFSET_LCR, (reg->bLCR | Hw7));
++			wr_regl(port, OFFSET_FCR, reg->bFCR);
++			wr_regl(port, OFFSET_DLL, reg->bDLL);
++			wr_regl(port, OFFSET_DLM, reg->bDLM);
+ 
+-            uart_resume_port(&tcc_uart_drv, port);
++			wr_regl(port, OFFSET_MCR, reg->bMCR);
++			wr_regl(port, OFFSET_AFT, reg->bAFT);
++			wr_regl(port, OFFSET_UCR, reg->bUCR);
+ 
+ 			port->suspended = 0;
+-        }
+-    }
++			// DLAB = 0
++			wr_regl(port, OFFSET_LCR, (reg->bLCR & (~Hw7)));
++			wr_regl(port, OFFSET_IER, (rd_regl(port, OFFSET_IER) | UART_IER_ELSI));
+ 
++			wr_regl(port, OFFSET_LCR, reg->bLCR);
++		}
++	}
++	
+ 	return 0;
+ }
+ 
+@@ -1442,12 +1474,10 @@ static int tcc_serial_probe(struct platform_device *dev)
+ }
+ 
+ static struct platform_driver tcc_serial_drv = {
+-	.probe			= tcc_serial_probe,
+-	.remove			= tcc_serial_remove,
+-	.suspend		= tcc_serial_suspend,
+-	.resume			= tcc_serial_resume,
+-//	.suspend_late	= tcc_serial_suspend,
+-//	.resume_early	= tcc_serial_resume,
++	.probe		= tcc_serial_probe,
++	.remove		= tcc_serial_remove,
++	.suspend	= tcc_serial_suspend,
++	.resume		= tcc_serial_resume,
+ 	.driver		= {
+ 		.name	= DRV_NAME,
+ 		.owner	= THIS_MODULE,
+@@ -1569,6 +1599,7 @@ int tcc_serial_init_ports(struct tcc_uart_port *ourport,
+ 	port->line	    = pdev->id;
+ 	port->dev	    = &pdev->dev;
+ 	port->type      = PORT_TCC;
++	ourport->info   = info;
+ 
+     res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (res == NULL) {
+-- 
+1.6.3.3
+

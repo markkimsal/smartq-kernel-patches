@@ -1,0 +1,169 @@
+From b0716c7495eeae3292b798a8b707abd33c7ac9ec Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Mon, 13 Jul 2009 15:40:40 +0800
+Subject: [PATCH] add tcc_adc_value function for battery volume detecting
+
+---
+ drivers/input/touchscreen/tcc_ts.c |   93 ++++++++++++++++++++++++++++++-----
+ 1 files changed, 79 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/input/touchscreen/tcc_ts.c b/drivers/input/touchscreen/tcc_ts.c
+index c440b26..34062e1 100644
+--- a/drivers/input/touchscreen/tcc_ts.c
++++ b/drivers/input/touchscreen/tcc_ts.c
+@@ -65,6 +65,11 @@
+ #define ADCTSC_AUTO_ADC4 AUTO_PST_EN
+ #define ADCTSC_AUTO_ADC5 AUTO_PST_DIS
+ 
++// ADCCON
++#define ADCCON_ECFLG	    (1<<15)
++#define ADCCON_SELMUX(x)    (((x)&0x7)<<3)
++#define ADCCON_ENABLE_START (1<<0)
++
+ #define TOUCH_COLLECT_NR        16  // (TOUCH_COLLECT_NR-TOUCH_VALID_VALUE) must be even
+ #define TOUCH_VALID_VALUE       2  // among COLLECT_NR samples, OK should be over
+ #if defined(CONFIG_LCD11)
+@@ -135,6 +140,64 @@ static void __iomem *ts_base;
+ #define D_YPDATA_MASK12(n)  ((n)&0xfff)
+ #define ENABLE_START_EN (1<<0)
+ 
++#define ADC_DELAY(n)        ((n+1)&0xffff)
++#define RESSEL_12BIT        (1<<16)
++#define PRESCALER_EN        (1<<14)
++#define PRESCALER_VAL(n)    (((n)&0xff)<<6)
++#define CLEAR_ADC_INT       (0xff)
++#define CLEAR_ADCWK_INT (0xff)
++
++static unsigned long data_for_ADCCON;
++static unsigned long data_for_ADCTSC;
++
++static void tcc_adc_save_SFR_on_ADC(void)
++{
++	data_for_ADCCON = readl(ts_base+ADCCON);
++	data_for_ADCTSC = readl(ts_base+ADCTSC);
++}
++
++static void tcc_adc_restore_SFR_on_ADC(void)
++{
++	writel(data_for_ADCCON, ts_base+ADCCON);
++	writel(data_for_ADCTSC, ts_base+ADCTSC);
++}
++
++unsigned int tcc_adc_value(unsigned int tcc_adc_port)
++{
++        unsigned int adc_return;
++        unsigned long data0;
++        unsigned long data1;
++
++	if(ADCTSC_WAIT_PENDOWN != readl(ts_base+ADCTSC))
++	    return 0;
++
++	del_timer(&ts_timer);
++
++	tcc_adc_save_SFR_on_ADC();
++
++	writel(0x58, ts_base+ADCTSC);
++
++	writel(readl(ts_base+ADCCON)|ADCCON_SELMUX(tcc_adc_port), ts_base+ADCCON);
++        udelay(10);
++
++        writel(readl(ts_base+ADCCON)|ADCCON_ENABLE_START, ts_base+ADCCON);
++
++	do {
++                data0 = readl(ts_base+ADCCON);
++		writel(CLEAR_ADC_INT, ts_base + ADCCLRINT);
++		writel(CLEAR_ADCWK_INT, ts_base + ADCCLRUPDN);
++        } while(!(data0 & ADCCON_ECFLG));
++
++        data1 = readl(ts_base+ADCDAT0);
++
++	tcc_adc_restore_SFR_on_ADC();
++
++	adc_return = D_XPDATA_MASK12(data1);
++
++        return adc_return;
++}
++EXPORT_SYMBOL(tcc_adc_value);
++
+ int tea_tch_readadc_auto(int *x, int *y)
+ {
+     writel(ADCTSC_AUTO_ADC4, ts_base + ADCTSC);
+@@ -392,6 +455,7 @@ static inline void tcc_pen_release(struct tcc_ts* ts_data, struct input_dev *dev
+         ts_data->pen_status = PEN_RELEASE;
+ 
+         input_report_key(dev, BTN_TOUCH, PEN_RELEASE);
++	input_report_abs(ts->dev, ABS_PRESSURE, 0);
+         input_sync(dev);
+         /* wake_up_interruptible(&ts->wait_q); */
+     }
+@@ -402,9 +466,10 @@ static inline void tcc_pen_pressure(struct tcc_ts* ts_data, struct input_dev *de
+ {
+     ts_data->pen_status = PEN_DOWN;
+ 
+-    input_report_key(dev, BTN_TOUCH, PEN_DOWN);
+     input_report_abs(dev, ABS_X, ts->x);
+     input_report_abs(dev, ABS_Y, ts->y);
++    input_report_key(dev, BTN_TOUCH, PEN_DOWN);
++    input_report_abs(ts->dev, ABS_PRESSURE, 1);
+     input_sync(dev);
+ 
+     dbg("PEN DOWN (%d : %d)\n", ts_data->x, ts_data->y);
+@@ -510,14 +575,6 @@ static void ts_timer_handler(unsigned long data)
+     }
+ }
+ 
+-#define ADC_DELAY(n)        ((n+1)&0xffff)
+-#define RESSEL_12BIT        (1<<16)
+-#define PRESCALER_EN        (1<<14)
+-#define PRESCALER_VAL(n)    (((n)&0xff)<<6)
+-#define CLEAR_ADC_INT       (0xff)
+-#define CLEAR_ADCWK_INT (0xff)
+-
+-
+ /*
+  * The functions for inserting/removing us as a module.
+  */
+@@ -536,6 +593,7 @@ static int __devinit tcc_ts_probe(struct platform_device *pdev)
+ 
+     dbg("%s: probe=%p\n", __func__, pdev);   
+ 
++    /* Enable ADC clock */
+     tca_ckc_setperi(PERI_ADC,ENABLE,390000,PCDIRECTPLL3);
+     tca_ckc_setiobus(RB_TSADCCONTROLLER,1);
+ 
+@@ -546,20 +604,27 @@ static int __devinit tcc_ts_probe(struct platform_device *pdev)
+         return -ENOMEM;
+     }
+ 
++    // Set GPE28~GPE31 to touchscreen funtion
+     BITCSET(pGPIO->GPEFN3, Hw32-Hw16, (Hw28|Hw24|Hw20|Hw16));
+-
++    // Set GPE28~GPE31 pull-up/down disabled
+     BITCLR(pGPIO->GPEPD1, Hw32-Hw25);
+ 
++    // Set GPE24~GPE25 to ADC function
++    BITCSET(pGPIO->GPEFN3, Hw8-Hw0, (Hw4|Hw0));
++    // Set GPE24~GPE25 pull-up/down disabled
++    BITCLR(pGPIO->GPEPD1, Hw19-Hw16);
+ 
+-    writel(ADC_DELAY(10000), ts_base + ADCTSC);
++    /* Initialise ADC registers */
++    writel(ADC_DELAY(10000), ts_base + ADCDLY);
+     writel(RESSEL_12BIT | PRESCALER_EN | PRESCALER_VAL(12), ts_base + ADCCON);
+     writel(ADCTSC_WAIT_PENDOWN, ts_base + ADCTSC);
+     writel(CLEAR_ADC_INT, ts_base + ADCCLRINT);
+     writel(CLEAR_ADCWK_INT, ts_base + ADCCLRUPDN);
+- 
++
++    /* Set TSUPDN(58) to the interrupt source of INT_EI2(IRQ_NO)*/
+     BITCSET(pGPIO->EINTSEL0, Hw22-Hw16, 58<<16);
+-    BITSET(pPIC->INTMSK0, 1<<IRQ_NO);
+-    BITSET(pPIC->POL0, 1<<IRQ_NO);
++    BITSET(pPIC->INTMSK0, 1<<IRQ_NO); // Let interrupt pass to IRQ or FIQ
++    BITSET(pPIC->POL0, 1<<IRQ_NO);  // When interrupt signal is active-low
+     //BITCLR(pPIC->MODE0, 1<<IRQ_NO);
+ 
+ 
+-- 
+1.6.3.3
+

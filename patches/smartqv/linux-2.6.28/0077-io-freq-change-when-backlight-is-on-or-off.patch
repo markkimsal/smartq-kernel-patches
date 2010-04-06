@@ -1,0 +1,68 @@
+From f7a5f7cff73ac334a33775635df865a968e90c74 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Wed, 4 Nov 2009 18:37:47 +0800
+Subject: [PATCH] io freq change when backlight is on or off
+
+---
+ drivers/char/tcc_backlight.c |   27 +++++++++++++++++++++------
+ 1 files changed, 21 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/char/tcc_backlight.c b/drivers/char/tcc_backlight.c
+index 10ff7be..ede686b 100644
+--- a/drivers/char/tcc_backlight.c
++++ b/drivers/char/tcc_backlight.c
+@@ -194,6 +194,7 @@ extern int video_on;
+ extern int noneed_respond;
+ static int ddi_off_mode = 0;
+ static int bl_count = 3;//not use turn-off ddi_bus way until finish the init
++static int freq_change = 0;
+ void bl_control(bool flag)
+ {
+ 	PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
+@@ -210,12 +211,19 @@ void bl_control(bool flag)
+ 		ddi_off_mode = 0;
+ 		gpio_direction_output(GPIO_LCD_PWR_EN, 1);
+ 		
+-		if(!bl_count)
++		if(freq_change)
+ 		{
+-		    memchange(3300000);
+-		    mdelay(50);
++		    if(!bl_count)
++		    {
++			memchange(3300000);
++			mdelay(50);
++		    }
++
++		*(volatile unsigned long *)0xF0400010 = 0x200022;//change io bus to 156M 
+ 		}
+ 
++		freq_change = 0;
++
+ 		tca_bkl_powerup((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
+ 		gBKLPwrInfo.status = PWR_STATUS_ON;
+ 
+@@ -224,10 +232,17 @@ void bl_control(bool flag)
+ 		tca_bkl_powerdown((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
+ 		gBKLPwrInfo.status = PWR_STATUS_OFF;
+ 
+-		if(!bl_count)
++		if((!gpio_get_value(GPIO_HDMI_EN))&&(!gpio_get_value(GPIO_TVOUT_EN)))
+ 		{
+-		    memchange(1250000);
+-		    mdelay(100);
++		    *(volatile unsigned long *)0xF0400010 = 0x2000b2;//change io bus to 40M  
++
++		    if(!bl_count)
++		    {
++			 mdelay(1);
++			memchange(1250000);
++			mdelay(50);
++		    }
++		    freq_change = 1;
+ 		}
+ 
+ 		gpio_direction_output(GPIO_LCD_PWR_EN, 0);
+-- 
+1.6.3.3
+

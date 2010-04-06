@@ -1,0 +1,267 @@
+From fee778e2909b83b9826c69f18a7c3a79bace2a0a Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Wed, 9 Dec 2009 18:52:28 +0800
+Subject: [PATCH] merge code from 2265 about i2s
+
+---
+ sound/soc/tcc/tcc-i2s.c |  159 +++++++++++++++++++++++++++++++----------------
+ sound/soc/tcc/tcc-i2s.h |    5 +-
+ 2 files changed, 109 insertions(+), 55 deletions(-)
+
+diff --git a/sound/soc/tcc/tcc-i2s.c b/sound/soc/tcc/tcc-i2s.c
+index e70cc41..cabbb57 100644
+--- a/sound/soc/tcc/tcc-i2s.c
++++ b/sound/soc/tcc/tcc-i2s.c
+@@ -68,7 +68,7 @@ static struct tcc_pcm_dma_params tcc_i2s_pcm_spdif_out = {
+ 
+ };
+ 
+-int alsa_I2S_Init(void)
++static int alsa_i2s_init(void)
+ {
+     volatile PADMADAI pADMA_DAI = (volatile PADMADAI)tcc_p2v(HwADMA_DAIBASE);
+     volatile PPIC pPIC = (volatile PPIC)tcc_p2v(HwPIC_BASE);
+@@ -95,7 +95,14 @@ int alsa_I2S_Init(void)
+     tca_i2s_stop((void *)pADMA_DAI, (void *)p_adma_spdif_tx_base, 0);
+     tca_i2s_stop((void *)pADMA_DAI, (void *)p_adma_spdif_tx_base, 1);
+ 
+-    return 1;
++    return 0;
++}
++
++static int alsa_spdif_init(void)
++{
++	tca_ckc_setiobus(RB_SPDIFTXCONTROLLER, 1);
++
++    return 0;
+ }
+ 
+ /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+@@ -111,7 +118,7 @@ static int tcc_i2s_startup(struct snd_pcm_substream *substream)
+     struct snd_soc_dai *cpu_dai = rtd->dai->cpu_dai;
+ 
+     if (!cpu_dai->active) {
+-        //alsa_I2S_Init();
++        //alsa_i2s_init();
+     }
+ 
+     return 0;
+@@ -153,10 +160,7 @@ static int tcc_i2s_hw_params(struct snd_pcm_substream *substream,
+     struct snd_soc_pcm_runtime *rtd = substream->private_data;
+     struct snd_soc_dai *cpu_dai = rtd->dai->cpu_dai;
+ 
+-    if (substream->pcm->device == __SPDIF_DEV_NUM__) {
+-        cpu_dai->dma_data = &tcc_i2s_pcm_spdif_out;
+-        tea_spdif_setclock(params_rate(params));
+-    } else {
++    if (substream->pcm->device == __I2S_DEV_NUM__) {
+         cpu_dai->dma_data = ((substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+                              ?  &tcc_i2s_pcm_stereo_out : &tcc_i2s_pcm_stereo_in);
+         tea_i2s_setclock(params_rate(params));
+@@ -164,6 +168,19 @@ static int tcc_i2s_hw_params(struct snd_pcm_substream *substream,
+     return 0;
+ }
+ 
++static int tcc_spdif_hw_params(struct snd_pcm_substream *substream,
++                                 struct snd_pcm_hw_params *params)
++{
++    struct snd_soc_pcm_runtime *rtd = substream->private_data;
++    struct snd_soc_dai *cpu_dai = rtd->dai->cpu_dai;
++
++    if (substream->pcm->device == __SPDIF_DEV_NUM__) {
++        cpu_dai->dma_data = &tcc_i2s_pcm_spdif_out;
++        tea_spdif_setclock(params_rate(params));
++    }
++    return 0;
++}
++
+ 
+ static int tcc_i2s_trigger(struct snd_pcm_substream *substream, int cmd)
+ {
+@@ -208,39 +225,37 @@ static void tcc_i2s_shutdown(struct snd_pcm_substream *substream)
+     //mutex_unlock(&(tcc_alsa_info.mutex));
+ }
+ 
+-#ifdef CONFIG_PM
+ static int tcc_i2s_suspend(struct platform_device *dev, struct snd_soc_dai *dai)
+ {
+-#if 0
+-    if (!dai->active)
+-        return 0;
+-
+-    /* deactivate link */
+-    HwDAMR &= ~HwDAMR_EN_ON;
++//    pm_printk("info ==========> [%s], [%u:%u]\n", dai->name, dai->id, (unsigned int)dai->type);
++//    pm_printk("***************> PM \n");
+ 
+-    dev->dev.power.power_state = PMSG_SUSPEND;
+-#endif
++    if (dai->id == __I2S_DEV_NUM__) {
++        tca_ckc_setiobus(RB_DAICDIFCONTROLLER, 0);
++        tca_ckc_setiobus(RB_ADMACONTROLLER, 0);
++    }
++    if (dai->id == __SPDIF_DEV_NUM__) {
++        tca_ckc_setiobus(RB_SPDIFTXCONTROLLER, 0);
++    }
+ 
+     return 0;
+ }
+ 
+ static int tcc_i2s_resume(struct platform_device *pdev, struct snd_soc_dai *dai)
+ {
+-#if 0
+-    if (!dai->active)
+-        return 0;
++//    pm_printk("info ==========> [%s], [%u:%u]\n", dai->name, dai->id, (unsigned int)dai->type);
++//    pm_printk("***************> PM \n");
+ 
+-    alsa_I2S_Init();     
+-#endif
++    if (dai->id == __I2S_DEV_NUM__) {
++        tca_ckc_setiobus(RB_ADMACONTROLLER, 1);
++        tca_ckc_setiobus(RB_DAICDIFCONTROLLER, 1);
++    }
++    if (dai->id == __SPDIF_DEV_NUM__) {
++        tca_ckc_setiobus(RB_SPDIFTXCONTROLLER, 1);
++    }
+ 
+     return 0;
+ }
+-#else
+-
+-#define tcc_i2s_suspend	NULL
+-#define tcc_i2s_resume	NULL
+-
+-#endif
+ 
+ #define TCC89XX_I2S_RATES (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 |\
+                            SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 |\
+@@ -250,41 +265,77 @@ static int tcc_i2s_resume(struct platform_device *pdev, struct snd_soc_dai *dai)
+ int tcc_i2s_probe(struct platform_device *pdev, struct snd_soc_dai *dai)
+ {
+     ((void)(dai));
+-    alsa_I2S_Init();
++    alsa_i2s_init();
+     tea_i2s_setclock(44100);
+     return 0;
+ }
+ 
+-struct snd_soc_dai tcc_i2s_dai = {
+-    .name = "tcc-i2s",
+-    .id = 0,
+-    .type = SND_SOC_DAI_I2S,
+-    .suspend = tcc_i2s_suspend,
+-    .resume = tcc_i2s_resume,
+-    .playback = {
+-        .channels_min = 2,
++int tcc_spdif_probe(struct platform_device *pdev, struct snd_soc_dai *dai)
++{
++    ((void)(dai));
++    alsa_spdif_init();
++    tea_spdif_setclock(44100);
++    return 0;
++}
++
++struct snd_soc_dai tcc_i2s_dai[] = {
++    [__I2S_DEV_NUM__] = {
++        .name = "tcc-i2s",
++        .id = 0,
++        .type = SND_SOC_DAI_I2S,
++        .suspend = tcc_i2s_suspend,
++        .resume = tcc_i2s_resume,
++        .playback = {
++            .channels_min = 2,
+ #if defined(CONFIG_SND_SOC_WM8581) || defined(CONFIG_SND_SOC_WM8581_MODULE)
+-        .channels_max = 8,
++            .channels_max = 8,
+ #else
+-        .channels_max = 2,
++            .channels_max = 2,
+ #endif
+-        .rates = TCC89XX_I2S_RATES,
+-        .formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE,},  //should be change? phys:32 width:16
+-    .capture = {
+-        .channels_min = 2,
+-        .channels_max = 2,
+-        .rates = TCC89XX_I2S_RATES,
+-        .formats = SNDRV_PCM_FMTBIT_S16_LE,}, //should be change? phys:32 width:16
+-    .ops = {
+-        .startup = tcc_i2s_startup,
+-        .shutdown = tcc_i2s_shutdown,
+-        .trigger = tcc_i2s_trigger,
+-        .hw_params = tcc_i2s_hw_params,},
+-    .dai_ops = {
+-        .set_fmt = tcc_i2s_set_dai_fmt,
+-        .set_sysclk = tcc_i2s_set_dai_sysclk,
++            .rates = TCC89XX_I2S_RATES,
++            .formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE,},  //should be change? phys:32 width:16
++        .capture = {
++            .channels_min = 2,
++            .channels_max = 2,
++            .rates = TCC89XX_I2S_RATES,
++            .formats = SNDRV_PCM_FMTBIT_S16_LE,}, //should be change? phys:32 width:16
++        .ops = {
++            .startup = tcc_i2s_startup,
++            .shutdown = tcc_i2s_shutdown,
++            .trigger = tcc_i2s_trigger,
++            .hw_params = tcc_i2s_hw_params,},
++        .dai_ops = {
++            .set_fmt = tcc_i2s_set_dai_fmt,
++            .set_sysclk = tcc_i2s_set_dai_sysclk,
++        },
++        .probe = tcc_i2s_probe,
+     },
+-    .probe = tcc_i2s_probe,
++    [__SPDIF_DEV_NUM__] = {
++        .name = "tcc-spdif",
++        .id = 1,
++        .type = SND_SOC_DAI_I2S,
++        .suspend = tcc_i2s_suspend,
++        .resume = tcc_i2s_resume,
++        .playback = {
++            .channels_min = 2,
++#if defined(CONFIG_SND_SOC_WM8581) || defined(CONFIG_SND_SOC_WM8581_MODULE)
++            .channels_max = 8,
++#else
++            .channels_max = 2,
++#endif
++            .rates = TCC89XX_I2S_RATES,
++            .formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE,},  //should be change? phys:32 width:16
++        .ops = {
++            .startup = tcc_i2s_startup,
++            .shutdown = tcc_i2s_shutdown,
++            .trigger = tcc_i2s_trigger,
++            .hw_params = tcc_spdif_hw_params,},
++        .dai_ops = {
++            .set_fmt = tcc_i2s_set_dai_fmt,
++            .set_sysclk = tcc_i2s_set_dai_sysclk,
++        },
++        .probe = tcc_spdif_probe,
++    }
+ };
+ 
+ EXPORT_SYMBOL_GPL(tcc_i2s_dai);
+diff --git a/sound/soc/tcc/tcc-i2s.h b/sound/soc/tcc/tcc-i2s.h
+index fddd6c8..367d354 100644
+--- a/sound/soc/tcc/tcc-i2s.h
++++ b/sound/soc/tcc/tcc-i2s.h
+@@ -32,7 +32,7 @@
+ /* I2S clock */
+ #define TCC_I2S_SYSCLK		0
+ 
+-extern struct snd_soc_dai tcc_i2s_dai;
++extern struct snd_soc_dai tcc_i2s_dai[];
+ 
+ //=============================================================================
+ #define AUDIO_DMA_PAGE_NUMBER   (2)                     // Number of DMA Buffer
+@@ -130,4 +130,7 @@ extern struct snd_soc_dai tcc_i2s_dai;
+ #define MAX_TRANSMIT_FIFO_ENTRIES       24
+ #define MAX_RECEIVE_FIFO_ENTRIES        24
+ 
++#define __I2S_DEV_NUM__   0
++#define __SPDIF_DEV_NUM__ 1
++
+ #endif
+-- 
+1.6.3.3
+

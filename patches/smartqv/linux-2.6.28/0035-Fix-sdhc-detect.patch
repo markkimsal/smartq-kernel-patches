@@ -1,0 +1,96 @@
+From 35ada69bfd79446b8b5c701d54c21feb8102fac3 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Wed, 9 Sep 2009 16:46:58 +0800
+Subject: [PATCH] Fix sdhc detect
+
+---
+ arch/arm/mach-tcc8900/devices.c              |    1 -
+ arch/arm/mach-tcc8900/include/mach/tcc_mmc.h |   16 ----------------
+ drivers/mmc/host/tcc_sdhc.c                  |   14 ++++----------
+ 3 files changed, 4 insertions(+), 27 deletions(-)
+ delete mode 100644 arch/arm/mach-tcc8900/include/mach/tcc_mmc.h
+
+diff --git a/arch/arm/mach-tcc8900/devices.c b/arch/arm/mach-tcc8900/devices.c
+index 772aa56..c39797f 100644
+--- a/arch/arm/mach-tcc8900/devices.c
++++ b/arch/arm/mach-tcc8900/devices.c
+@@ -29,7 +29,6 @@
+ #include <linux/input.h> 
+ 
+ #include <hhtech_gpio.h>
+-#include <mach/tcc_mmc.h>
+ #include <mach/gpio.h>
+ 
+ /*----------------------------------------------------------------------
+diff --git a/arch/arm/mach-tcc8900/include/mach/tcc_mmc.h b/arch/arm/mach-tcc8900/include/mach/tcc_mmc.h
+deleted file mode 100644
+index 352e2ef..0000000
+--- a/arch/arm/mach-tcc8900/include/mach/tcc_mmc.h
++++ /dev/null
+@@ -1,16 +0,0 @@
+-#ifndef __TCC_MMC_H
+-#define __TCC_MMC_H
+-
+-struct tcc_mmc_cfg
+-{
+-	u8 hwcore;
+-	u8 hwslot;
+-	u8 hwport;
+-	u8 enabled;
+-	u32 max_clock;
+-	u32 host_caps;
+-	u32 detect_io;
+-};
+-
+-#endif
+-
+diff --git a/drivers/mmc/host/tcc_sdhc.c b/drivers/mmc/host/tcc_sdhc.c
+index 2cb086a..3c6c3e5 100644
+--- a/drivers/mmc/host/tcc_sdhc.c
++++ b/drivers/mmc/host/tcc_sdhc.c
+@@ -56,7 +56,6 @@
+ #include <mach/tcc_pca953x.h>
+ 
+ #include <mach/gpio.h>
+-#include <mach/tcc_mmc.h>
+ #include <hhtech_gpio.h>
+ 
+ #include "tcc_sdhc.h"
+@@ -200,9 +199,9 @@ int tcc_mmc_card_inserted(struct tcc_mmc_host *host)
+ {
+ 	int ret = -1;
+ 	if(host->id == 0) {
+-		ret = (HwGPIOA->GPDAT & Hw6) ? 0 : 1;
++		ret = gpio_get_value(GPIO_SD_DETE) ? 0 : 1;
+ 	} else if(host->id == 1) {	
+-		ret = (HwGPIOA->GPDAT & Hw10) ? 0 : 1;		
++		ret = 1; /* Wifi always on */      
+ 	}
+ 	return ret;
+ }
+@@ -943,9 +942,8 @@ static void init_mmc_host(struct tcc_mmc_host *host)
+ 		BITCSET(HwGPIOE->GPCD0, 0xFF000000, 0x55000000);			/* driver strength */
+ 		BITCSET(HwGPIOE->GPCD1, 0x00000F00, 0x00000500);
+ 
+-		BITCLR(HwGPIOA->GPFN0, Hw28-Hw24);							/* GPIOA[6] - SD_CD (Card Detect) */
+-		BITCLR(HwGPIOA->GPEN, Hw6);								/* input mode */
+-		HwGPIOA->GPDAT &= ~Hw6;
++		/* GPIOF[13] - SD CD */
++		gpio_direction_input(GPIO_SD_DETE);
+ 
+ 		pSDMMC_SLOT0->CONTL &= ~(HwSD_POWER_SD4 | HwSD_POWER_SD8);
+ 		pSDMMC_SLOT0->CONTL |= HwSD_POWER_POW;
+@@ -976,10 +974,6 @@ static void init_mmc_host(struct tcc_mmc_host *host)
+ 		BITCSET(HwGPIOB->GPFN1, Hw24-Hw16, HwPORTCFG_GPFN5(2)|HwPORTCFG_GPFN4(2));	/* GPIOB[14:12] - SD1_CMD, SD1_CLK, SD1_WP */
+ 		BITCSET(HwGPIOB->GPCD0, 0x0F0000FF, 0x3F0000FF);							/* driver strength */
+ 
+-		BITCLR(HwGPIOA->GPFN1, Hw12-Hw8);											/* GPIOA[10] - SD_CD (Card Detect) */
+-		BITCLR(HwGPIOA->GPEN, Hw10);												/* input mode */
+-		HwGPIOA->GPDAT &= ~Hw10;
+-
+ 		pSDMMC_SLOT1->CONTL &= ~(HwSD_POWER_SD4 | HwSD_POWER_SD8);
+ 		pSDMMC_SLOT1->CONTL |= HwSD_POWER_POW;
+ 	}
+-- 
+1.6.3.3
+

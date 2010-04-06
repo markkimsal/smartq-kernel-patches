@@ -1,0 +1,225 @@
+From bfa0125f1421d2f5c64507f87603be843ccd1a1a Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Tue, 18 Aug 2009 09:38:00 +0800
+Subject: [PATCH] provide otg mode change support for v7
+
+---
+ drivers/char/hhtech_gpio.c             |   32 ++++++++++++++++++++++++++++++++
+ drivers/usb/dwc_otg/dwc_otg_cil.h      |   11 +++++++++--
+ drivers/usb/dwc_otg/dwc_otg_cil_intr.c |   18 ++++++++++++++----
+ drivers/usb/dwc_otg/dwc_otg_driver.c   |    9 ++++++---
+ 4 files changed, 61 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index a2d5b5b..784b949 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -40,6 +40,7 @@
+ #include <mach/globals.h>
+ #include <mach/gpio.h>
+ 
++#include <../drivers/usb/dwc_otg/dwc_otg_driver.h>
+ #define IRQ_HEADPHONE INT_EI7
+ 
+ #if defined(CONFIG_LCD_4)
+@@ -309,6 +310,33 @@ static ssize_t hhtech_sysfs_store_power(struct device *dev,
+ 	return len;
+ }
+ 
++extern int choosedevice;
++extern int set_otg_num;
++extern dwc_otg_device_t *hh_otg_device;
++extern int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if);
++static int hhtech_sysfs_show_otgmode(struct device *dev, struct device_attribute *attr, char*buf)
++{
++    return snprintf(buf, PAGE_SIZE, "%d\n", choosedevice);
++}
++
++static ssize_t hhtech_sysfs_store_otgmode(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    set_otg_num = 0;
++    unsigned int value = simple_strtoul(buf, NULL, 10);
++    choosedevice = value;
++
++    if (!value)
++    {
++	msleep(300);
++	dwc_otg_handle_conn_id_status_change_intr(hh_otg_device->core_if);
++    }
++
++    return len;
++}
++
+ static int hhtech_sysfs_show_charge(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_CHARGER_EN));
+@@ -606,6 +634,7 @@ static DEVICE_ATTR(sd_s, 0444, hhtech_sysfs_show_sd, NULL);
+ static DEVICE_ATTR(charge_s, 0444,hhtech_sysfs_charge_s , NULL);
+ static DEVICE_ATTR(battery_s, 0444, hhtech_sysfs_show_battery, NULL);
+ static DEVICE_ATTR(pwr_en, 0666, hhtech_sysfs_show_power, hhtech_sysfs_store_power);
++static DEVICE_ATTR(otg_mode, 0666, hhtech_sysfs_show_otgmode, hhtech_sysfs_store_otgmode);
+ static DEVICE_ATTR(charge_en, 0666, hhtech_sysfs_show_charge, hhtech_sysfs_store_charge);
+ static DEVICE_ATTR(backlight_level, 0666,hhtech_sysfs_show_blight, hhtech_sysfs_store_blight);
+ static DEVICE_ATTR(tvout_en, 0666,hhtech_sysfs_show_tvout, hhtech_sysfs_store_tvout);
+@@ -628,6 +657,9 @@ static struct attribute *attrs[] = {
+ 	&dev_attr_charge_s.attr,
+ 	&dev_attr_battery_s.attr,
+ 	&dev_attr_pwr_en.attr,
++#if defined(CONFIG_LCD_7)
++	&dev_attr_otg_mode.attr,
++#endif
+ 	&dev_attr_charge_en.attr,
+ 	&dev_attr_backlight_level.attr,
+ 	&dev_attr_tvout_en.attr,
+diff --git a/drivers/usb/dwc_otg/dwc_otg_cil.h b/drivers/usb/dwc_otg/dwc_otg_cil.h
+index 4e64543..4937c68 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_cil.h
++++ b/drivers/usb/dwc_otg/dwc_otg_cil.h
+@@ -848,13 +848,20 @@ static inline uint32_t dwc_otg_mode(dwc_otg_core_if_t *_core_if)
+ 	return (dwc_read_reg32( &_core_if->core_global_regs->gintsts ) & 0x1);
+ }
+ 
++extern int choosedevice;
+ static inline uint8_t dwc_otg_is_device_mode(dwc_otg_core_if_t *_core_if)
+ {
+-	return (dwc_otg_mode(_core_if) != DWC_HOST_MODE);
++	if(!choosedevice)
++	    return 0;
++	else
++	    return (dwc_otg_mode(_core_if) != DWC_HOST_MODE);
+ }
+ static inline uint8_t dwc_otg_is_host_mode(dwc_otg_core_if_t *_core_if)
+ {
+-	return (dwc_otg_mode(_core_if) == DWC_HOST_MODE);
++	if(!choosedevice)
++	    return 1;
++	else
++	    return (dwc_otg_mode(_core_if) == DWC_HOST_MODE);
+ }
+ 
+ extern int32_t dwc_otg_handle_common_intr( dwc_otg_core_if_t *_core_if );
+diff --git a/drivers/usb/dwc_otg/dwc_otg_cil_intr.c b/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
+index d964b2c..f1783cc 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
++++ b/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
+@@ -39,6 +39,7 @@
+  *
+  * This file contains the Common Interrupt handlers.
+  */
++#include "dwc_otg_driver.h"
+ #include "dwc_otg_plat.h"
+ #include "dwc_otg_regs.h"
+ #include "dwc_otg_cil.h"
+@@ -50,7 +51,8 @@
+ #define DWC_OTG_CIL_INTR_VERSION			'V','2','.','0','0','2'
+ static const unsigned char DWC_OTG_CIL_INTR_C_Version[] =
+     {SIGBYAHONG, DWC_OTG_CIL_INTR_SIGNATURE, SIGN_OS ,SIGN_CHIPSET, DWC_OTG_CIL_INTR_VERSION, 0};
+-
++extern int choosedevice;
++extern dwc_otg_device_t *hh_otg_device;
+ const unsigned char* dwc_otg_cil_intr_get_version(void)
+ {
+ 	return DWC_OTG_CIL_INTR_C_Version;
+@@ -227,7 +229,7 @@ int32_t dwc_otg_handle_otg_intr(dwc_otg_core_if_t *_core_if)
+ 		gotgctl.d32 = 0;
+ 		gotgctl.b.devhnpen = 1;
+ 		dwc_modify_reg32( &global_regs->gotgctl, gotgctl.d32, 0);
+-		//printk("Session End Detected\n");
++	//	printk("Session End Detected\n");
+ 	}
+ 	if (gotgint.b.sesreqsucstschng) {
+ 		DWC_DEBUGPL(DBG_ANY, " ++OTG Interrupt: "
+@@ -345,6 +347,8 @@ int32_t dwc_otg_handle_otg_intr(dwc_otg_core_if_t *_core_if)
+  *
+  * @param _core_if Programming view of DWC_otg controller.
+  */
++int set_otg_num = 1;
++EXPORT_SYMBOL(set_otg_num);
+ int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if)
+ {
+ 	uint32_t count = 0;
+@@ -353,6 +357,12 @@ int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if)
+ 	gintmsk_data_t gintmsk = { .d32 = 0 };
+ 	gotgctl_data_t gotgctl = { .d32 = 0 };
+ 
++	if(set_otg_num == -1)
++	    return;
++
++	if(!set_otg_num)
++	    set_otg_num = -1;
++
+ 	/*
+ 	 * Need to disable SOF interrupt immediately. If switching from device
+ 	 * to host, the PCD interrupt handler won't handle the interrupt if
+@@ -370,7 +380,7 @@ int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if)
+ 	DWC_DEBUGPL(DBG_CIL, "gotgctl.b.conidsts=%d\n", gotgctl.b.conidsts);
+ 
+ 	/* B-Device connector (Device Mode) */
+-	if (gotgctl.b.conidsts) {
++	if (gotgctl.b.conidsts && choosedevice) {
+ 		/* Wait for switch to device mode. */
+ 		while (!dwc_otg_is_device_mode(_core_if) ) {
+ 			DWC_PRINT("Waiting for Peripheral Mode, Mode=%s\n",
+@@ -407,7 +417,7 @@ int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if)
+ 
+ 	return 1;
+ }
+-
++EXPORT_SYMBOL(dwc_otg_handle_conn_id_status_change_intr);
+ /**
+  * This interrupt indicates that a device is initiating the Session
+  * Request Protocol to request the host to turn on bus power so a new
+diff --git a/drivers/usb/dwc_otg/dwc_otg_driver.c b/drivers/usb/dwc_otg/dwc_otg_driver.c
+index 8556aae..70261ea 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_driver.c
++++ b/drivers/usb/dwc_otg/dwc_otg_driver.c
+@@ -87,7 +87,8 @@
+ #define DWC_DRIVER_DESC		"HS OTG USB Controller driver"
+ 
+ static const char dwc_driver_name[] = "dwc_otg";
+-
++int choosedevice = 1;
++EXPORT_SYMBOL(choosedevice);
+ /* For Signature */
+ #define DWC_OTG_DRIVER_SIGNATURE			'D','W','C','_','O','T','G','_','D','R','I','V','E','R','_'
+ #define DWC_OTG_DRIVER_VERSION				'V','2','.','0','0','2'
+@@ -439,7 +440,7 @@ static int tcc_usb_thread(void* _dwc_otg_device)
+ 	{
+ 		msleep_interruptible(200);
+ 
+-		if ( IsID() == 0 )
++		if ( IsID() == 0 || choosedevice == 0)
+ 		{
+ 			// ID = host mode
+ 			if ( dwc_otg_device->flagID != 0 )
+@@ -997,6 +998,7 @@ static int dwc_otg_driver_remove(struct device *dev)
+  *
+  * @param[in] _lmdev  lm_device definition
+  */
++dwc_otg_device_t *hh_otg_device;
+ static int dwc_otg_driver_probe(struct device *dev)
+ {
+ 	int retval = 0;
+@@ -1064,6 +1066,7 @@ static int dwc_otg_driver_probe(struct device *dev)
+ 		goto fail;
+ 	}
+ 
++	hh_otg_device = dwc_otg_device;
+ 	/*
+ 	 * Validate parameter values.
+ 	 */
+@@ -1178,7 +1181,7 @@ fail:
+ 	dwc_otg_driver_remove(dev);
+ 	return retval;
+ }
+-
++EXPORT_SYMBOL(hh_otg_device);
+ /**
+  * This structure defines the methods to be called by a bus driver
+  * during the lifecycle of a device on that bus. Both drivers and
+-- 
+1.6.3.3
+

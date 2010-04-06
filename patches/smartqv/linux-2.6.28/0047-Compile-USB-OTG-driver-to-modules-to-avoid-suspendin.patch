@@ -1,0 +1,96 @@
+From ac83446d9c05f5a6abc867a56b8c77df457752e6 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Tue, 22 Sep 2009 16:34:45 +0800
+Subject: [PATCH] Compile USB OTG driver to modules to avoid suspending and resuming problem
+
+---
+ arch/arm/configs/SmartV5_defconfig   |    4 ++--
+ arch/arm/configs/SmartV7_defconfig   |    2 +-
+ drivers/char/hhtech_gpio.c           |    8 +++++++-
+ drivers/usb/dwc_otg/dwc_otg_driver.c |    8 ++------
+ 4 files changed, 12 insertions(+), 10 deletions(-)
+
+diff --git a/arch/arm/configs/SmartV5_defconfig b/arch/arm/configs/SmartV5_defconfig
+index b3bfc56..0c5308e 100644
+--- a/arch/arm/configs/SmartV5_defconfig
++++ b/arch/arm/configs/SmartV5_defconfig
+@@ -1,7 +1,7 @@
+ #
+ # Automatically generated make config: don't edit
+ # Linux kernel version: 2.6.28
+-# Thu Sep 17 16:52:13 2009
++# Tue Sep 22 16:33:40 2009
+ #
+ CONFIG_ARM=y
+ CONFIG_SYS_SUPPORTS_APM_EMULATION=y
+@@ -956,7 +956,7 @@ CONFIG_USB_OTG=y
+ #
+ # Telechips DWC OTG Controller Drivers
+ #
+-CONFIG_TCC_DWC_OTG=y
++CONFIG_TCC_DWC_OTG=m
+ CONFIG_TCC_DWC_OTG_DUAL_ROLE=y
+ # CONFIG_TCC_DWC_OTG_DEVICE_ONLY is not set
+ # CONFIG_TCC_DWC_OTG_HOST_ONLY is not set
+diff --git a/arch/arm/configs/SmartV7_defconfig b/arch/arm/configs/SmartV7_defconfig
+index 611330e..d35f534 100644
+--- a/arch/arm/configs/SmartV7_defconfig
++++ b/arch/arm/configs/SmartV7_defconfig
+@@ -956,7 +956,7 @@ CONFIG_USB_OTG=y
+ #
+ # Telechips DWC OTG Controller Drivers
+ #
+-CONFIG_TCC_DWC_OTG=y
++CONFIG_TCC_DWC_OTG=m
+ CONFIG_TCC_DWC_OTG_DUAL_ROLE=y
+ # CONFIG_TCC_DWC_OTG_DEVICE_ONLY is not set
+ # CONFIG_TCC_DWC_OTG_HOST_ONLY is not set
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index a45a677..abc7fc7 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -51,6 +51,13 @@ static unsigned int system_flag = 2;
+ static unsigned int system_flag = 3;
+ #endif
+ 
++#if defined (CONFIG_LCD_4)
++int choosedevice = 1;
++#else
++int choosedevice = 0;
++#endif
++EXPORT_SYMBOL(choosedevice);
++
+ //static struct delayed_work headp_detect_work;
+ static struct delayed_work battery_work;
+ int current_battery = 0;
+@@ -632,7 +639,6 @@ static ssize_t hhtech_sysfs_store_sleep_type(struct device *dev, struct device_a
+     return len;
+ }
+ 
+-extern int choosedevice;
+ static int hhtech_sysfs_show_otgmode(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", choosedevice);
+diff --git a/drivers/usb/dwc_otg/dwc_otg_driver.c b/drivers/usb/dwc_otg/dwc_otg_driver.c
+index 2dcd1d3..c71f59d 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_driver.c
++++ b/drivers/usb/dwc_otg/dwc_otg_driver.c
+@@ -86,13 +86,9 @@
+ #define DWC_DRIVER_VERSION	"2.60a 22-NOV-2006"
+ #define DWC_DRIVER_DESC		"HS OTG USB Controller driver"
+ 
++extern int choosedevice;
++
+ static const char dwc_driver_name[] = "dwc_otg";
+-#if defined (CONFIG_LCD_4)
+-int choosedevice = 1;
+-#else
+-int choosedevice = 0;
+-#endif
+-EXPORT_SYMBOL(choosedevice);
+ /* For Signature */
+ #define DWC_OTG_DRIVER_SIGNATURE			'D','W','C','_','O','T','G','_','D','R','I','V','E','R','_'
+ #define DWC_OTG_DRIVER_VERSION				'V','2','.','0','0','2'
+-- 
+1.6.3.3
+

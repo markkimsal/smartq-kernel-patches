@@ -1,0 +1,219 @@
+From a250b73dc15098167504604a715dcfebf2bc04cb Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Wed, 13 Jan 2010 09:59:33 +0800
+Subject: [PATCH] Solved the problem that USB wired cable adapter can not use
+
+---
+ drivers/net/usb/kaweth.c               |    5 +++-
+ drivers/net/usb/pegasus.c              |    5 +++-
+ drivers/net/usb/rtl8150.c              |    5 +++-
+ drivers/usb/dwc_otg/dwc_otg_hcd.c      |   41 ++++++++++++++++++++++++++++++++
+ drivers/usb/dwc_otg/dwc_otg_hcd.h      |   18 ++++++++++++++
+ drivers/usb/dwc_otg/dwc_otg_hcd_intr.c |   19 +++++++++++---
+ 6 files changed, 86 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/net/usb/kaweth.c b/drivers/net/usb/kaweth.c
+index fdbf3be..8325b87 100644
+--- a/drivers/net/usb/kaweth.c
++++ b/drivers/net/usb/kaweth.c
+@@ -645,7 +645,10 @@ static void kaweth_usb_receive(struct urb *urb)
+                         return;
+ 		}
+ 
+-		skb_reserve(skb, 2);    /* Align IP on 16 byte boundaries */
++		/* because TCC8902's USB OTG Controller request that the
++		 * transfer buffer of urb must be DWORD aligned, so make
++		 * skb->data DWORD aligned */
++		skb_reserve(skb, ((unsigned int)skb->data) % 4);
+ 
+ 		skb_copy_to_linear_data(skb, kaweth->rx_buf + 2, pkt_len);
+ 
+diff --git a/drivers/net/usb/pegasus.c b/drivers/net/usb/pegasus.c
+index 7914867..7110a07 100644
+--- a/drivers/net/usb/pegasus.c
++++ b/drivers/net/usb/pegasus.c
+@@ -575,7 +575,10 @@ static void fill_skb_pool(pegasus_t * pegasus)
+ 		 */
+ 		if (pegasus->rx_pool[i] == NULL)
+ 			return;
+-		skb_reserve(pegasus->rx_pool[i], 2);
++		/* because TCC8902's USB OTG Controller request that the
++		 * transfer buffer of urb must be DWORD aligned, so make
++		 * skb->data DWORD aligned */
++		skb_reserve(pegasus->rx_pool[i], ((unsigned int)pegasus->rx_pool[i]->data) % 4);
+ 	}
+ }
+ 
+diff --git a/drivers/net/usb/rtl8150.c b/drivers/net/usb/rtl8150.c
+index 6133401..c6de3eb 100644
+--- a/drivers/net/usb/rtl8150.c
++++ b/drivers/net/usb/rtl8150.c
+@@ -648,7 +648,10 @@ static void fill_skb_pool(rtl8150_t *dev)
+ 		if (!skb) {
+ 			return;
+ 		}
+-		skb_reserve(skb, 2);
++		/* because TCC8902's USB OTG Controller request that the
++		 * transfer buffer of urb must be DWORD aligned, so make
++		 * skb->data DWORD aligned */
++		skb_reserve(skb, ((unsigned int)skb->data) % 4);
+ 		dev->rx_skb_pool[i] = skb;
+ 	}
+ }
+diff --git a/drivers/usb/dwc_otg/dwc_otg_hcd.c b/drivers/usb/dwc_otg/dwc_otg_hcd.c
+index f7acdab..a08fa9a 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_hcd.c
++++ b/drivers/usb/dwc_otg/dwc_otg_hcd.c
+@@ -522,6 +522,18 @@ int __init dwc_otg_hcd_init(struct platform_device *pdev)
+ 		                       DWC_OTG_HCD_STATUS_BUF_SIZE,
+ 		                       &dwc_otg_hcd->status_buf_dma,
+ 		                       GFP_KERNEL | GFP_DMA);
++		dwc_otg_hcd->tmp_rcv_buf =
++		    dma_alloc_coherent(&pdev->dev,
++		                       DWC_OTG_HCD_TMP_BUF_SIZE,
++		                       &dwc_otg_hcd->tmp_rcv_buf_dma,
++		                       GFP_KERNEL | GFP_DMA);
++		dwc_otg_hcd->tmp_snd_buf =
++		    dma_alloc_coherent(&pdev->dev,
++		                       DWC_OTG_HCD_TMP_BUF_SIZE,
++		                       &dwc_otg_hcd->tmp_snd_buf_dma,
++		                       GFP_KERNEL | GFP_DMA);
++		dwc_otg_hcd->old_tmp_buf = dwc_otg_hcd->tmp_rcv_buf;
++		dwc_otg_hcd->rcv_buf_align_flag = 0;
+ 	} else {
+ 		dwc_otg_hcd->status_buf = kmalloc(DWC_OTG_HCD_STATUS_BUF_SIZE,
+ 		                                  GFP_KERNEL);
+@@ -754,6 +766,18 @@ void dwc_otg_hcd_free(struct usb_hcd *_hcd)
+ 			                  dwc_otg_hcd->status_buf,
+ 			                  dwc_otg_hcd->status_buf_dma);
+ 		}
++		if (dwc_otg_hcd->tmp_rcv_buf_dma) {
++			dma_free_coherent(_hcd->self.controller,
++			                  DWC_OTG_HCD_TMP_BUF_SIZE,
++			                  dwc_otg_hcd->tmp_rcv_buf,
++			                  dwc_otg_hcd->tmp_rcv_buf_dma);
++		}
++		if (dwc_otg_hcd->tmp_snd_buf_dma) {
++			dma_free_coherent(_hcd->self.controller,
++			                  DWC_OTG_HCD_TMP_BUF_SIZE,
++			                  dwc_otg_hcd->tmp_snd_buf,
++			                  dwc_otg_hcd->tmp_snd_buf_dma);
++		}
+ 	} else if (dwc_otg_hcd->status_buf != NULL) {
+ 		kfree(dwc_otg_hcd->status_buf);
+ 	}
+@@ -880,6 +904,23 @@ int dwc_otg_hcd_urb_enqueue(struct usb_hcd *_hcd,
+ 		return -ENODEV;
+ 	}
+ 
++	/* because TCC8902's USB OTG Controller request that the transfer buffer must be DWORD aligned when using DMA mode.
++	   so when transfer_buffer of urb is not DWORD aligned, we use another DWORD aligned temp buffer instead, and do
++	   according data copying work before urb transferring (when send data to device) or after urb transferring
++	   (when receive data from device). */
++	if((unsigned int)_urb->transfer_buffer % 4) {	// when transfer_buffer of urb is not DWORD aligned
++		if(usb_pipein(_urb->pipe) != 0) {   // when receive data from device
++		    dwc_otg_hcd->rcv_buf_align_flag = 1;
++		    dwc_otg_hcd->old_tmp_buf = _urb->transfer_buffer;
++		    dwc_otg_hcd->old_tmp_buf_size = _urb->transfer_buffer_length;
++		    _urb->transfer_buffer = dwc_otg_hcd->tmp_rcv_buf;
++		    _urb->transfer_dma = dwc_otg_hcd->tmp_rcv_buf_dma;
++		} else {			    // when send data to device
++		    memcpy(dwc_otg_hcd->tmp_snd_buf, _urb->transfer_buffer, _urb->transfer_buffer_length);
++		    _urb->transfer_buffer = dwc_otg_hcd->tmp_snd_buf;
++		    _urb->transfer_dma = dwc_otg_hcd->tmp_snd_buf_dma;
++		}
++	}
+ 	qtd = dwc_otg_hcd_qtd_create (_urb);
+ 	if (qtd == NULL) {
+ 		DWC_ERROR("DWC OTG HCD URB Enqueue failed creating QTD\n");
+diff --git a/drivers/usb/dwc_otg/dwc_otg_hcd.h b/drivers/usb/dwc_otg/dwc_otg_hcd.h
+index 640d762..adc9b7f 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_hcd.h
++++ b/drivers/usb/dwc_otg/dwc_otg_hcd.h
+@@ -344,7 +344,25 @@ typedef struct dwc_otg_hcd {
+ 	 * DMA address for status_buf.
+ 	 */
+ 	dma_addr_t		status_buf_dma;
++
++	/**
++	 * Temp buffer to use for replacing the real transfer buffer of urb
++	 * when original transfer buffer is not DWORD aligned.
++	 */
++	uint8_t			*tmp_rcv_buf, *tmp_snd_buf;
++	/* DMA address for temp buffer */
++	dma_addr_t		tmp_rcv_buf_dma, tmp_snd_buf_dma;
++	/* Save the address of original transfer buffer when it is not DWORD aligned */
++	uint8_t			*old_tmp_buf;
++	/* Save original transfer size when original transfer buffer is not
++	 * DWORD aligned */
++	uint32_t		old_tmp_buf_size;
++	/* 1 indicate: need to copy data back to the original transfer buffer after
++	 * urb transferring */
++	uint8_t			rcv_buf_align_flag;
++
+ #define DWC_OTG_HCD_STATUS_BUF_SIZE 64
++#define DWC_OTG_HCD_TMP_BUF_SIZE    1544
+ 
+ 	/**
+ 	 * Structure to allow starting the HCD in a non-interrupt context
+diff --git a/drivers/usb/dwc_otg/dwc_otg_hcd_intr.c b/drivers/usb/dwc_otg/dwc_otg_hcd_intr.c
+index bb0148a..dad5050 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_hcd_intr.c
++++ b/drivers/usb/dwc_otg/dwc_otg_hcd_intr.c
+@@ -527,7 +527,8 @@ static uint32_t get_actual_xfer_length(dwc_hc_t *_hc,
+  * @return 1 if the data transfer specified by the URB is completely finished,
+  * 0 otherwise.
+  */
+-static int update_urb_state_xfer_comp(dwc_hc_t *_hc,
++static int update_urb_state_xfer_comp(dwc_otg_hcd_t *_hcd,
++				      dwc_hc_t *_hc,
+                                       dwc_otg_hc_regs_t *_hc_regs,
+                                       struct urb *_urb,
+                                       dwc_otg_qtd_t *_qtd)
+@@ -546,6 +547,16 @@ static int update_urb_state_xfer_comp(dwc_hc_t *_hc,
+ 		}
+ 		else {
+ 			_urb->status = 0;
++			/* After urb transferring, if original transfer
++			 * buffer is not DWORD aligned and data direction is
++			 * from device to USB OTG Controller, copy data back
++			 * to from the temp buffer */
++			if(_hcd->rcv_buf_align_flag == 1) {
++			    if(usb_pipein(_urb->pipe) != 0 && (unsigned int)_hcd->old_tmp_buf % 4) {
++				_hcd->rcv_buf_align_flag = 0;
++				memcpy(_hcd->old_tmp_buf, _hcd->tmp_rcv_buf, _hcd->old_tmp_buf_size);
++			    }
++			}
+ 		}
+ 	}
+ 
+@@ -970,7 +981,7 @@ static int32_t handle_hc_xfercomp_intr(dwc_otg_hcd_t *_hcd,
+ 			halt_status = DWC_OTG_HC_XFER_COMPLETE;
+ 			break;
+ 		case DWC_OTG_CONTROL_DATA: {
+-			urb_xfer_done = update_urb_state_xfer_comp(_hc, _hc_regs, urb, _qtd);
++			urb_xfer_done = update_urb_state_xfer_comp(_hcd, _hc, _hc_regs, urb, _qtd);
+ 			if (urb_xfer_done) {
+ 				_qtd->control_phase = DWC_OTG_CONTROL_STATUS;
+ 				DWC_DEBUGPL(DBG_HCDV, "  Control data transfer done\n");
+@@ -998,7 +1009,7 @@ static int32_t handle_hc_xfercomp_intr(dwc_otg_hcd_t *_hcd,
+ 		break;
+ 	case PIPE_BULK:
+ 		DWC_DEBUGPL(DBG_HCDV, "  Bulk transfer complete\n");
+-		urb_xfer_done = update_urb_state_xfer_comp(_hc, _hc_regs, urb, _qtd);
++		urb_xfer_done = update_urb_state_xfer_comp(_hcd, _hc, _hc_regs, urb, _qtd);
+ 		if (urb_xfer_done) {
+ 			dwc_otg_hcd_complete_urb(_hcd, urb, urb->status);
+ 			halt_status = DWC_OTG_HC_XFER_URB_COMPLETE;
+@@ -1011,7 +1022,7 @@ static int32_t handle_hc_xfercomp_intr(dwc_otg_hcd_t *_hcd,
+ 		break;
+ 	case PIPE_INTERRUPT:
+ 		DWC_DEBUGPL(DBG_HCDV, "  Interrupt transfer complete\n");
+-		update_urb_state_xfer_comp(_hc, _hc_regs, urb, _qtd);
++		update_urb_state_xfer_comp(_hcd, _hc, _hc_regs, urb, _qtd);
+ 
+ 		/*
+ 		 * Interrupt URB is done on the first transfer complete
+-- 
+1.6.3.3
+

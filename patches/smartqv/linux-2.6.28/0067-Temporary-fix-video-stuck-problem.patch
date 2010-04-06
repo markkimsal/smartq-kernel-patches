@@ -1,0 +1,279 @@
+From 4333d42bc50a0951f89688e314eba400ecefde6e Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Fri, 30 Oct 2009 13:52:17 +0800
+Subject: [PATCH] Temporary fix video stuck problem
+
+---
+ arch/arm/Kconfig                   |    2 +-
+ arch/arm/configs/SmartV5_defconfig |   13 +++++++------
+ arch/arm/configs/SmartV7_defconfig |   13 +++++++------
+ arch/arm/mach-tcc8900/devices.c    |   22 +++++++++++-----------
+ drivers/serial/tcc_serial.c        |   15 +++++++++------
+ kernel/sched.c                     |    2 ++
+ sound/soc/tcc/tcc-pcm.c            |    8 ++++----
+ 7 files changed, 41 insertions(+), 34 deletions(-)
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index 2e50389..1ab1281 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -818,7 +818,7 @@ config HZ
+ 	default 200 if ARCH_EBSA110 || ARCH_S3C2410
+ 	default OMAP_32K_TIMER_HZ if ARCH_OMAP && OMAP_32K_TIMER
+ 	default AT91_TIMER_HZ if ARCH_AT91
+-	default 100
++	default 200
+ 
+ config AEABI
+ 	bool "Use the ARM EABI to compile the kernel"
+diff --git a/arch/arm/configs/SmartV5_defconfig b/arch/arm/configs/SmartV5_defconfig
+index dfabacb..e3af052 100644
+--- a/arch/arm/configs/SmartV5_defconfig
++++ b/arch/arm/configs/SmartV5_defconfig
+@@ -1,7 +1,7 @@
+ #
+ # Automatically generated make config: don't edit
+ # Linux kernel version: 2.6.28
+-# Tue Sep 22 16:33:40 2009
++# Fri Oct 30 13:49:11 2009
+ #
+ CONFIG_ARM=y
+ CONFIG_SYS_SUPPORTS_APM_EMULATION=y
+@@ -31,6 +31,7 @@ CONFIG_DEFCONFIG_LIST="/lib/modules/$UNAME_RELEASE/.config"
+ #
+ CONFIG_EXPERIMENTAL=y
+ CONFIG_BROKEN_ON_SMP=y
++CONFIG_LOCK_KERNEL=y
+ CONFIG_INIT_ENV_ARG_LIMIT=32
+ CONFIG_LOCALVERSION=""
+ # CONFIG_LOCALVERSION_AUTO is not set
+@@ -179,8 +180,8 @@ CONFIG_DRAM_DDR2=y
+ CONFIG_RAM_256MB=y
+ # CONFIG_HD720p_LEVEL41 is not set
+ # CONFIG_HD720p_LEVEL51 is not set
+-CONFIG_HD1080p_LEVEL41=y
+-# CONFIG_HD1080p_LEVEL51 is not set
++# CONFIG_HD1080p_LEVEL41 is not set
++CONFIG_HD1080p_LEVEL51=y
+ CONFIG_TCC_STRING="tcc8900"
+ 
+ #
+@@ -223,8 +224,8 @@ CONFIG_VMSPLIT_3G=y
+ # CONFIG_VMSPLIT_2G is not set
+ # CONFIG_VMSPLIT_1G is not set
+ CONFIG_PAGE_OFFSET=0xC0000000
+-# CONFIG_PREEMPT is not set
+-CONFIG_HZ=100
++CONFIG_PREEMPT=y
++CONFIG_HZ=200
+ CONFIG_AEABI=y
+ # CONFIG_OABI_COMPAT is not set
+ CONFIG_ARCH_FLATMEM_HAS_HOLES=y
+@@ -701,7 +702,7 @@ CONFIG_HW_CONSOLE=y
+ #
+ CONFIG_SERIAL_TCC=y
+ CONFIG_SERIAL_TCC_CONSOLE=y
+-CONFIG_SERIAL_TCC_DMA=y
++# CONFIG_SERIAL_TCC_DMA is not set
+ CONFIG_SERIAL_CORE=y
+ CONFIG_SERIAL_CORE_CONSOLE=y
+ CONFIG_UNIX98_PTYS=y
+diff --git a/arch/arm/configs/SmartV7_defconfig b/arch/arm/configs/SmartV7_defconfig
+index d8165b0..83f06e7 100644
+--- a/arch/arm/configs/SmartV7_defconfig
++++ b/arch/arm/configs/SmartV7_defconfig
+@@ -1,7 +1,7 @@
+ #
+ # Automatically generated make config: don't edit
+ # Linux kernel version: 2.6.28
+-# Tue Sep 29 16:20:39 2009
++# Fri Oct 30 13:51:40 2009
+ #
+ CONFIG_ARM=y
+ CONFIG_SYS_SUPPORTS_APM_EMULATION=y
+@@ -31,6 +31,7 @@ CONFIG_DEFCONFIG_LIST="/lib/modules/$UNAME_RELEASE/.config"
+ #
+ CONFIG_EXPERIMENTAL=y
+ CONFIG_BROKEN_ON_SMP=y
++CONFIG_LOCK_KERNEL=y
+ CONFIG_INIT_ENV_ARG_LIMIT=32
+ CONFIG_LOCALVERSION=""
+ # CONFIG_LOCALVERSION_AUTO is not set
+@@ -179,8 +180,8 @@ CONFIG_DRAM_DDR2=y
+ CONFIG_RAM_256MB=y
+ # CONFIG_HD720p_LEVEL41 is not set
+ # CONFIG_HD720p_LEVEL51 is not set
+-CONFIG_HD1080p_LEVEL41=y
+-# CONFIG_HD1080p_LEVEL51 is not set
++# CONFIG_HD1080p_LEVEL41 is not set
++CONFIG_HD1080p_LEVEL51=y
+ CONFIG_TCC_STRING="tcc8900"
+ 
+ #
+@@ -223,8 +224,8 @@ CONFIG_VMSPLIT_3G=y
+ # CONFIG_VMSPLIT_2G is not set
+ # CONFIG_VMSPLIT_1G is not set
+ CONFIG_PAGE_OFFSET=0xC0000000
+-# CONFIG_PREEMPT is not set
+-CONFIG_HZ=100
++CONFIG_PREEMPT=y
++CONFIG_HZ=200
+ CONFIG_AEABI=y
+ # CONFIG_OABI_COMPAT is not set
+ CONFIG_ARCH_FLATMEM_HAS_HOLES=y
+@@ -701,7 +702,7 @@ CONFIG_HW_CONSOLE=y
+ #
+ CONFIG_SERIAL_TCC=y
+ CONFIG_SERIAL_TCC_CONSOLE=y
+-CONFIG_SERIAL_TCC_DMA=y
++# CONFIG_SERIAL_TCC_DMA is not set
+ CONFIG_SERIAL_CORE=y
+ CONFIG_SERIAL_CORE_CONSOLE=y
+ CONFIG_UNIX98_PTYS=y
+diff --git a/arch/arm/mach-tcc8900/devices.c b/arch/arm/mach-tcc8900/devices.c
+index 04b7174..d447274 100644
+--- a/arch/arm/mach-tcc8900/devices.c
++++ b/arch/arm/mach-tcc8900/devices.c
+@@ -53,17 +53,6 @@ static struct resource tcc8900_touch_resources[] = {
+         .flags = IORESOURCE_IRQ,
+     },
+ };
+-static struct platform_device hhtech_gpio_device = {
+-	.name			= "hhtech_gpio",
+-	.id			= -1,
+-	.resource		= NULL,
+-	.num_resources	= 0,
+-};
+-
+-static inline void tcc8900_init_hhtech_gpio(void)
+-{
+-	platform_device_register(&hhtech_gpio_device);
+-}
+ 
+ static struct platform_device tcc8900_touchscreen_device = {
+ 	.name			= "tcc-ts",
+@@ -78,6 +67,17 @@ static inline void tcc8900_init_touch_ts(void)
+ }
+ #endif /* CONFIG_TOUCHSCREEN_TCCTS */
+ 
++static struct platform_device hhtech_gpio_device = {
++	.name			= "hhtech_gpio",
++	.id			= -1,
++	.resource		= NULL,
++	.num_resources	= 0,
++};
++
++static inline void tcc8900_init_hhtech_gpio(void)
++{
++	platform_device_register(&hhtech_gpio_device);
++}
+ 
+ /*----------------------------------------------------------------------
+  * Device     : DM9000 resource
+diff --git a/drivers/serial/tcc_serial.c b/drivers/serial/tcc_serial.c
+index 9a9dc54..80e7510 100644
+--- a/drivers/serial/tcc_serial.c
++++ b/drivers/serial/tcc_serial.c
+@@ -363,7 +363,7 @@ void my_uart_rx_process(unsigned long arg)
+         wr_regl(port, OFFSET_MCR, rd_regl(port, OFFSET_MCR) & ~Hw1);
+       }
+ 
+-      spin_lock(port->lock);
++      spin_lock(&port->lock);
+       tty = port->info->port.tty;
+ 
+       flag = TTY_NORMAL;
+@@ -409,7 +409,7 @@ void my_uart_rx_process(unsigned long arg)
+         wr_regl(port, OFFSET_MCR, rd_regl(port, OFFSET_MCR) | Hw1);
+       }
+ out:
+-    spin_unlock(port->lock);
++    spin_unlock(&port->lock);
+     }
+ }
+ 
+@@ -518,6 +518,9 @@ static int get_writable_fifo_size(struct uart_port *port)
+ 
+ static void update_fifo_size(struct uart_port *port)
+ {
++    /*FIXME: */
++    tcc_serial_ports[port->line].fifosize = FIFOSIZE;
++    return;
+ #ifdef CONFIG_SERIAL_TCC_DMA_TX
+     if(port->line == DMA_PORT)
+         tcc_serial_ports[port->line].fifosize = get_writable_fifo_size(port);
+@@ -659,7 +662,7 @@ static irqreturn_t tcc_serial_interrupt_dma(int irq, void *id)
+ 	struct uart_port *port = id;
+     volatile PGDMACTRL pDMA = (volatile PGDMACTRL)tcc_p2v(HwGDMA_BASE);
+ 
+-    spin_lock(port->lock);
++    spin_lock(&port->lock);
+     if (port->line == DMA_PORT) {
+         /* XXX */
+         //tca_dma_clrien(DMA_TX_CH_NUM, (unsigned long *)pDMA);
+@@ -668,7 +671,7 @@ static irqreturn_t tcc_serial_interrupt_dma(int irq, void *id)
+         tca_dma_clrien(DMA_TX_CH_NUM, (unsigned long *)pDMA);
+         tca_serial_dmaclrinterrupt(DMA_TX_CH_NUM, (unsigned long *)pDMA);
+     }
+-    spin_unlock(port->lock);
++    spin_unlock(&port->lock);
+ 	return IRQ_HANDLED;
+ }
+ #endif
+@@ -686,7 +689,7 @@ static irqreturn_t tcc_serial_interrupt(int irq, void *id)
+     
+     uerstat = 0;
+ 	
+-    spin_lock(port->lock);
++    spin_lock(&port->lock);
+ 
+     iir_data = rd_regl(port, OFFSET_IIR);
+     iir_data = (iir_data & 0x0E) >> 1;
+@@ -743,7 +746,7 @@ static irqreturn_t tcc_serial_interrupt(int irq, void *id)
+ 
+ 
+ out:
+-    spin_unlock(port->lock);
++    spin_unlock(&port->lock);
+ 	return IRQ_HANDLED;
+ }
+ 
+diff --git a/kernel/sched.c b/kernel/sched.c
+index e4bb1dd..cda71ee 100644
+--- a/kernel/sched.c
++++ b/kernel/sched.c
+@@ -4388,8 +4388,10 @@ static inline void schedule_debug(struct task_struct *prev)
+ 	 * schedule() atomically, we ignore that path for now.
+ 	 * Otherwise, whine if we are scheduling when we should not be.
+ 	 */
++	#if 0 /*FIXME: Disable nand driver report*/
+ 	if (unlikely(in_atomic_preempt_off() && !prev->exit_state))
+ 		__schedule_bug(prev);
++	#endif
+ 
+ 	profile_hit(SCHED_PROFILING, __builtin_return_address(0));
+ 
+diff --git a/sound/soc/tcc/tcc-pcm.c b/sound/soc/tcc/tcc-pcm.c
+index da8ea9e..21616de 100644
+--- a/sound/soc/tcc/tcc-pcm.c
++++ b/sound/soc/tcc/tcc-pcm.c
+@@ -76,12 +76,12 @@ static const struct snd_pcm_hardware tcc_pcm_hardware_play = {
+ #endif
+ 
+ #if 1
+-    .period_bytes_min = 4096,
+-    .period_bytes_max = 4096 * 2,
++    .period_bytes_min = 8 * 1024,
++    .period_bytes_max = 8 * 1024,
+     .periods_min = 2,
+     .periods_max = 128,
+-    .buffer_bytes_max = 128 * 1024,
+-    .fifo_size = 32,  //ignored
++    .buffer_bytes_max = 64 * 1024,
++    .fifo_size = 16,  //ignored
+ #else
+     .period_bytes_min = 128,
+     .period_bytes_max = __play_buf_cnt * __play_buf_size,
+-- 
+1.6.3.3
+

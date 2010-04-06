@@ -1,0 +1,38 @@
+From 3814bb6922839033ad36d0783154e0bd91091582 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Fri, 13 Nov 2009 20:04:15 +0800
+Subject: [PATCH] Refix i2c
+
+---
+ arch/arm/mach-tcc8900/devices.c |    8 ++++----
+ 1 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/devices.c b/arch/arm/mach-tcc8900/devices.c
+index da91853..1acd4b9 100644
+--- a/arch/arm/mach-tcc8900/devices.c
++++ b/arch/arm/mach-tcc8900/devices.c
+@@ -191,8 +191,8 @@ static struct resource tcc8900_i2c_resources[] = {
+ 		.flags	= IORESOURCE_MEM,
+     },
+ 	[1] = {
+-		.start	= 50,					/* I2C ch0 100Kbps */
+-		.end	= 50,					/* I2C ch1 100Kbps */
++		.start	= 50,					/* I2C ch0 50Kbps */
++		.end	= 50,					/* I2C ch1 50Kbps */
+ 		.flags	= IORESOURCE_MEM,
+     },
+ //	[1] = {
+@@ -208,8 +208,8 @@ static struct resource tcc8900_i2c_resources[] = {
+ 		.flags	= IORESOURCE_MEM,
+     },
+ 	[3] = {
+-		.start	= 50,					/* SMU_I2C ch0 100Kbps */
+-		.end	= 50,					/* SMU_I2C ch1 100Kbps */
++		.start	= 100,					/* SMU_I2C ch0 100Kbps */
++		.end	= 100,					/* SMU_I2C ch1 100Kbps */
+ 		.flags	= IORESOURCE_MEM,
+     },
+ };
+-- 
+1.6.3.3
+

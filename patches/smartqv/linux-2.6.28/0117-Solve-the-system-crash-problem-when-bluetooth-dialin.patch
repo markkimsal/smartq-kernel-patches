@@ -1,0 +1,25 @@
+From 86b772ca367b5e2943d2e3b80a825c017fb90310 Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Tue, 15 Dec 2009 10:42:41 +0800
+Subject: [PATCH] Solve the system crash problem when bluetooth dialing at the second time
+
+---
+ net/bluetooth/rfcomm/tty.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/net/bluetooth/rfcomm/tty.c b/net/bluetooth/rfcomm/tty.c
+index 5620f62..e8eb7e3 100644
+--- a/net/bluetooth/rfcomm/tty.c
++++ b/net/bluetooth/rfcomm/tty.c
+@@ -841,7 +841,7 @@ static int rfcomm_tty_ioctl(struct tty_struct *tty, struct file *filp, unsigned
+ 		break;
+ 
+ 	case TIOCGSERIAL:
+-		rfcomm_tty_ioctl_called = (rfcomm_tty_ioctl_called == 1) ? 0 : 1;
++		rfcomm_tty_ioctl_called = 1;
+ 		BT_ERR("TIOCGSERIAL is not supported");
+ 		return -ENOIOCTLCMD;
+ 
+-- 
+1.6.3.3
+

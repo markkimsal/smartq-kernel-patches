@@ -1,0 +1,32 @@
+From 66906100792469f0aa5c11eebd85e41b6868c779 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Tue, 19 Jan 2010 13:44:53 +0800
+Subject: [PATCH] fix the bug of resume when waked up by button after dc be pluged out
+
+---
+ drivers/char/hhtech_gpio.c |    2 ++
+ 1 files changed, 2 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 8489022..4f31a97 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -1613,6 +1613,7 @@ static void gpio_do_load(struct sleep_save_phy *ptr, int count)
+ 
+ static int hhtech_gpio_suspend(struct platform_device *dev, pm_message_t state)
+ {
++	disable_irq(IRQ_DC);
+ 	/* Becareful: MMC must be suspended after this driver */
+ 	set_wifi_en(0);
+ 	/* Close USB Power */
+@@ -1650,6 +1651,7 @@ static int hhtech_gpio_resume(struct platform_device *dev)
+ 
+ 	gpio_do_load(save_gpio, ARRAY_SIZE(save_gpio));
+ 	set_wifi_en(1);
++	enable_irq(IRQ_DC);
+ 	return 0;
+ }
+ #else
+-- 
+1.6.3.3
+

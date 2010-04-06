@@ -1,0 +1,159 @@
+From e53841a75f561405620b48538e384b0091215972 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Fri, 30 Oct 2009 17:20:36 +0800
+Subject: [PATCH] Provide user select function for reserved memory size
+
+---
+ arch/arm/kernel/setup.c                     |   30 +++++++++++++++++++++++++-
+ arch/arm/mach-tcc8900/include/mach/memory.h |   10 ---------
+ drivers/char/tcc_proc.c                     |    3 ++
+ drivers/video/tccfb.c                       |   12 ++++++++--
+ 4 files changed, 40 insertions(+), 15 deletions(-)
+
+diff --git a/arch/arm/kernel/setup.c b/arch/arm/kernel/setup.c
+index 53f318b..a3f32c6 100644
+--- a/arch/arm/kernel/setup.c
++++ b/arch/arm/kernel/setup.c
+@@ -673,6 +673,9 @@ static int __init customize_machine(void)
+ }
+ arch_initcall(customize_machine);
+ 
++unsigned int TCC_VPU_SIZE;
++EXPORT_SYMBOL(TCC_VPU_SIZE);
++
+ void __init setup_arch(char **cmdline_p)
+ {
+ 	struct tag *tags = (struct tag *)&init_tags;
+@@ -683,8 +686,31 @@ void __init setup_arch(char **cmdline_p)
+ 	 * Telechips Board Memory Setting
+ 	 *  - refer to arch/arm/mach-tcc8900/include/mach/memory.h
+ 	 */
+-	char *tcc_mem_size = TCC_MEM_SIZE;
+-	strcat(default_command_line, tcc_mem_size);
++	unsigned long mem_flag = *(volatile unsigned long *)(phys_to_virt(0x40200000));
++	printk(KERN_ERR "mem_flag = %d\n", mem_flag);
++	switch(mem_flag) {
++	    case 0:
++		strcat(default_command_line, " mem=214M");
++		TCC_VPU_SIZE = 24;
++		break;
++	    case 1:
++		strcat(default_command_line, " mem=188M");
++		TCC_VPU_SIZE = 50;
++		break;
++	    case 2:
++		strcat(default_command_line, " mem=194M");
++		TCC_VPU_SIZE = 44;
++		break;
++	    case 3:
++		strcat(default_command_line, " mem=138M");
++		TCC_VPU_SIZE = 100;
++		break;
++	    default:
++		printk(KERN_NOTICE "mem_flag was setted wrong\n");
++		strcat(default_command_line, " mem=138M");
++		TCC_VPU_SIZE = 100;
++		break;
++	}
+ 
+ 	setup_processor();
+ 	mdesc = setup_machine(machine_arch_type);
+diff --git a/arch/arm/mach-tcc8900/include/mach/memory.h b/arch/arm/mach-tcc8900/include/mach/memory.h
+index 40e9bf7..f6a3713 100644
+--- a/arch/arm/mach-tcc8900/include/mach/memory.h
++++ b/arch/arm/mach-tcc8900/include/mach/memory.h
+@@ -53,13 +53,10 @@
+ 
+ 	#if defined(CONFIG_HD720p_LEVEL41)
+ 		#define TCC_MEM_SIZE " mem=86M"
+-		#define TCC_VPU_SIZE 24
+ 	#elif defined(CONFIG_HD720p_LEVEL51)
+ 		#define TCC_MEM_SIZE " mem=60M"
+-		#define TCC_VPU_SIZE 50
+ 	#elif defined(CONFIG_HD1080p_LEVEL41)
+ 		#define TCC_MEM_SIZE " mem=66M"
+-		#define TCC_VPU_SIZE 44
+ 	#elif defined(CONFIG_HD1080p_LEVEL51)
+ 		#error "[not support HD1080p_LEVEL51] Check menuconfig->System Type->A/V Spec"
+ 	#else
+@@ -72,16 +69,12 @@
+ 
+ 	#if defined(CONFIG_HD720p_LEVEL41)
+ 		#define TCC_MEM_SIZE " mem=214M"
+-		#define TCC_VPU_SIZE 24
+ 	#elif defined(CONFIG_HD720p_LEVEL51)
+ 		#define TCC_MEM_SIZE " mem=188M"
+-		#define TCC_VPU_SIZE 50
+ 	#elif defined(CONFIG_HD1080p_LEVEL41)
+ 		#define TCC_MEM_SIZE " mem=194M"
+-		#define TCC_VPU_SIZE 44
+ 	#elif defined(CONFIG_HD1080p_LEVEL51)
+ 		#define TCC_MEM_SIZE " mem=138M"
+-		#define TCC_VPU_SIZE 100
+ 	#else
+ 		#error "[undefine A/V spec] Check menuconfig->System Type->A/V Spec"
+ 	#endif
+@@ -90,15 +83,12 @@
+ 	#error "[undefine MEM size] Check menuconfig->System Type->RAM Spec"
+ #endif
+ 
+-#define TCC_VPU_OFFSET CAL_VPU_OFFSET(TCC_RAM_TOTAL_SIZE, TCC_VPU_SIZE) 
+-
+ /*
+  * Frame buffer memory define
+  */
+ #define TCC_FB0_SIZE	(8*1024*1024)	// 8MB
+ #define TCC_FB1_SIZE	(4*1024*1024)	// 4MB
+ #define TCC_FB2_SIZE	(4*1024*1024)	// 4MB
+-#define TCC_FB_OFFSET	(TCC_VPU_OFFSET - (TCC_FB0_SIZE+TCC_FB1_SIZE+TCC_FB2_SIZE))
+ 
+ /*
+  * Size of DMA-consistent memory region.  Must be multiple of 2M,
+diff --git a/drivers/char/tcc_proc.c b/drivers/char/tcc_proc.c
+index 3a88a88..b3e2525 100644
+--- a/drivers/char/tcc_proc.c
++++ b/drivers/char/tcc_proc.c
+@@ -36,6 +36,9 @@ static int proc_read_vcodec_size(char *page, char **start, off_t off,
+ 	return len;
+ }
+ 
++extern unsigned int TCC_VPU_SIZE;
++#define TCC_VPU_OFFSET CAL_VPU_OFFSET(TCC_RAM_TOTAL_SIZE, TCC_VPU_SIZE)
++
+ static int init_tccproc(void)
+ {
+ 	int rv = 0;
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index 92184c7..c7f9937 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -188,10 +188,12 @@ const unsigned int default_scn_depth[CONFIG_FB_TCC_DEVS_MAX] =
+ static u_char *fb_mem_vaddr[CONFIG_FB_TCC_DEVS]= {0,};
+ static u_int   fb_mem_size [CONFIG_FB_TCC_DEVS]= {0,};
+ 
++extern unsigned int TCC_VPU_SIZE;
++#define TCC_VPU_OFFSET CAL_VPU_OFFSET(TCC_RAM_TOTAL_SIZE, TCC_VPU_SIZE)
++#define TCC_FB_OFFSET	(TCC_VPU_OFFSET - (TCC_FB0_SIZE+TCC_FB1_SIZE+TCC_FB2_SIZE))
++
+ // for reserved frame buffer memory.
+-static u_long fb_reseved_mem_paddr[CONFIG_FB_TCC_DEVS_MAX] = {TCC_FB_OFFSET,
+-															  TCC_FB_OFFSET + TCC_FB0_SIZE,
+-															  TCC_FB_OFFSET + TCC_FB0_SIZE + TCC_FB1_SIZE };
++static u_long fb_reseved_mem_paddr[CONFIG_FB_TCC_DEVS_MAX];
+ static u_int  fb_reseved_mem_size [CONFIG_FB_TCC_DEVS_MAX] = {TCC_FB0_SIZE,
+ 															  TCC_FB1_SIZE,
+ 															  TCC_FB2_SIZE};
+@@ -2516,6 +2518,10 @@ static int __init tccfb_map_video_memory(struct tccfb_info *fbi, int plane)
+ 	fbi->map_dma  = 0;
+ 	fbi->map_size = 0;
+ 
++	fb_reseved_mem_paddr[0] = TCC_FB_OFFSET;
++	fb_reseved_mem_paddr[1] = TCC_FB_OFFSET + TCC_FB0_SIZE;
++	fb_reseved_mem_paddr[2] = TCC_FB_OFFSET + TCC_FB0_SIZE + TCC_FB1_SIZE;
++
+ 	if(request_mem_region(fb_reseved_mem_paddr[plane], fb_reseved_mem_size[plane], "tccfb"))
+ 	{
+ 		fbi->fb->fix.smem_start = fb_reseved_mem_paddr[plane];
+-- 
+1.6.3.3
+

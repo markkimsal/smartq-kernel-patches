@@ -1,0 +1,429 @@
+From 25689a9484b7d1286c814df83fca6ee3751918ac Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Tue, 3 Nov 2009 16:52:09 +0800
+Subject: [PATCH] Refine hhtech_gpio.c and remove some warning
+
+---
+ drivers/char/hhtech_gpio.c |  116 ++++++++++++++++++++++++-------------------
+ 1 files changed, 65 insertions(+), 51 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 013d3a9..e505c79 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -268,7 +268,7 @@ static int get_battery_life(void)
+ int work_yet = 0;
+ //add this to avoid ddi off by turning off the backlight when shutdown_unused_devices still not be executed
+ EXPORT_SYMBOL(work_yet);
+-static void shutdown_unused_devices(void)
++static void shutdown_unused_devices(struct work_struct* work)
+ {
+ 	unsigned int i,reg_val,addr;
+ 
+@@ -353,7 +353,7 @@ static ssize_t hhtech_sysfs_charge_s(struct device *dev,
+ 	return strlen(buf);
+ }
+ 
+-static int hhtech_sysfs_show_power(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_power(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_PWR_EN));
+ }
+@@ -376,20 +376,22 @@ static ssize_t hhtech_sysfs_store_power(struct device *dev,
+ 
+ extern void memchange(unsigned int freq);
+ static unsigned long now_memfreq = 3300000;
+-static int hhtech_sysfs_show_memfreq(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_memfreq(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    return snprintf(buf, PAGE_SIZE, "%d\n", now_memfreq);
++    return snprintf(buf, PAGE_SIZE, "%ld\n", now_memfreq);
+ }
+ 
+ static ssize_t hhtech_sysfs_store_memfreq(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    unsigned long value;
++
+     if(len < 1)
+ 	return -EINVAL;
+ 
+     if(PMU_PWROFF & 0x80)
+ 	return len;
+ 
+-    unsigned long value = simple_strtoul(buf, NULL, 10);
++    value = simple_strtoul(buf, NULL, 10);
+     now_memfreq = value;
+     memchange(value);
+ 
+@@ -401,33 +403,35 @@ static void __iomem *vic_base;
+ char wakeup_time[50];
+ EXPORT_SYMBOL(wakeup_time);
+ extern VOLATILE void tca_alarm_setpmwkup(unsigned int rtcbaseaddresss,unsigned int vicbaseaddresss);
+-static int hhtech_sysfs_show_rtc_wakeup(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_rtc_wakeup(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     volatile rtctime lpTime;
+     tca_rtc_gettime(rtc_base, (rtctime *)&lpTime);
+     printk(KERN_EMERG"!!!dcs: %d-%d-%d-%d-%d-%d-%d\n",lpTime.wYear,lpTime.wMonth,lpTime.wDayOfWeek,lpTime.wDay,lpTime.wHour,lpTime.wMinute,lpTime.wSecond);
+     return 0;
+ }
+-static int hhtech_sysfs_store_rtc_wakeup(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_store_rtc_wakeup(struct device *dev, struct device_attribute *attr, 
++					     const char *buf, size_t len)
+ { 
+     memcpy(wakeup_time,buf,strlen(buf));
+     tca_alarm_setpmwkup((unsigned int)rtc_base,(unsigned int)vic_base); 
++    return 0;
+ }
+ 
+ //vbus pm ops 
+ static int vb_st;
+-static int hhtech_sysfs_show_vb(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_vb(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     vb_st = !!(PMU_PWROFF & 0x40);
+     return snprintf(buf, PAGE_SIZE, "%d\n", vb_st);
+ }
+ static ssize_t hhtech_sysfs_store_vb(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    int reg_val, value;
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    int value = simple_strtoul(buf, NULL, 10);
+-    int reg_val;
++    value = simple_strtoul(buf, NULL, 10);
+ 
+     vb_st = !!(PMU_PWROFF & 0x40);
+ 
+@@ -449,18 +453,19 @@ static ssize_t hhtech_sysfs_store_vb(struct device *dev, struct device_attribute
+ //dbus pm ops
+ char lcd_buff[0x124];
+ static int db_st;
+-static int hhtech_sysfs_show_db(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_db(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     db_st = !!(PMU_PWROFF & 0x80);
+     return snprintf(buf, PAGE_SIZE, "%d\n", db_st);
+ }
+ static ssize_t hhtech_sysfs_store_db(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    int value, reg_val;
++
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    int value = simple_strtoul(buf, NULL, 10);
+-    int reg_val;
++    value = simple_strtoul(buf, NULL, 10);
+ 
+     db_st = !!(PMU_PWROFF & 0x80);
+ 
+@@ -494,17 +499,18 @@ static ssize_t hhtech_sysfs_store_db(struct device *dev, struct device_attribute
+ //gbus pm ops
+ static int gb_st = 0;
+ static unsigned long gbpd;
+-static int hhtech_sysfs_show_gb(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_gb(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", gb_st);
+ }
+ static ssize_t hhtech_sysfs_store_gb(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    int value, reg_val;
++
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    int value = simple_strtoul(buf, NULL, 10);
+-    int reg_val;
++    value = simple_strtoul(buf, NULL, 10);
+ 
+     if((value) && (!gb_st))
+     {
+@@ -527,17 +533,18 @@ static ssize_t hhtech_sysfs_store_gb(struct device *dev, struct device_attribute
+ 
+ //hdmi ops
+ static int hd_st = 0;
+-static int hhtech_sysfs_show_hd(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_hd(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", hd_st);
+ }
+ static ssize_t hhtech_sysfs_store_hd(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    int value, reg_val;
++
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    int value = simple_strtoul(buf, NULL, 10);
+-    int reg_val;
++    value = simple_strtoul(buf, NULL, 10);
+ 
+     if((value) && (!hd_st))
+     {
+@@ -560,17 +567,18 @@ static ssize_t hhtech_sysfs_store_hd(struct device *dev, struct device_attribute
+ 
+ //iobus pm ops
+ static int io_st = 0;
+-static int hhtech_sysfs_show_io(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_io(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", io_st);
+ }
+ static ssize_t hhtech_sysfs_store_io(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    int value, reg_val;
++
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    int value = simple_strtoul(buf, NULL, 10);
+-    int reg_val;
++    value = simple_strtoul(buf, NULL, 10);
+ 
+     if(value == 40)
+     {
+@@ -600,7 +608,7 @@ static ssize_t hhtech_sysfs_store_io(struct device *dev, struct device_attribute
+ static unsigned int vpu_bus_clock_addr = 0xF0702000;
+ static unsigned int vpu_core_clock_addr = 0xF0400018;
+ static int vpu_on_st;
+-static int hhtech_sysfs_show_vpu_on(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_vpu_on(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     if(!!(PMU_PWROFF & 0x40))
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", 0);
+@@ -611,15 +619,16 @@ static int hhtech_sysfs_show_vpu_on(struct device *dev, struct device_attribute
+ 
+ static ssize_t hhtech_sysfs_store_vpu_on(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    unsigned long reg_write_value, reg_read_value;
++    int value;
++
+     if(len < 1)
+ 	return -EINVAL;
+-    unsigned long reg_read_value;
+-    unsigned long reg_write_value;
+ 
+     if(!!(PMU_PWROFF & 0x40))
+ 	return len;
+ 
+-    int value = simple_strtoul(buf, NULL, 10);
++    value = simple_strtoul(buf, NULL, 10);
+     vpu_on_st = !(*(volatile unsigned long *)vpu_bus_clock_addr & 0x4);
+ 
+     if(value && !vpu_on_st)
+@@ -644,16 +653,18 @@ static ssize_t hhtech_sysfs_store_vpu_on(struct device *dev, struct device_attri
+ }
+ 
+ //lcd pm ops
+-static int hhtech_sysfs_show_lcd(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_lcd(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_LCD_PWR_EN));
+ }
+ static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    int value;
++
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    int value = simple_strtoul(buf, NULL, 10);
++    value = simple_strtoul(buf, NULL, 10);
+ 
+     value = !!value;
+ 
+@@ -664,25 +675,24 @@ static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribut
+ 
+ int video_on = 0;
+ EXPORT_SYMBOL(video_on);
+-static int hhtech_sysfs_show_play_video(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_play_video(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", video_on);    
+ }
+ static ssize_t hhtech_sysfs_store_play_video(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    unsigned long reg_read_value;
+-    unsigned long reg_write_value;
++    unsigned long reg_read_value, reg_write_value;
++    int value;
+ 
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    int value = simple_strtoul(buf, NULL, 10);
++    value = simple_strtoul(buf, NULL, 10);
+ 
+     if(value)
+     {
+ 	video_on = 1;
+-    }else
+-    {
++    } else {
+ 	mdelay(10);
+ 
+ 	video_on = 0;
+@@ -713,16 +723,18 @@ static ssize_t hhtech_sysfs_store_play_video(struct device *dev, struct device_a
+ //before sleep
+ int sleep_type = 0;
+ EXPORT_SYMBOL(sleep_type);
+-static int hhtech_sysfs_show_sleep_type(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_sleep_type(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", sleep_type);
+ }
+ static ssize_t hhtech_sysfs_store_sleep_type(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    int value;
++
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    int value = simple_strtoul(buf, NULL, 10);
++    value = simple_strtoul(buf, NULL, 10);
+     if((value != 0)&&(value != 1)&&(value != 2))
+ 	value = 0;
+ 
+@@ -731,23 +743,25 @@ static ssize_t hhtech_sysfs_store_sleep_type(struct device *dev, struct device_a
+     return len;
+ }
+ 
+-static int hhtech_sysfs_show_otgmode(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_otgmode(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", choosedevice);
+ }
+ 
+ static ssize_t hhtech_sysfs_store_otgmode(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    int value;
++
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    unsigned int value = simple_strtoul(buf, NULL, 10);
++    value = simple_strtoul(buf, NULL, 10);
+     choosedevice = value;
+ 
+     return len;
+ }
+ 
+-static int hhtech_sysfs_show_charge(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_charge(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_CHARGER_EN));
+ }
+@@ -772,7 +786,7 @@ extern void bl_control(bool flag);
+ int curblight = 100;
+ EXPORT_SYMBOL(curblight);
+ 
+-static int hhtech_sysfs_show_blight(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_blight(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", curblight);
+ }
+@@ -806,7 +820,7 @@ static ssize_t hhtech_sysfs_store_blight(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_tvout(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_tvout(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_TVOUT_EN));
+ }
+@@ -826,7 +840,7 @@ static ssize_t hhtech_sysfs_store_tvout(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_usbpwr(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_usbpwr(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_USB_EN));
+ }
+@@ -846,7 +860,7 @@ static ssize_t hhtech_sysfs_store_usbpwr(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_usbhostpwr(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_usbhostpwr(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_USB_HOSTPWR_EN));
+ }
+@@ -866,7 +880,7 @@ static ssize_t hhtech_sysfs_store_usbhostpwr(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_usbotgdrv(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_usbotgdrv(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_USB_OTGDRV_EN));
+ }
+@@ -886,7 +900,7 @@ static ssize_t hhtech_sysfs_store_usbotgdrv(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_speaker(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_speaker(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_SPEAKER_EN));
+ }
+@@ -909,7 +923,7 @@ static ssize_t hhtech_sysfs_store_speaker(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_wifi(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_wifi(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_WIFI_EN));
+ }
+@@ -929,7 +943,7 @@ static ssize_t hhtech_sysfs_store_wifi(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_hdmi(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_hdmi(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_HDMI_EN));
+ }
+@@ -949,7 +963,7 @@ static ssize_t hhtech_sysfs_store_hdmi(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_led1(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_led1(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", !gpio_get_value(GPIO_LED1_EN));
+ }
+@@ -969,7 +983,7 @@ static ssize_t hhtech_sysfs_store_led1(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_led2(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_led2(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", !gpio_get_value(GPIO_LED2_EN));
+ }
+@@ -989,7 +1003,7 @@ static ssize_t hhtech_sysfs_store_led2(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_rtc_wk_time(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_rtc_wk_time(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%ld\n", rtc_wakeup_time);
+ }
+@@ -1009,7 +1023,7 @@ static ssize_t hhtech_sysfs_store_rtc_wk_time(struct device *dev,
+ 	return len;
+ }
+ 
+-static int hhtech_sysfs_show_wk_status(struct device *dev, struct device_attribute *attr, char *buf)
++static ssize_t hhtech_sysfs_show_wk_status(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", wakeup_status);
+ }
+-- 
+1.6.3.3
+

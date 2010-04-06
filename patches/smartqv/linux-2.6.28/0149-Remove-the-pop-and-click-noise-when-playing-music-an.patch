@@ -1,0 +1,103 @@
+From f67407d90844daf32cd68dc3366481e8b24d8a7d Mon Sep 17 00:00:00 2001
+From: gqwang <wgq@mail.ustc.edu.cn>
+Date: Fri, 29 Jan 2010 16:38:55 +0800
+Subject: [PATCH] Remove the pop and click noise when playing music and backlight restore
+
+---
+ drivers/char/tcc_backlight.c |   26 ++++++++++++++++----------
+ sound/soc/codecs/wm8987.c    |    3 +++
+ 2 files changed, 19 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/char/tcc_backlight.c b/drivers/char/tcc_backlight.c
+index f73ab13..dca0e56 100644
+--- a/drivers/char/tcc_backlight.c
++++ b/drivers/char/tcc_backlight.c
+@@ -192,9 +192,10 @@ static void bl_init(void)
+ extern void memchange(unsigned int freq);
+ extern int video_on;
+ extern int noneed_respond;
++extern unsigned char wm8987_is_playing;
+ static int ddi_off_mode = 0;
+ static int bl_count = 3;//not use turn-off ddi_bus way until finish the init
+-static int freq_change = 0;
++static int mem_bus_freq_change = 0, io_bus_freq_change = 0;
+ void bl_control(bool flag)
+ {
+ 	int device_conn;
+@@ -212,16 +213,17 @@ void bl_control(bool flag)
+ 		noneed_respond = 0;
+ 		ddi_off_mode = 0;
+ 		gpio_direction_output(GPIO_LCD_PWR_EN, 1);
+-		
+-		if(freq_change)
++
++		if(mem_bus_freq_change)
+ 		{
+ 			memchange(3300000);// change mem bus to 330m
+ 			mdelay(50);
++		}
+ 
++		if(io_bus_freq_change)
+ 			*(volatile unsigned long *)0xF0400010 = 0x200022;//change io bus to 156M 
+-		}
+ 
+-		freq_change = 0;
++		mem_bus_freq_change = io_bus_freq_change = 0;
+ 
+ 		tca_bkl_powerup((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
+ 		gBKLPwrInfo.status = PWR_STATUS_ON;
+@@ -235,14 +237,18 @@ void bl_control(bool flag)
+ 
+ 		if(!device_conn && !unlikely(bl_count) && !gpio_get_value(GPIO_HDMI_EN) && !gpio_get_value(GPIO_TVOUT_EN))
+ 		{
+-			*(volatile unsigned long *)0xF0400010 = 0x2000b2;//change io bus to 40M  
++			*(volatile unsigned long *)0xF0400010 = 0x2000b2;//change io bus to 40M
++			io_bus_freq_change = 1;
+ 
+ 			mdelay(1);
+-			memchange(1250000);//change mem bus to 125m
+-			mdelay(50);
+-			freq_change = 1;
++			/* when wm8987 is playing audio, don't decrease mem bus.
++			 * because change mem bus back later will produce click and pop noise */
++			if(!wm8987_is_playing) {
++				memchange(1250000);//change mem bus to 125m
++				mdelay(50);
++				mem_bus_freq_change = 1;
++			}
+ 		} 
+-
+ 		gpio_direction_output(GPIO_LCD_PWR_EN, 0);
+ 		*(volatile unsigned long *)0xF0200000 &= ~(0x1);
+ 
+diff --git a/sound/soc/codecs/wm8987.c b/sound/soc/codecs/wm8987.c
+index 77ebcf8..d1db8fd 100755
+--- a/sound/soc/codecs/wm8987.c
++++ b/sound/soc/codecs/wm8987.c
+@@ -38,6 +38,7 @@ static struct delayed_work wm8987_unmute_work;
+ static struct delayed_work wm8987_bias_standby_work;
+ static unsigned char wm8987_first_bias_on = 0;
+ static unsigned char wm8987_bias_on = 0;
++unsigned char wm8987_is_playing = 0;
+ 
+ /* codec private data */
+ struct wm8987_priv {
+@@ -744,6 +745,7 @@ static int wm8987_set_bias_level(struct snd_soc_codec *codec,
+ 
+ 	switch (level) {
+ 	case SND_SOC_BIAS_ON:
++		wm8987_is_playing = 1;
+ 		wm8987_first_bias_on = 1;
+ 		/* do nothing, because 'case SND_SOC_BIAS_PREPARE' has done everything */
+ 		break;
+@@ -761,6 +763,7 @@ static int wm8987_set_bias_level(struct snd_soc_codec *codec,
+ 		}
+ 		break;
+ 	case SND_SOC_BIAS_STANDBY:
++		wm8987_is_playing = 0;
+ 		schedule_delayed_work(&wm8987_bias_standby_work, msecs_to_jiffies(300000)); // 5 minutes
+ 		break;
+ 	case SND_SOC_BIAS_OFF:
+-- 
+1.6.3.3
+

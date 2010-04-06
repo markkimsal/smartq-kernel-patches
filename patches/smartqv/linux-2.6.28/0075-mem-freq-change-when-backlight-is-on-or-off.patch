@@ -1,0 +1,314 @@
+From b598b1941aa006931f44a0c229540461e962a714 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Wed, 4 Nov 2009 16:53:18 +0800
+Subject: [PATCH] mem freq change when backlight is on or off
+
+---
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.c    |   18 +++--
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c    |   88 +++++++++++--------
+ arch/arm/mach-tcc8900/tcc_ckc_ctrl.c               |    3 +-
+ drivers/char/tcc_backlight.c                       |   23 ++++-
+ 4 files changed, 84 insertions(+), 48 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.c b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.c
+index 9bd98fb..7eb81d9 100644
+--- a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.c
++++ b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.c
+@@ -4,6 +4,12 @@
+ 
+ #define DRAM_ODTOFF
+ 
++
++#define Hw13 0x00002000
++#define DRAM_AUTOPD_ENABLE Hw13
++#define DRAM_AUTOPD_PERIOD 7<<7 // must larger than CAS latency
++#define DRAM_SET_AUTOPD DRAM_AUTOPD_ENABLE|DRAM_AUTOPD_PERIOD
++
+ void init_clockchange125Mhz(void)
+ {
+ 	unsigned int lpll1	=500;
+@@ -43,10 +49,10 @@ void init_clockchange125Mhz(void)
+ 	*(volatile unsigned long *) 0xF0302004=0x00000004;			// PL341_CONFIGURE
+ 	while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=0); //Wait PL34X_STATUS_CONFIG
+ // memory arb.
+-	*(volatile unsigned long *)0xF030200C |= 0x00140000; 
++	*(volatile unsigned long *)0xF030200C |= 0x00140000|DRAM_SET_AUTOPD; 
+ // memory arb. end
+ 	
+-	*(volatile unsigned long *)0xF030200C = 0x00150012; 		// config0 cas 10bit, ras 13bit
++	*(volatile unsigned long *)0xF030200C = 0x00150012|DRAM_SET_AUTOPD; 		// config0 cas 10bit, ras 13bit
+ 	*(volatile unsigned long *)0xF0302010 = 0x00000445; 	// refresh 
+ 	
+ #if defined(DRAM_BANK3)
+@@ -217,7 +223,7 @@ void init_clockchange125Mhz(void)
+ 
+ #else
+ 	*(volatile unsigned long *)0xF0302008 = 0x00090380; 		// Direct COmmnad Register 
+-	*(volatile unsigned long *)0xF0302008 = 0x00090004; 		// Direct COmmnad Register //soc1-3
++	*(volatile unsigned long *)0xF0302008 = 0x00090000; 		// Direct COmmnad Register //soc1-3
+ #endif
+ 
+ 
+@@ -701,10 +707,10 @@ void init_clockchange141Mhz(void)
+ 	*(volatile unsigned long *) 0xF0302004=0x00000004;			// PL341_CONFIGURE
+ 	while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=0); //Wait PL34X_STATUS_CONFIG
+ // memory arb.
+-	*(volatile unsigned long *)0xF030200C |= 0x00140000; 
++	*(volatile unsigned long *)0xF030200C |= 0x00140000|DRAM_SET_AUTOPD; 
+ // memory arb. end
+ 	
+-	*(volatile unsigned long *)0xF030200C = 0x00150012; 		// config0 cas 10bit, ras 13bit
++	*(volatile unsigned long *)0xF030200C = 0x00150012|DRAM_SET_AUTOPD; 		// config0 cas 10bit, ras 13bit
+ 	*(volatile unsigned long *)0xF0302010 = 0x00000445; 	// refresh 
+ 	
+ #if defined(DRAM_BANK3)
+@@ -882,7 +888,7 @@ void init_clockchange141Mhz(void)
+ #else
+ 	*(volatile unsigned long *)0xF0302008 = 0x00090380; 		// Direct COmmnad Register 
+ 	//*(volatile unsigned long *)0xF0302008 = 0x00090000; 		// Direct COmmnad Register 
+-	*(volatile unsigned long *)0xF0302008 = 0x00090004; 		// Direct COmmnad Register //soc1-3
++	*(volatile unsigned long *)0xF0302008 = 0x00090000; 		// Direct COmmnad Register //soc1-3
+ #endif
+ 
+ 
+diff --git a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
+index 08116ec..83e2b09 100644
+--- a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
++++ b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
+@@ -707,18 +707,35 @@ void init_clockchange330Mhz(void)
+ 	*(volatile unsigned long *)0xF0304404 &=  ~(0x00000003);	// DLL-0FF,DLL-Stop running
+ 	*(volatile unsigned long *)0xF0304428 &= ~(0x00000003); 	// Calibration Start,Update Calibration
+ 	*(volatile unsigned long *)0xF030302C &=  ~(0x00004000);	//SDRAM IO Control Register Gatein Signal Power Down
+-		
++	
++	i = 1600;
++	while(i)
++		i--;
++
+ 	*(volatile unsigned long *)0xF0400030 = 0x01010101;
+ 	*(volatile unsigned long *)0xF0400034 = 0x01010101;
+ 	
+ 	*(volatile unsigned long *)0xF0400008 = 0x00200014; 		// XI - memebus
+-	
++
++	i = 2400;
++	while(i)
++		i--;
++
+ 	//PLL1
+ 	*(volatile unsigned long *)0xF0400024= 0x0000fa03;		// pll pwr off
+ 	*(volatile unsigned long *)0xF0400024= 0x00006E02;		// pms - pllout_660M
+ 	*(volatile unsigned long *)0xF0400024= 0x80006E02;		//	pll pwr on
++
++	i = 3200;
++	while(i)
++		i--;
++
+ 	*(volatile unsigned long *)0xF0400008 = (0x00200000 | ((lmem_div-1) << 4)|lmem_source); // CKC-CLKCTRL2 - Mem
+ 
++	i = 3200;
++	while(i)
++		i--;
++
+ //Init DDR2 
+ 	*(volatile unsigned long *) 0xF0302004=0x00000003;			// PL341_PAUSE
+ 	*(volatile unsigned long *) 0xF0302004=0x00000004;			// PL341_CONFIGURE
+@@ -726,7 +743,9 @@ void init_clockchange330Mhz(void)
+ // memory arb.
+ 	*(volatile unsigned long *)0xF030200C |= 0x00140000; 
+ // memory arb. end
+-	
++	*(volatile unsigned long *) 0xF0303000 |= 0x80800000;		// bit23 enable -synopt enable
++	*(volatile unsigned long *) 0xF0303010 |= 0x80800000;		// bit23 enable -synopt enable
++
+ 	*(volatile unsigned long *)0xF030200C = 0x00150012; 		// config0 cas 10bit, ras 13bit
+ 	*(volatile unsigned long *)0xF0302010 = 0x00000507; 	// refresh 
+ 	
+@@ -769,15 +788,24 @@ void init_clockchange330Mhz(void)
+ 	*(volatile unsigned long *)0xF0302048 = 0x000000FA; 	// tESR
+ 	*(volatile unsigned long *)0xF0302054 = 0x00001619; 	// tFAW
+ 
++	i = 3200;
++	while(i)
++		i--;
++
+ 	*(volatile unsigned long *)0xF0302200 = 0x000040f0; 		//256MB  config_chip0
+  //	*(volatile unsigned long *)0xF0302200 = 0x000040f8; 		//128MB config_chip0  //soc1-3
++
++	i = 3200;
++	while(i)
++		i--;
++
+ 	*(volatile unsigned long *)0xF0302004 = 0x00000003; 		// PL341_PAUSE
+ 	while (((*(volatile unsigned long *)0xF0302000) & (0x03)) != 2);	// Wait until PAUSE
+ 
+ 	*(volatile unsigned long *)0xF0302004 = 0x00000001; 		// PL341_SLEEP
+ 	while (((*(volatile unsigned long *)0xF0302000) & (0x03)) != 3);	// Wait until SLEEP
+ 
+-	*(volatile unsigned long *)0xF030302C |= 0x00004000; 		// SSTL SDRAM IO Control Register 
++	*(volatile unsigned long *)0xF030302C = 0x00004000; 		// SSTL SDRAM IO Control Register 
+ 	
+ 	*(volatile unsigned long *)0xF0303020 = 0x00010103; 		// emccfg_config0
+ 	*(volatile unsigned long *)0xF0303024 = 0x00000000; 		// SDRAM PHY Control Register 
+@@ -792,9 +820,9 @@ void init_clockchange330Mhz(void)
+ 	*(volatile unsigned long *)0xF0304424 = 0x00000035; 		// DLLFORCELOCK
+ 	*(volatile unsigned long *)0xF030440C = 0x00000006; 		// GATECTRL
+ 	#if defined(DRAM_CAS6)
+-		*(volatile unsigned long *) 0xF0304430=0x00000006; // RDDELAY - SOC
++		*(volatile unsigned long *) 0xF0304430=0x00000004; // RDDELAY - SOC
+ 	#else
+-		*(volatile unsigned long *) 0xF0304430=0x00000005; // RDDELAY - SOC
++		*(volatile unsigned long *) 0xF0304430=0x00000004; // RDDELAY - SOC
+ 	#endif
+ 	
+ 	
+@@ -810,16 +838,7 @@ void init_clockchange330Mhz(void)
+ 						| (0 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+ 	#else
+-	*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
+-						| (0 << 16)	// PRD_CEN
+-						| (7 << 13)	// DRV_STR
+-						| (0 << 12)	// TERM_DIS
+-						| (2 << 9)	// ODT(PHY) value
+-						| (5 << 6)	// PULL UP
+-						| (2 << 3)	// PULL DOWN
+-						| (0 << 2)	// ZQ
+-						| (0 << 1)	// UPDATE
+-						| (1 << 0);	// CAL_START
++	    *(volatile unsigned long *)0xF0304428 = 0x00068551; 
+ 	#endif
+ 	
+ 	while (!((*(volatile unsigned long *)0xF030442c) & (1)));	// Wait until Calibration completion without error
+@@ -845,28 +864,19 @@ void init_clockchange330Mhz(void)
+ 						| (0 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+ 	#else
+-	*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
+-						| (0 << 16)	// PRD_CEN
+-						| (7 << 13)	// DRV_STR
+-						| (0 << 12)	// TERM_DIS
+-						| (2 << 9)	// ODT(PHY) value
+-						| (5 << 6)	// PULL UP
+-						| (2 << 3)	// PULL DOWN
+-						| (0 << 2)	// ZQ
+-						| (1 << 1)	// UPDATE
+-						| (1 << 0);	// CAL_START
+-	*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
+-						| (0 << 16)	// PRD_CEN
+-						| (7 << 13)	// DRV_STR
+-						| (0 << 12)	// TERM_DIS
+-						| (2 << 9)	// ODT(PHY) value
+-						| (5 << 6)	// PULL UP
+-						| (2 << 3)	// PULL DOWN
+-						| (0 << 2)	// ZQ
+-						| (0 << 1)	// UPDATE
+-						| (1 << 0);	// CAL_START
++	*(volatile unsigned long *)0xF0304428 = 0x00068553; 		// ZQCTRL
+ 	#endif
+ 
++	i = 3200;
++	while(i)
++		i--;
++
++	*(volatile unsigned long *)0xF0304428 = 0x00068551; 		// ZQCTRL
++
++	i = 3200;
++	while(i)
++		i--;
++
+ 	*(volatile unsigned long *)0xF0302004 = 0x00000002; 		// PL34X_WAKEUP
+ 	while (((*(volatile unsigned long *)0xF0302000) & (0x03)) != 2);	// Wait until PAUSE
+ 
+@@ -906,11 +916,15 @@ void init_clockchange330Mhz(void)
+ 
+ #else
+ 	*(volatile unsigned long *)0xF0302008 = 0x00090380; 		// Direct COmmnad Register 
+-	*(volatile unsigned long *)0xF0302008 = 0x00090004; 		// Direct COmmnad Register //soc1-3
++	*(volatile unsigned long *)0xF0302008 = 0x00090000; 		// Direct COmmnad Register //soc1-3
+ #endif
+ 
+ 
+ 	*(volatile unsigned long *)0xF0302004 = 0x00000000; 		// PL341_GO
++
++	i = 1600;
++	while(i)
++		i--;
+ }
+ 
+ #endif
+diff --git a/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c b/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c
+index 1df4959..37eea99 100644
+--- a/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c
++++ b/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c
+@@ -381,8 +381,9 @@ void memchange(unsigned int freq)
+     int_restore();
+ 
+         //      LCDC Power Up
+-    pLCDC_BASE0->LCTRL |= Hw0;
++//    pLCDC_BASE0->LCTRL |= Hw0;
+     pLCDC_BASE1->LCTRL |= Hw0;
++    *(volatile unsigned long *)0xF0200000 &= ~(0x1);//disable LCD0
+ }
+ 
+ int tcc_ckc_change_cpu(unsigned int cpuvalue)
+diff --git a/drivers/char/tcc_backlight.c b/drivers/char/tcc_backlight.c
+index 171aa60..10ff7be 100644
+--- a/drivers/char/tcc_backlight.c
++++ b/drivers/char/tcc_backlight.c
+@@ -33,7 +33,7 @@
+ #include <mach/TCC89x_Structures.h>
+ #include <mach/globals.h>
+ #include <mach/gpio.h>
+-
++#include <linux/delay.h>
+ 
+ #if CONFIG_MACH_TCC8900
+ #include <bsp.h>
+@@ -189,8 +189,8 @@ static void bl_init(void)
+ 	gBKLPwrInfo.status = PWR_STATUS_ON;
+ }
+ 
++extern void memchange(unsigned int freq);
+ extern int video_on;
+-extern int work_yet;
+ extern int noneed_respond;
+ static int ddi_off_mode = 0;
+ static int bl_count = 3;//not use turn-off ddi_bus way until finish the init
+@@ -208,16 +208,31 @@ void bl_control(bool flag)
+ 
+ 		noneed_respond = 0;
+ 		ddi_off_mode = 0;
++		gpio_direction_output(GPIO_LCD_PWR_EN, 1);
++		
++		if(!bl_count)
++		{
++		    memchange(3300000);
++		    mdelay(50);
++		}
++
+ 		tca_bkl_powerup((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
+ 		gBKLPwrInfo.status = PWR_STATUS_ON;
+-		gpio_direction_output(GPIO_LCD_PWR_EN, 1);
++
+ 	} else {
+ 		noneed_respond = 1;
+ 		tca_bkl_powerdown((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
+ 		gBKLPwrInfo.status = PWR_STATUS_OFF;
++
++		if(!bl_count)
++		{
++		    memchange(1250000);
++		    mdelay(100);
++		}
++
+ 		gpio_direction_output(GPIO_LCD_PWR_EN, 0);
+ 
+-		if((!bl_count)&&(!video_on)&&(work_yet)&&(!gpio_get_value(GPIO_HDMI_EN))&&(!gpio_get_value(GPIO_TVOUT_EN)))
++		if((!bl_count)&&(!video_on)&&(!gpio_get_value(GPIO_HDMI_EN))&&(!gpio_get_value(GPIO_TVOUT_EN)))
+ 		{
+ 		    ddi_off_mode = 1;
+ 		    *(volatile unsigned long *)0xF0204000 &= ~(0x1);
+-- 
+1.6.3.3
+

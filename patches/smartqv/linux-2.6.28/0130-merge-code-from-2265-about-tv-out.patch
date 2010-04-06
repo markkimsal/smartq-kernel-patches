@@ -1,0 +1,76 @@
+From 4b8ed89c3a73393d1e7a26a2ff790d135e6a3ff1 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Wed, 9 Dec 2009 18:53:59 +0800
+Subject: [PATCH] merge code from 2265 about tv-out
+
+---
+ drivers/video/tca_tvout.c |   17 +++++++++++------
+ 1 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/video/tca_tvout.c b/drivers/video/tca_tvout.c
+index 5607d35..4c1e592 100644
+--- a/drivers/video/tca_tvout.c
++++ b/drivers/video/tca_tvout.c
+@@ -747,13 +747,15 @@ void tca_tvo_setlcd2tv(unsigned int type)
+ 			{
+ 				IMGx_POSY[0] = (TV_VSIZE - IMGx_VSIZE[0]) >> 2;
+ 			}
+-
++			
+ 			pLCDC->LI0P = ((IMGx_POSY[0]+TMP_POSY) << 16) | (IMGx_POSX[0]+TMP_POSX);
+-			pLCDC->LI0C	|= 0x80000000;
++		//	pLCDC->LI0C	|= 0x80000000;
+ 
+ 			pLCDC->LI0S = TV_VSIZE << 16 | TV_HSIZE;
+ 
+ 		}
++		pLCDC->LI0C	|= 0x80000000;
++		
+ 		if(gTvoutLcdcId)
+ 		{
+ 			if(pLCDC->LI1C & Hw28)	//IMG1 EN
+@@ -763,7 +765,7 @@ void tca_tvo_setlcd2tv(unsigned int type)
+ 				
+ 				TMP_POSX = (unsigned int)(pLCDC->LI1P & 0x0fff);
+ 				TMP_POSY = (unsigned int)((pLCDC->LI1P & 0x0fff0000) >> 16);
+-
++				
+ 				if(IMGx_HSIZE[1] < TV_HSIZE)
+ 				{
+ 					IMGx_POSX[1] = (TV_HSIZE - IMGx_HSIZE[1]) >> 1;
+@@ -774,7 +776,7 @@ void tca_tvo_setlcd2tv(unsigned int type)
+ 				}
+ 				
+ 				pLCDC->LI1P = ((IMGx_POSY[1]+TMP_POSY) << 16) | (IMGx_POSX[1]+TMP_POSX);
+-				pLCDC->LI1C	|= 0x80000000;
++			//	pLCDC->LI1C	|= 0x80000000;
+ 
+ 				pLCDC->LI1S = TV_VSIZE << 16 | TV_HSIZE;
+ 			}
+@@ -785,7 +787,7 @@ void tca_tvo_setlcd2tv(unsigned int type)
+ 				
+ 				TMP_POSX = (unsigned int)(pLCDC->LI2P & 0x0fff);
+ 				TMP_POSY = (unsigned int)((pLCDC->LI2P & 0x0fff0000) >> 16);
+-
++				
+ 				if(IMGx_HSIZE[2] < TV_HSIZE)
+ 				{
+ 					IMGx_POSX[2] = (TV_HSIZE - IMGx_HSIZE[2]) >> 1;
+@@ -796,10 +798,13 @@ void tca_tvo_setlcd2tv(unsigned int type)
+ 				}
+ 				
+ 				pLCDC->LI2P = ((IMGx_POSY[2]+TMP_POSY) << 16) | (IMGx_POSX[2]+TMP_POSX);
+-				pLCDC->LI2C	|= 0x80000000;
++			//	pLCDC->LI2C	|= 0x80000000;
+ 
+ 				pLCDC->LI2S = TV_VSIZE << 16 | TV_HSIZE;
+ 			}
++			
++			pLCDC->LI1C	|= 0x80000000;
++			pLCDC->LI2C	|= 0x80000000;
+ 		}
+ 		
+ 		gTvoutFlag_prev = 1;
+-- 
+1.6.3.3
+

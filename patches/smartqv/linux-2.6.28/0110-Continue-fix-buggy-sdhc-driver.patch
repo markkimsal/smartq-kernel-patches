@@ -1,0 +1,52 @@
+From d331ea38a25a9b760dfbe23dac819059584af6b1 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Wed, 2 Dec 2009 09:31:32 +0800
+Subject: [PATCH] Continue fix buggy sdhc driver
+
+---
+ drivers/mmc/host/tcc_sdhc.c |   10 ++++++----
+ 1 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/mmc/host/tcc_sdhc.c b/drivers/mmc/host/tcc_sdhc.c
+index 5d2ebaa..90e64ad 100644
+--- a/drivers/mmc/host/tcc_sdhc.c
++++ b/drivers/mmc/host/tcc_sdhc.c
+@@ -613,11 +613,11 @@ static void tcc_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+ 			//printk("\n/***********4 bit mode***************/\n "); 
+ 			if (host->id == 0) {
+ 				pSDMMC_SLOT0->CONTL &= ~HwSD_POWER_SD8;
+-				pSDMMC_SLOT0->CONTL |= (HwSD_POWER_VOL33 | HwSD_POWER_SD4);
++				pSDMMC_SLOT0->CONTL |= ((HwSD_POWER_VOL33) | HwSD_POWER_SD4);
+ 				pSDMMC_SLOT0->CONTH |=Hw19;
+ 			} else if (host->id == 1) {	
+ 				pSDMMC_SLOT1->CONTL &= ~HwSD_POWER_SD8;
+-				pSDMMC_SLOT1->CONTL |= (HwSD_POWER_VOL33 | HwSD_POWER_SD4);
++				pSDMMC_SLOT1->CONTL |= ((HwSD_POWER_VOL33) | HwSD_POWER_SD4);
+ 				pSDMMC_SLOT1->CONTH |=Hw19;	
+ 			}
+ 			break;
+@@ -970,7 +970,7 @@ static void init_mmc_host(struct tcc_mmc_host *host)
+ 
+ 		BITCSET(HwGPIOB->GPFN0, Hw16-Hw0, HwPORTCFG_GPFN3(2)|HwPORTCFG_GPFN2(2)
+ 						| HwPORTCFG_GPFN1(2)|HwPORTCFG_GPFN0(2));	/* GPIOB[3:0] - SD1_D[0:3] */
+-		BITCSET(HwGPIOB->GPFN1, Hw20-Hw16, HwPORTCFG_GPFN5(2)|HwPORTCFG_GPFN4(2));	/* GPIOB[13:12] - SD1_CMD, SD1_CLK*/
++		BITCSET(HwGPIOB->GPFN1, Hw24-Hw16, HwPORTCFG_GPFN5(2)|HwPORTCFG_GPFN4(2));	/* GPIOB[13:12] - SD1_CMD, SD1_CLK*/
+ 		BITCSET(HwGPIOB->GPCD0, 0x0F0000FF, 0x3F0000FF);							/* driver strength */
+ 
+ 		pSDMMC_SLOT1->CONTL &= ~(HwSD_POWER_SD4 | HwSD_POWER_SD8);
+@@ -1002,9 +1002,11 @@ static void deinit_mmc_host(struct tcc_mmc_host *host)
+ 		/* power */
+ 		tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, SD1_ON, OUTPUT, LOW, SET_DIRECTION|SET_VALUE);
+ 
++		/* slot2 port5 - GPIO mode */
+ 		BITCLR(HwGPIOB->GPFN0, Hw16-Hw0);
+-		BITCLR(HwGPIOB->GPFN1, Hw20-Hw16);
++		BITCLR(HwGPIOB->GPFN1, Hw24-Hw16);
+ 		BITSET(HwGPIOB->GPEN, Hw13|Hw12|Hw3|Hw2|Hw1|Hw0);
++
+ 		/* SD Bus Power */
+ 		BITCLR(pSDMMC_SLOT1->CONTL, HwSD_POWER_POW);
+ 	}
+-- 
+1.6.3.3
+

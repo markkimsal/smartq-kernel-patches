@@ -1,0 +1,40 @@
+From d03f8723699cb5111dd97bab6df844116b26a8e7 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Thu, 24 Sep 2009 15:01:25 +0800
+Subject: [PATCH] Fix rmmod otg crash
+
+---
+ drivers/usb/dwc_otg/dwc_otg_driver.c |    5 +++--
+ 1 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/usb/dwc_otg/dwc_otg_driver.c b/drivers/usb/dwc_otg/dwc_otg_driver.c
+index c71f59d..33ab6c9 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_driver.c
++++ b/drivers/usb/dwc_otg/dwc_otg_driver.c
+@@ -957,6 +957,7 @@ static int dwc_otg_driver_remove(struct device *dev)
+ 		dwc_otg_pcd_remove( dev );
+ 	}
+ #endif
++	cancel_work_sync(&otg_dev->core_if->vbus_work);
+ 	if (otg_dev->core_if != NULL)
+ 	{
+ 		dwc_otg_cil_remove( otg_dev->core_if );
+@@ -1192,13 +1193,13 @@ fail:
+ EXPORT_SYMBOL(hh_otg_device);
+ 
+ #ifdef	CONFIG_PM
+-static int dwc_otg_driver_suspend(struct platform_device *pdev, pm_message_t state)
++static int dwc_otg_driver_suspend(struct device *pdev, pm_message_t state)
+ {
+ 	printk("dwc_otg_driver_suspend success\n");
+ 	return 0;
+ }
+ 
+-static int dwc_otg_driver_resume(struct platform_device *pdev)
++static int dwc_otg_driver_resume(struct device *pdev)
+ {
+ 	return 0;
+ }
+-- 
+1.6.3.3
+

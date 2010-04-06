@@ -1,0 +1,30 @@
+From 865f55eeda1a2835edf723a4b760c574e2f63cd6 Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Fri, 25 Dec 2009 09:26:10 +0800
+Subject: [PATCH] Close the USB_HOST_PWR_EN when booting to save battery capacity
+
+---
+ drivers/char/hhtech_gpio.c |    5 -----
+ 1 files changed, 0 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 3ee8905..ec63d71 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -1378,13 +1378,8 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 	gpio_direction_input(GPIO_PWR_HOLD);
+ 	gpio_direction_input(GPIO_HDMI_HPD);
+ 	
+-#if defined (CONFIG_LCD_4)
+ 	gpio_direction_output(GPIO_USB_EN, 0);		//close
+ 	gpio_direction_output(GPIO_USB_HOSTPWR_EN, 0);	//close
+-#else
+-	gpio_direction_output(GPIO_USB_EN, 1);		//open
+-	gpio_direction_output(GPIO_USB_HOSTPWR_EN, 1);	//open
+-#endif
+ 	gpio_direction_output(GPIO_USB_OTGDRV_EN, 0);	//close
+ 	gpio_direction_output(GPIO_CHARGER_EN, 0);	//200ma
+ 	gpio_direction_output(GPIO_TVOUT_EN, 0);	//close
+-- 
+1.6.3.3
+

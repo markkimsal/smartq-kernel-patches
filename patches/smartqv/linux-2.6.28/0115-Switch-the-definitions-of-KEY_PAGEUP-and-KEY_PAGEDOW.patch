@@ -1,0 +1,34 @@
+From 6c7898cc160a5d66f49d559690b456ab162e39dc Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Wed, 9 Dec 2009 14:21:53 +0800
+Subject: [PATCH] Switch the definitions of KEY_PAGEUP and KEY_PAGEDOWN
+
+---
+ arch/arm/mach-tcc8900/devices.c |    4 ++--
+ 1 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/devices.c b/arch/arm/mach-tcc8900/devices.c
+index 1acd4b9..51068f0 100644
+--- a/arch/arm/mach-tcc8900/devices.c
++++ b/arch/arm/mach-tcc8900/devices.c
+@@ -685,7 +685,7 @@ static inline void tcc8900_init_dwc_otg(void)
+ static struct gpio_keys_button hhmid_buttons[] = {
+ #if defined (CONFIG_LCD_4)
+ 	{
+-                .gpio           = TCC_GPD17,			
++                .gpio           = TCC_GPD19,
+                 .code		= KEY_PAGEUP,
+                 .desc           = "Button 3",
+                 .active_low     = 1,
+@@ -699,7 +699,7 @@ static struct gpio_keys_button hhmid_buttons[] = {
+                 .debounce_interval = 5,
+         },
+ 	{
+-                .gpio           = TCC_GPD19,			
++                .gpio           = TCC_GPD17,
+                 .code		= KEY_PAGEDOWN,
+                 .desc           = "Button 2",
+                 .active_low     = 1,
+-- 
+1.6.3.3
+

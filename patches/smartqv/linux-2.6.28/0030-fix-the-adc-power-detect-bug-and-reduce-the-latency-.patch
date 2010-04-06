@@ -1,0 +1,263 @@
+From 98e921a8cb60d18c1ef3456d6c7c702ace23079c Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Fri, 4 Sep 2009 18:22:17 +0800
+Subject: [PATCH] fix the adc power detect bug and reduce the latency of touchscreen
+
+---
+ arch/arm/plat-tcc/tcc_cpufreq.c    |    4 +-
+ drivers/char/hhtech_gpio.c         |   22 ++----
+ drivers/input/touchscreen/tcc_ts.c |  140 +++++------------------------------
+ 3 files changed, 29 insertions(+), 137 deletions(-)
+
+diff --git a/arch/arm/plat-tcc/tcc_cpufreq.c b/arch/arm/plat-tcc/tcc_cpufreq.c
+index 1a18fb5..85f962d 100644
+--- a/arch/arm/plat-tcc/tcc_cpufreq.c
++++ b/arch/arm/plat-tcc/tcc_cpufreq.c
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 三, 02  9月 2009 17:21:58 +0800  by duanius #
++ * Last modified: 五, 04  9月 2009 17:15:03 +0800  by duanius #
+  ****************************************************************/
+ #include <linux/types.h>
+ #include <linux/kernel.h>
+@@ -97,7 +97,7 @@ static int tcc8902_target(struct cpufreq_policy *policy,
+ 
+ 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+ 	ret = tcc_ckc_change_cpu(freqs.new * 10);
+-	memchange(mem_freq_table[index]);
++//	memchange(mem_freq_table[index]);
+ 	//ret = clk_set_rate(mpu_clk, freqs.new * KHZ_T);
+ 	if(ret != 0)
+ 		printk("frequency scaling error\n");
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index ebbce45..9aa2dea 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -205,23 +205,15 @@ static int read_battery(void)
+ 	static int old_battery_life = 1000, old_reference_value = 1000;
+ 
+ 	//ref voltage:2.4V,battery max :4.2V
+-	if ((battery_life = tcc_adc_value(0)) == 0) {
+-		if (old_battery_life == 0) {
+-			while (!(battery_life = tcc_adc_value(0)));
+-			old_battery_life = battery_life;
+-		} else
+-			battery_life = old_battery_life;
+-	}else
++	if ((battery_life = tcc_adc_value(0)) == 0)
++	    battery_life = old_battery_life;
++	else
+ 	    old_battery_life = battery_life;
+ 
+-	if ((reference_value = tcc_adc_value(1)) == 0) {
+-		if (old_reference_value == 0) {
+-			while (!(reference_value = tcc_adc_value(1)));
+-			old_reference_value = reference_value;
+-		} else
+-			reference_value	= old_reference_value;
+-	}else
+-	    old_reference_value = reference_value;
++	if ((reference_value = tcc_adc_value(1)) == 0)
++	   reference_value = old_reference_value;
++	else
++	   old_reference_value = reference_value;
+ 
+ 	battery_life = (battery_life * 24000) / (reference_value * 42);
+ 
+diff --git a/drivers/input/touchscreen/tcc_ts.c b/drivers/input/touchscreen/tcc_ts.c
+index 01ba2dd..f401296 100644
+--- a/drivers/input/touchscreen/tcc_ts.c
++++ b/drivers/input/touchscreen/tcc_ts.c
+@@ -175,7 +175,7 @@ unsigned int tcc_adc_value(unsigned int tcc_adc_port)
+ 
+     writel(0x58, ts_base+ADCTSC);
+ 
+-    writel(readl(ts_base+ADCCON)|ADCCON_SELMUX(tcc_adc_port), ts_base+ADCCON);
++    writel((readl(ts_base+ADCCON)&(~(Hw5|Hw4|Hw3)))|ADCCON_SELMUX(tcc_adc_port), ts_base+ADCCON);
+     udelay(10);
+ 
+     writel(readl(ts_base+ADCCON)|ADCCON_ENABLE_START, ts_base+ADCCON);
+@@ -225,7 +225,7 @@ int tea_tch_readadc_auto(int *x, int *y)
+ }
+ 
+ #if 1
+-int tea_tch_readadc_test(int *x, int *y, int *xm, int *ym)
++int tea_tch_readadc_test(int *x, int *y)
+ {
+     
+     unsigned int tmp;
+@@ -251,17 +251,10 @@ int tea_tch_readadc_test(int *x, int *y, int *xm, int *ym)
+ 
+     //g_pADCReg->ADCCON |= ENABLE_START_EN;   // ADC Conversion Start
+  
+-    while(readl(ts_base + ADCCON) & ENABLE_START_EN)
+-    {
+-        ndelay(1);
+-    }
+-    while (!(readl(ts_base + ADCCON) & ECFLG_END))
+-    {   // Wait for ADC Conversion Ended
+-        ndelay(1);
+-    }
++    while (!(readl(ts_base + ADCCON) & ECFLG_END));
+ 
+     //read x value
+-	*x = D_XPDATA_MASK12(readl(ts_base + ADCDAT0));
++    *x = D_XPDATA_MASK12(readl(ts_base + ADCDAT0));
+     BITCSET(pGPIO->GPEFN3 ,Hw32-Hw16, Hw28|Hw24|Hw20|Hw16);
+     writel(ADCTSC_AUTO_ADC5, ts_base + ADCTSC);
+ 
+@@ -283,90 +276,16 @@ int tea_tch_readadc_test(int *x, int *y, int *xm, int *ym)
+     
+     writel(readl(ts_base + ADCCON) | ENABLE_START_EN, ts_base + ADCCON);
+ 
+-    while(readl(ts_base + ADCCON) & ENABLE_START_EN)
+-    {   // Wait for Start Bit Cleared
+-        ndelay(1);
+-    }
+-
+-    while (!(readl(ts_base + ADCCON) & ECFLG_END))
+-    {   // Wait for ADC Conversion Ended
+-        ndelay(1);
+-    }
+-    //read y value
+-	*y = D_YPDATA_MASK12(readl(ts_base + ADCDAT1));
+-
+-    writel(ADCTSC_AUTO_ADC5, ts_base + ADCTSC);
+-    BITCSET(pGPIO->GPEFN3 ,Hw32-Hw16, Hw28|Hw24|Hw20|Hw16);
+-
+-////////////////read xp
+-    writel(Hw3|Hw1, ts_base + ADCTSC);
+-
+-    //g_pADCReg->ADCTSC = Hw3|Hw0;
+-    //gpio setting - 30 high
+-
+-    BITCLR(pGPIO->GPEFN3 ,Hw27-Hw20);//gpio E30, E29 GPIO Mode
+-    BITSET(pGPIO->GPEEN, Hw31-Hw29); //E30, E29 OUTPUT Mode
+-    BITSET(pGPIO->GPEDAT, Hw29); // High
+-    BITCLR(pGPIO->GPEDAT, Hw30); // Low
+-
+-    tmp = readl(ts_base + ADCCON);
+-    tmp &= ~(Hw5|Hw4|Hw3);
+-    tmp |= (Hw5);
+-    writel(tmp, ts_base + ADCCON);
+-    //BITCSET(readl(ts_base + ADCCON), Hw6-Hw3,  Hw5|Hw3);
+-
+-    writel(readl(ts_base + ADCCON) | ENABLE_START_EN, ts_base + ADCCON);
+-
+-    //g_pADCReg->ADCCON |= ENABLE_START_EN;   // ADC Conversion Start
+- 
+-    while(readl(ts_base + ADCCON) & ENABLE_START_EN)
+-    {
+-        ndelay(1);
+-    }
+-    while (!(readl(ts_base + ADCCON) & ECFLG_END))
+-    {   // Wait for ADC Conversion Ended
+-        ndelay(1);
+-    }
+-
+-    //read x value
+-	*xm = D_XPDATA_MASK12(readl(ts_base + ADCDAT0));
+-    BITCSET(pGPIO->GPEFN3 ,Hw32-Hw16, Hw28|Hw24|Hw20|Hw16);
+-    writel(ADCTSC_AUTO_ADC5, ts_base + ADCTSC);
+-
+-
+-////////////////read ym
+-    writel(Hw3|Hw1, ts_base + ADCTSC);
+-    //gpio setting - 31,28 high
+-    BITCLR(pGPIO->GPEFN3 ,Hw27-Hw20);//gpio E30, E29 GPIO Mode
+-    BITSET(pGPIO->GPEEN, Hw31-Hw29); //E30, E29 OUTPUT Mode
+-    BITSET(pGPIO->GPEDAT, Hw29); // High
+-    BITCLR(pGPIO->GPEDAT, Hw30); // Low
+-
+-    tmp = readl(ts_base + ADCCON);
+-    tmp &= ~(Hw5|Hw4|Hw3);
+-    tmp |= (Hw5|Hw4|Hw3);
+-    writel(tmp, ts_base + ADCCON);
+-
+-    //BITCSET(readl(ts_base + ADCCON),Hw6-Hw3,  Hw5|Hw4|Hw3);
++    while (!(readl(ts_base + ADCCON) & ECFLG_END));
+     
+-    writel(readl(ts_base + ADCCON) | ENABLE_START_EN, ts_base + ADCCON);
+-
+-    while(readl(ts_base + ADCCON) & ENABLE_START_EN)
+-    {   // Wait for Start Bit Cleared
+-        ndelay(1);
+-    }
+-
+-    while (!(readl(ts_base + ADCCON) & ECFLG_END))
+-    {   // Wait for ADC Conversion Ended
+-        ndelay(1);
+-    }
+     //read y value
+-	*ym = D_YPDATA_MASK12(readl(ts_base + ADCDAT1));
++    *y = D_YPDATA_MASK12(readl(ts_base + ADCDAT1));
+ 
+     writel(ADCTSC_AUTO_ADC5, ts_base + ADCTSC);
+     BITCSET(pGPIO->GPEFN3 ,Hw32-Hw16, Hw28|Hw24|Hw20|Hw16);
+ 
+-    dbg("[TOUCH]     RAW:(x=%d, y=%d, xp=%d, yp=%d)\r\n", *x, *y, *xm, *ym);
++
++    dbg("[TOUCH]     RAW:(x=%d, y=%d)\r\n", *x, *y);
+     return 1;
+ 
+ }
+@@ -396,42 +315,23 @@ int tca_getrawdata(int * x, int * y)
+ {
+     unsigned int  i;
+     unsigned int r_x[TOUCH_COLLECT_NR], r_y[TOUCH_COLLECT_NR];
+-    unsigned long  x_tol, y_tol;
+-    unsigned int m_pos_x, m_pos_y;
+-    unsigned int validcnt=0;
+-    unsigned int index;
+-
+-    m_pos_x = m_pos_y = 0;
++//    unsigned int validcnt=0;
++//    unsigned int index;
+ 
+-    for(i = 0; i < TOUCH_COLLECT_NR; i ++)
++    for(i = 0; i < 1; i ++)
+     {
+-        int x, y, xp, yp;
+-        //tea_tch_readadc_auto(&x, &y );
+-        tea_tch_readadc_test(&x, &y, &xp, &yp);
+-        if((x <= MAX_X && x >= MIN_X)&&(y <= MAX_Y || y >= MIN_Y) && (xp > 100) && (yp > 100))
+-        {
+-            r_x[validcnt]=x;
+-            r_y[validcnt]=y;
+-            validcnt++;
+-        }
++        int x, y;
++        tea_tch_readadc_test(&x, &y);
++        r_x[i]=x;
++        r_y[i]=y;
++//        validcnt++;
+     }
+-    tca_touchbubblesort(r_x,TOUCH_COLLECT_NR);
+-    tca_touchbubblesort(r_y,TOUCH_COLLECT_NR);
+-
+-    x_tol = y_tol = 0; //sum the coordinate values
+-    index = (TOUCH_COLLECT_NR-TOUCH_VALID_VALUE)>>1;
++//    tca_touchbubblesort(r_x,3);
++//    tca_touchbubblesort(r_y,3);
+ 
+-    for(i=index;i<(index+TOUCH_VALID_VALUE);++i)
+-    {
+-        x_tol += r_x[i];
+-        y_tol += r_y[i];
+-    }
+-    m_pos_x = x_tol/TOUCH_VALID_VALUE;
+-    m_pos_y = y_tol/TOUCH_VALID_VALUE;
+-    dbg("m_pos_x=%d, m_pos_y=%d\n", m_pos_x, m_pos_y);
++    *x = r_x[0];
++    *y = r_y[0];
+ 
+-    *x = m_pos_x;
+-    *y = m_pos_y;
+     if((*x <= MAX_X && *x >= MIN_X)&&(*y <= MAX_Y && *y >= MIN_Y))
+     {
+         return 0;
+-- 
+1.6.3.3
+

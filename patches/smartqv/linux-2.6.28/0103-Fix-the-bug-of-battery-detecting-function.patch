@@ -1,0 +1,112 @@
+From dc4ac424accc320a8764d675f232623f4c19a94e Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Thu, 26 Nov 2009 16:53:05 +0800
+Subject: [PATCH] Fix the bug of battery detecting function
+
+---
+ drivers/char/hhtech_gpio.c |   43 +++++++++++++++++++++++++++++++++++++++----
+ 1 files changed, 39 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index f0382ec..786ba4f 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -47,6 +47,7 @@
+ #include <mach/globals.h>
+ #include <bsp.h>
+ 
++#define IRQ_DC	      INT_EI4
+ #define IRQ_HEADPHONE INT_EI7
+ #define HPD_MINOR       244 /* Major 10, Minor 244, /dev/tv_hpd */
+ 
+@@ -310,13 +311,21 @@ static void shutdown_unused_devices(struct work_struct* work)
+ 
+ static void battery_update_work(struct work_struct* work)
+ {
+-	int dc_status;
++	int dc_status, charge_s;
+ 
+ 	dc_status = gpio_get_value(GPIO_DC_DETE) ? 0 : 1;
+ 
+-	current_battery = get_battery_life();
+-	if (current_battery < 785 && dc_status == 0)
++	if(dc_status == 1) {
++	    charge_s = (gpio_get_value(GPIO_CHARG_S1)<<1) + gpio_get_value(GPIO_CHARG_S2);
++	    if(charge_s == 2)
++		current_battery = 1000;
++	    else
++		current_battery = get_battery_life();
++	} else {
++	    current_battery = get_battery_life();
++	    if (current_battery < 785)
+ 		set_sys_power(0);
++	}
+ 	schedule_delayed_work(&battery_work, 30 * HZ);
+ }
+ 
+@@ -1181,6 +1190,21 @@ static irqreturn_t headp_irq(int irq, void *dev_id)
+ 	return IRQ_HANDLED;
+ }
+ 
++/*   dc plug out  Interrupt handle  */
++static irqreturn_t dc_irq(int irq, void *dev_id)
++{
++	volatile PPIC pPIC = (volatile PPIC)tcc_p2v(HwPIC_BASE);
++	unsigned int headphone_s = gpio_get_value(GPIO_HEADPHONE_S);
++
++	disable_irq(IRQ_DC);
++	BITSET(pPIC->CLR0, 1<<IRQ_DC);
++	mdelay(100);
++	battery_update_work(NULL);
++	enable_irq(IRQ_DC);
++
++	return IRQ_HANDLED;
++}
++
+ static DEVICE_ATTR(system_flag, 0444, hhtech_sysfs_show_system_flag, NULL);
+ static DEVICE_ATTR(headphone_s, 0444, hhtech_sysfs_show_headp, NULL);
+ static DEVICE_ATTR(dc_s, 0444, hhtech_sysfs_show_dc, NULL);
+@@ -1366,6 +1390,11 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 	else					    // headphone out
+ 	    gpio_direction_output(GPIO_SPEAKER_EN, 1);	    // open speaker
+ 
++	/* Set GPIOF[8](39) to the interrupt source of INT_EI4 */
++	BITCSET(pGPIO->EINTSEL1, Hw7-Hw0, 39);
++	BITSET(pPIC->INTMSK0, 1<<IRQ_DC);	    // unmask the interrupt
++	BITCLR(pPIC->MODE0, 1<<IRQ_DC);		    // set interrupt as edge-triggered mode
++
+ 	if (misc_register(&hpd_misc_device))
+ 	{
+ 		printk(KERN_WARNING "TV_HPD: Couldn't register device 10, %d.\n", HPD_MINOR);
+@@ -1382,6 +1411,12 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 		goto error1;
+ 	}
+ 
++	retval = request_irq(IRQ_DC, dc_irq, IRQF_TRIGGER_FALLING, "DC detect", NULL);
++	if (retval) {
++		printk(KERN_ERR "Request dc detect fail\n");
++		goto error1;
++	}
++
+ #if defined (CONFIG_LCD_4)
+ 	INIT_DELAYED_WORK(&headp_detect_work, headp_update_mixer);
+ 	headp_update_mixer(NULL);
+@@ -1394,7 +1429,6 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 	
+ 	return 0;
+ 
+-	free_irq(IRQ_HEADPHONE, NULL);
+ error1:
+ 	return retval;
+ }
+@@ -1403,6 +1437,7 @@ static int hhtech_gpio_remove(struct platform_device *dev)
+ {
+ 	misc_deregister(&hpd_misc_device);
+ 	free_irq(IRQ_HEADPHONE, NULL);
++	free_irq(IRQ_DC, NULL);
+ 	return 0;
+ }
+ 
+-- 
+1.6.3.3
+

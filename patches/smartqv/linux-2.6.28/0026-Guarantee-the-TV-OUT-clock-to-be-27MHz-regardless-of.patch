@@ -1,0 +1,25 @@
+From f5ae362dd399da79212818198689bc6adf1175ac Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Thu, 27 Aug 2009 09:24:37 +0800
+Subject: [PATCH] Guarantee the TV-OUT clock to be 27MHz regardless of CPU freqency
+
+---
+ drivers/video/tca_tvout.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/video/tca_tvout.c b/drivers/video/tca_tvout.c
+index ac5b058..4966d35 100644
+--- a/drivers/video/tca_tvout.c
++++ b/drivers/video/tca_tvout.c
+@@ -323,7 +323,7 @@ void tca_tvo_setlclk27mhz(int lcdc_id)
+ #endif
+ 	}
+ 	
+-	tcc_ckc_setperi(PERI_LCD0+gTvoutLcdcId,ENABLE,dst_lclk,src_pll);
++	tcc_ckc_setperi(PERI_LCD0+gTvoutLcdcId,ENABLE,dst_lclk,PCHDMI);
+ 	ret_lclk = tcc_ckc_getperi(PERI_LCD0+gTvoutLcdcId);
+ 	
+ 	pLCDC->LCLKDIV = div/2;
+-- 
+1.6.3.3
+

@@ -1,0 +1,35 @@
+From 603a75b040398a3a11a435b7ff6f8145209452e5 Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Tue, 5 Jan 2010 16:44:37 +0800
+Subject: [PATCH] Mute DAC and disable VREF of WM8987 when not playingaudio
+
+---
+ sound/soc/codecs/wm8987.c |    5 ++---
+ 1 files changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/sound/soc/codecs/wm8987.c b/sound/soc/codecs/wm8987.c
+index 897062b..1c04560 100755
+--- a/sound/soc/codecs/wm8987.c
++++ b/sound/soc/codecs/wm8987.c
+@@ -705,8 +705,8 @@ static int wm8987_set_bias_level(struct snd_soc_codec *codec,
+ 		wm8987_write(codec, WM8987_PWR1, pwr_reg | 0x0140);
+ 		break;
+ 	case SND_SOC_BIAS_STANDBY:
+-		/* mute dac and set vmid to 500k, enable VREF */
+-		wm8987_write(codec, WM8987_PWR1, pwr_reg | 0x0141);
++		/* mute dac and disable VREF, this results the minimum power consumption */
++		wm8987_write(codec, WM8987_PWR1, 0x0001);
+ 		break;
+ 	case SND_SOC_BIAS_OFF:
+ 		wm8987_write(codec, WM8987_PWR1, 0x0001);
+@@ -845,7 +845,6 @@ static int wm8987_init(struct snd_soc_device *socdev)
+ 	}
+ 
+ 	/* charge output caps */
+-	wm8987_set_bias_level(codec, SND_SOC_BIAS_PREPARE);
+ 	codec->bias_level = SND_SOC_BIAS_STANDBY;
+ 	schedule_delayed_work(&codec->delayed_work, msecs_to_jiffies(1000));
+ 
+-- 
+1.6.3.3
+

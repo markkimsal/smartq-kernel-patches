@@ -1,0 +1,163 @@
+From 48ef7d4327b3d1ffa2c84cbb6f837306c5aacee4 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Fri, 20 Nov 2009 13:56:16 +0800
+Subject: [PATCH] Add sysfs interface for lcd color/image brightness and contrast
+
+---
+ drivers/char/hhtech_gpio.c |  126 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 files changed, 126 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index af72179..f0382ec 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -1028,6 +1028,124 @@ static ssize_t hhtech_sysfs_show_wk_status(struct device *dev, struct device_att
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", wakeup_status);
+ }
+ 
++static ssize_t hhtech_sysfs_show_color_brightness(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	unsigned long reg_val;
++	char val;
++
++	reg_val = *(volatile unsigned long *)0xF0204070;
++	val = (reg_val >> 8) & 0xFF;
++	val += 128;
++	return snprintf(buf, PAGE_SIZE, "%d\n", val);
++}
++
++static ssize_t hhtech_sysfs_store_color_brightness(struct device *dev,
++					      struct device_attribute *attr, const char *buf, size_t len)
++{
++	unsigned long value = simple_strtoul(buf, NULL, 10);
++	value = value > 255 ? 255 : value;
++	char val = value;
++	val -= 128;
++
++	if (len < 1)
++		return -EINVAL;
++
++	value = val;
++	value <<= 8;
++	*(volatile unsigned long *)0xF0204070 &= ~0xFF00;
++	*(volatile unsigned long *)0xF0204070 |= value;
++
++	return len;
++}
++
++static ssize_t hhtech_sysfs_show_color_contrast(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	unsigned long reg_val;
++	char val;
++
++	reg_val = *(volatile unsigned long *)0xF0204070;
++	val = reg_val & 0xFF;
++	val += 128;
++	return snprintf(buf, PAGE_SIZE, "%d\n", val);
++}
++
++static ssize_t hhtech_sysfs_store_color_contrast(struct device *dev,
++					      struct device_attribute *attr, const char *buf, size_t len)
++{
++	unsigned long value = simple_strtoul(buf, NULL, 10);
++	value = value > 255 ? 255 : value;
++	char val = value;
++	val -= 128;
++
++	if (len < 1)
++		return -EINVAL;
++
++	value = val;
++	*(volatile unsigned long *)0xF0204070 &= ~0xFF;
++	*(volatile unsigned long *)0xF0204070 |= value;
++
++	return len;
++}
++
++static ssize_t hhtech_sysfs_show_image_brightness(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	unsigned long reg_val;
++	char val;
++
++	reg_val = *(volatile unsigned long *)0xF02040AC;
++	val = (reg_val >> 8) & 0xFF;
++	val += 128;
++	return snprintf(buf, PAGE_SIZE, "%d\n", val);
++}
++
++static ssize_t hhtech_sysfs_store_image_brightness(struct device *dev,
++					      struct device_attribute *attr, const char *buf, size_t len)
++{
++	unsigned long value = simple_strtoul(buf, NULL, 10);
++	value = value > 255 ? 255 : value;
++	char val = value;
++	val -= 128;
++
++	if (len < 1)
++		return -EINVAL;
++
++	value = val;
++	value <<= 8;
++	*(volatile unsigned long *)0xF02040AC &= ~0xFF00;
++	*(volatile unsigned long *)0xF02040AC |= value;
++
++	return len;
++}
++
++static ssize_t hhtech_sysfs_show_image_contrast(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	unsigned long reg_val;
++	char val;
++
++	reg_val = *(volatile unsigned long *)0xF02040AC;
++	val = reg_val & 0xFF;
++	val += 128;
++	return snprintf(buf, PAGE_SIZE, "%d\n", val);
++}
++
++static ssize_t hhtech_sysfs_store_image_contrast(struct device *dev,
++					      struct device_attribute *attr, const char *buf, size_t len)
++{
++	unsigned long value = simple_strtoul(buf, NULL, 10);
++	value = value > 255 ? 255 : value;
++	char val = value;
++	val -= 128;
++
++	if (len < 1)
++		return -EINVAL;
++
++	value = val;
++	*(volatile unsigned long *)0xF02040AC &= ~0xFF;
++	*(volatile unsigned long *)0xF02040AC |= value;
++
++	return len;
++}
++
+ extern void headp_update_mixer(struct work_struct* work);
+ 
+ /*   headphone plug in and out  Interrupt handle  */
+@@ -1095,6 +1213,10 @@ static DEVICE_ATTR(led1_en, 0666, hhtech_sysfs_show_led1, hhtech_sysfs_store_led
+ static DEVICE_ATTR(led2_en, 0666, hhtech_sysfs_show_led2, hhtech_sysfs_store_led2);
+ static DEVICE_ATTR(rtc_wk_time, 0666, hhtech_sysfs_show_rtc_wk_time, hhtech_sysfs_store_rtc_wk_time);
+ static DEVICE_ATTR(wk_status, 0666, hhtech_sysfs_show_wk_status, NULL);
++static DEVICE_ATTR(color_brightness, 0666, hhtech_sysfs_show_color_brightness, hhtech_sysfs_store_color_brightness);
++static DEVICE_ATTR(color_contrast, 0666, hhtech_sysfs_show_color_contrast, hhtech_sysfs_store_color_contrast);
++static DEVICE_ATTR(image_brightness, 0666, hhtech_sysfs_show_image_brightness, hhtech_sysfs_store_image_brightness);
++static DEVICE_ATTR(image_contrast, 0666, hhtech_sysfs_show_image_contrast, hhtech_sysfs_store_image_contrast);
+ 
+ static struct attribute *attrs[] = {
+ 	&dev_attr_system_flag.attr,
+@@ -1131,6 +1253,10 @@ static struct attribute *attrs[] = {
+ 	&dev_attr_led2_en.attr,
+ 	&dev_attr_rtc_wk_time.attr,
+ 	&dev_attr_wk_status.attr,
++	&dev_attr_color_brightness.attr,
++	&dev_attr_color_contrast.attr,
++	&dev_attr_image_brightness.attr,
++	&dev_attr_image_contrast.attr,
+ 	NULL,
+ };
+ 
+-- 
+1.6.3.3
+

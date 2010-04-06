@@ -1,0 +1,25 @@
+From 48d14b3765c7e71fe545c5d48f091aaca9d2cd71 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Wed, 13 Jan 2010 16:17:20 +0800
+Subject: [PATCH] A little sdhc fix
+
+---
+ drivers/mmc/host/tcc_sdhc.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/mmc/host/tcc_sdhc.c b/drivers/mmc/host/tcc_sdhc.c
+index 275160c..2a9fde6 100644
+--- a/drivers/mmc/host/tcc_sdhc.c
++++ b/drivers/mmc/host/tcc_sdhc.c
+@@ -1298,7 +1298,7 @@ static void __exit tcc_mmc_exit(void)
+ #endif
+ 
+ 	/* remove power control functions */
+-	remove_pwm_node(DEVICE_OTG);
++	remove_pwm_node(DEVICE_SDHC);
+ }
+ 
+ module_init(tcc_mmc_init);
+-- 
+1.6.3.3
+

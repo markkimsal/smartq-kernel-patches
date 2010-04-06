@@ -1,0 +1,52 @@
+From 163eea60ab186ea0455f75a1366ef3b43246bfbc Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Wed, 2 Sep 2009 17:22:31 +0800
+Subject: [PATCH] add the support of memory frequency change
+
+---
+ arch/arm/plat-tcc/tcc_cpufreq.c |   13 ++++++++++++-
+ 1 files changed, 12 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/plat-tcc/tcc_cpufreq.c b/arch/arm/plat-tcc/tcc_cpufreq.c
+index e35c189..1a18fb5 100644
+--- a/arch/arm/plat-tcc/tcc_cpufreq.c
++++ b/arch/arm/plat-tcc/tcc_cpufreq.c
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 五, 28  8月 2009 14:07:23 +0800     by root #
++ * Last modified: 三, 02  9月 2009 17:21:58 +0800  by duanius #
+  ****************************************************************/
+ #include <linux/types.h>
+ #include <linux/kernel.h>
+@@ -31,8 +31,18 @@
+ 
+ extern unsigned int tca_ckc_getcpu(void);
+ extern int tcc_ckc_change_cpu(unsigned int cpuvalue);
++extern void memchange(unsigned int freq);
+ 
+ /* frequency */
++static unsigned int mem_freq_table[] = {
++	3300000,
++	2800000,
++	2400000,
++	2100000,
++	1800000,
++	1600000,
++	1410000,
++};
+ static struct cpufreq_frequency_table tcc8902_freq_table[] = {
+ 	{0, 600000},
+ 	{1, 506250},
+@@ -87,6 +97,7 @@ static int tcc8902_target(struct cpufreq_policy *policy,
+ 
+ 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+ 	ret = tcc_ckc_change_cpu(freqs.new * 10);
++	memchange(mem_freq_table[index]);
+ 	//ret = clk_set_rate(mpu_clk, freqs.new * KHZ_T);
+ 	if(ret != 0)
+ 		printk("frequency scaling error\n");
+-- 
+1.6.3.3
+

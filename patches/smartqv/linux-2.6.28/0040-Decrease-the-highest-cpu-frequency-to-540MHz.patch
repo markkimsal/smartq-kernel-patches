@@ -1,0 +1,57 @@
+From 76565031911180cb50c658c0b8dcb393a98023c6 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Thu, 17 Sep 2009 14:26:36 +0800
+Subject: [PATCH] Decrease the highest cpu frequency to 540MHz
+
+---
+ arch/arm/mach-tcc8900/tcc_ckc_ctrl.c |    4 ++--
+ arch/arm/plat-tcc/tcc_cpufreq.c      |    4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c b/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c
+index b940eae..1df4959 100644
+--- a/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c
++++ b/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c
+@@ -102,7 +102,7 @@ unsigned int FbusStepValue[FBUS_STEP_NUM] = {
+ };
+ 
+ unsigned int FcoreStepValue[FCORE_STEP_NUM] = {
+-	6000000,
++	5400000,
+ 	5062500,4860000,4725000,4556250,4387500,4252500,4050000,3948750,3780000,3712500,
+ 	3645000,3510000,3375000,3240000,3037500,2970000,2835000,2700000,2632500,2430000,
+ 	2362500,2227500,2160000,2025000,1890000,1822500,1750000,1687500,1620000,1518750,
+@@ -112,7 +112,7 @@ unsigned int FcoreStepValue[FCORE_STEP_NUM] = {
+ };
+ 
+ unsigned int FcorePllValue[FCORE_STEP_NUM] = {
+-	6000000,
++	5400000,
+ 	5400000,	4860000,	5400000,	4860000,	5400000,	4860000,	4320000,	4860000,	4320000,	5400000,
+ 	4860000,	4320000,	5400000,	3240000,	3240000,	4320000,	3240000,	5400000,	3240000,	3240000,
+ 	5400000,	3240000,	2160000,	2160000,	2160000,	3240000,	2160000,	5400000,	2160000,	4860000,
+diff --git a/arch/arm/plat-tcc/tcc_cpufreq.c b/arch/arm/plat-tcc/tcc_cpufreq.c
+index 85f962d..0a2c390 100644
+--- a/arch/arm/plat-tcc/tcc_cpufreq.c
++++ b/arch/arm/plat-tcc/tcc_cpufreq.c
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 五, 04  9月 2009 17:15:03 +0800  by duanius #
++ * Last modified: 二, 15  9月 2009 11:47:30 +0800     by root #
+  ****************************************************************/
+ #include <linux/types.h>
+ #include <linux/kernel.h>
+@@ -44,7 +44,7 @@ static unsigned int mem_freq_table[] = {
+ 	1410000,
+ };
+ static struct cpufreq_frequency_table tcc8902_freq_table[] = {
+-	{0, 600000},
++	{0, 540000},
+ 	{1, 506250},
+ 	{2, 405000},
+ 	{3, 303750},
+-- 
+1.6.3.3
+

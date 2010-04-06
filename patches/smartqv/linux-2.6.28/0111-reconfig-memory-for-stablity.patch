@@ -1,0 +1,81 @@
+From d226c486f5e147ac12f840c80a96ee9d6ca2bfe1 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Fri, 4 Dec 2009 10:36:34 +0800
+Subject: [PATCH] reconfig memory for stablity
+
+---
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c    |    6 +++---
+ drivers/char/hhtech_gpio.c                         |    4 ++++
+ drivers/char/tcc_pwrkey.c                          |    4 ++--
+ 3 files changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
+index 83e2b09..9a085e9 100644
+--- a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
++++ b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
+@@ -838,7 +838,7 @@ void init_clockchange330Mhz(void)
+ 						| (0 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+ 	#else
+-	    *(volatile unsigned long *)0xF0304428 = 0x00068551; 
++	    *(volatile unsigned long *)0xF0304428 = 0x0006e551; 
+ 	#endif
+ 	
+ 	while (!((*(volatile unsigned long *)0xF030442c) & (1)));	// Wait until Calibration completion without error
+@@ -864,14 +864,14 @@ void init_clockchange330Mhz(void)
+ 						| (0 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+ 	#else
+-	*(volatile unsigned long *)0xF0304428 = 0x00068553; 		// ZQCTRL
++	*(volatile unsigned long *)0xF0304428 = 0x0006e553; 		// ZQCTRL
+ 	#endif
+ 
+ 	i = 3200;
+ 	while(i)
+ 		i--;
+ 
+-	*(volatile unsigned long *)0xF0304428 = 0x00068551; 		// ZQCTRL
++	*(volatile unsigned long *)0xF0304428 = 0x0006e551; 		// ZQCTRL
+ 
+ 	i = 3200;
+ 	while(i)
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 786ba4f..1bcc55a 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -1340,6 +1340,7 @@ static struct miscdevice hpd_misc_device =
+ 	&hpd_fops,
+ };
+ 
++extern void memchange(unsigned int freq);
+ static int hhtech_gpio_probe(struct platform_device *pdev)
+ {
+ 	int retval;
+@@ -1426,6 +1427,9 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ //	battery_update_work(NULL);
+ 	schedule_delayed_work(&battery_work, 4 * HZ);
+ 	schedule_delayed_work(&shutdown_work, 30 * HZ);
++
++	memchange(3300000);
++	mdelay(50);
+ 	
+ 	return 0;
+ 
+diff --git a/drivers/char/tcc_pwrkey.c b/drivers/char/tcc_pwrkey.c
+index b1972f8..ec62582 100644
+--- a/drivers/char/tcc_pwrkey.c
++++ b/drivers/char/tcc_pwrkey.c
+@@ -348,8 +348,8 @@ volatile static void tca_off_sleep(int type)
+                                                 | (0x2      << 3)   // Calibration PULL-UP forced value
+                                                 | (0x5      << 6)   // Calibration PULL-DOWN forced value
+                                                 | (0x0      << 9)   // On-Die Termination Resistor Value Selection
+-                                                | (0x1      << 12)  // Termination Selection    : 0 for disable
+-                                                | (0x4      << 13)  // Drive Strength
++                                                | (0x0      << 12)  // Termination Selection    : 0 for disable
++                                                | (0x7      << 13)  // Drive Strength
+                                                 | (0x0      << 16)  // Periodic Calibration
+                                                 | (0x3      << 17)  // Update Counter Load Value
+                                                     ;
+-- 
+1.6.3.3
+

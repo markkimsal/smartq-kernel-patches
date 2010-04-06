@@ -1,0 +1,90 @@
+From cba71538d50a08eca69e80afbaa3507ba8335490 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Tue, 24 Nov 2009 09:52:42 +0800
+Subject: [PATCH] decrease num of sync when write data to sd card from xp to speed up the transmit
+
+---
+ drivers/usb/gadget/file_storage.c |   23 ++++++++++++++++++-----
+ 1 files changed, 18 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/usb/gadget/file_storage.c b/drivers/usb/gadget/file_storage.c
+index a66e9f2..d1a761a 100644
+--- a/drivers/usb/gadget/file_storage.c
++++ b/drivers/usb/gadget/file_storage.c
+@@ -1709,7 +1709,7 @@ static int do_read(struct fsg_dev *fsg)
+ 	return -EIO;		// No default reply
+ }
+ 
+-
++static unsigned long xp_send_sum = 0;
+ /*-------------------------------------------------------------------------*/
+ 
+ static int do_write(struct fsg_dev *fsg)
+@@ -1746,8 +1746,10 @@ static int do_write(struct fsg_dev *fsg)
+ 			curlun->sense_data = SS_INVALID_FIELD_IN_CDB;
+ 			return -EINVAL;
+ 		}
++#if 0 	/* comment by csduan */
+ 		if (fsg->cmnd[1] & 0x08)	// FUA
+ 			curlun->filp->f_flags |= O_SYNC;
++#endif	/* comment by csduan */
+ 	}
+ 	if (lba >= curlun->num_sectors) {
+ 		curlun->sense_data = SS_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE;
+@@ -1759,6 +1761,16 @@ static int do_write(struct fsg_dev *fsg)
+ 	file_offset = usb_offset = ((loff_t) lba) << 9;
+ 	amount_left_to_req = amount_left_to_write = fsg->data_size_from_cmnd;
+ 
++	if(fsg->cmnd[0] != SC_WRITE_6) {
++		if (fsg->cmnd[1] & 0x08) {
++			xp_send_sum += amount_left_to_write;
++			if(xp_send_sum > 50*1024*1024) {
++				xp_send_sum = 0;
++				curlun->filp->f_flags |= O_SYNC;
++			}
++		}
++	}
++
+ 	while (amount_left_to_write > 0) {
+ 
+ 		/* Queue a request for more data from the host */
+@@ -2288,7 +2300,7 @@ static int do_start_stop(struct fsg_dev *fsg)
+ 	int		loej, start;
+ 
+ 	//if (!mod_data.removable) {
+-	if (curlun->removable) {
++	if (!curlun->removable) {
+ 		curlun->sense_data = SS_INVALID_COMMAND;
+ 		return -EINVAL;
+ 	}
+@@ -2297,7 +2309,8 @@ static int do_start_stop(struct fsg_dev *fsg)
+ 	loej = fsg->cmnd[4] & 0x02;
+ 	start = fsg->cmnd[4] & 0x01;
+ 
+-#ifdef CONFIG_USB_FILE_STORAGE_TEST
++//#ifdef CONFIG_USB_FILE_STORAGE_TEST
++#if 1
+ 	if ((fsg->cmnd[1] & ~0x01) != 0 ||		// Mask away Immed
+ 			(fsg->cmnd[4] & ~0x03) != 0) {	// Mask LoEj, Start
+ 		curlun->sense_data = SS_INVALID_FIELD_IN_CDB;
+@@ -2339,7 +2352,7 @@ static int do_prevent_allow(struct fsg_dev *fsg)
+ 	int		prevent;
+ 
+ 	//if (!mod_data.removable) {
+-	if (curlun->removable) {
++	if (!curlun->removable) {
+ 		curlun->sense_data = SS_INVALID_COMMAND;
+ 		return -EINVAL;
+ 	}
+@@ -4028,7 +4041,7 @@ static int __init fsg_bind(struct usb_gadget *gadget)
+ 	for (i = 0; i < fsg->nluns; ++i) {
+ 		curlun = &fsg->luns[i];
+ 		curlun->ro = mod_data.ro[i];
+-		//curlun->can_ioctl = mod_data.can_ioctl[i];
++		curlun->can_ioctl = mod_data.can_ioctl[i];
+ 		curlun->removable = mod_data.removable[i];
+ 		curlun->dev.release = lun_release;
+ 		curlun->dev.parent = &gadget->dev;
+-- 
+1.6.3.3
+

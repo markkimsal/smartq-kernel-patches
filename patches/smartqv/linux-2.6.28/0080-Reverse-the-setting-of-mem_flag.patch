@@ -1,0 +1,40 @@
+From 547f0826336532cd2669854d520c190b423613c1 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Fri, 6 Nov 2009 00:09:50 +0800
+Subject: [PATCH] Reverse the setting of mem_flag
+
+---
+ arch/arm/kernel/setup.c |    8 ++++----
+ 1 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/kernel/setup.c b/arch/arm/kernel/setup.c
+index a3f32c6..d3f5783 100644
+--- a/arch/arm/kernel/setup.c
++++ b/arch/arm/kernel/setup.c
+@@ -689,19 +689,19 @@ void __init setup_arch(char **cmdline_p)
+ 	unsigned long mem_flag = *(volatile unsigned long *)(phys_to_virt(0x40200000));
+ 	printk(KERN_ERR "mem_flag = %d\n", mem_flag);
+ 	switch(mem_flag) {
+-	    case 0:
++	    case 3:
+ 		strcat(default_command_line, " mem=214M");
+ 		TCC_VPU_SIZE = 24;
+ 		break;
+-	    case 1:
++	    case 2:
+ 		strcat(default_command_line, " mem=188M");
+ 		TCC_VPU_SIZE = 50;
+ 		break;
+-	    case 2:
++	    case 1:
+ 		strcat(default_command_line, " mem=194M");
+ 		TCC_VPU_SIZE = 44;
+ 		break;
+-	    case 3:
++	    case 0:
+ 		strcat(default_command_line, " mem=138M");
+ 		TCC_VPU_SIZE = 100;
+ 		break;
+-- 
+1.6.3.3
+

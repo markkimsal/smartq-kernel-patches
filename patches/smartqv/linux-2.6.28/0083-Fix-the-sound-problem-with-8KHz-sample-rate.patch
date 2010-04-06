@@ -1,0 +1,25 @@
+From 2175d955750019e6014b2883c9b1a0ef8a4b6dcd Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Mon, 9 Nov 2009 10:20:27 +0800
+Subject: [PATCH] Fix the sound problem with 8KHz sample rate
+
+---
+ sound/soc/codecs/wm8987.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/sound/soc/codecs/wm8987.c b/sound/soc/codecs/wm8987.c
+index 223d604..9670106 100755
+--- a/sound/soc/codecs/wm8987.c
++++ b/sound/soc/codecs/wm8987.c
+@@ -482,7 +482,7 @@ struct _coeff_div {
+ /* codec hifi mclk clock divider coefficients */
+ static const struct _coeff_div coeff_div[] = {
+ 	/* 8k */
+-	{12288000, 8000, 1536, 0x6, 0x0},
++	{12288000, 8000, 1536, 0x10, 0x0},
+ 	{11289600, 8000, 1408, 0x16, 0x0},
+ 	{18432000, 8000, 2304, 0x7, 0x0},
+ 	{16934400, 8000, 2112, 0x17, 0x0},
+-- 
+1.6.3.3
+

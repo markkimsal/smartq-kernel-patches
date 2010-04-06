@@ -1,0 +1,355 @@
+From b663bc3fee3a6a0f1add694d1c2632b54fbaced7 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Mon, 7 Sep 2009 20:53:35 +0800
+Subject: [PATCH] Add CPU sleep and wakeup code
+
+---
+ arch/arm/mach-tcc8900/board-tcc8900.c |    2 +
+ arch/arm/plat-tcc/Makefile            |    1 +
+ arch/arm/plat-tcc/include/plat/pm.h   |   34 ++++++++++++
+ arch/arm/plat-tcc/tcc_pm.c            |   95 +++++++++++++++++++++++++++++++++
+ drivers/char/Makefile                 |    2 +-
+ drivers/char/tcc_pwrkey.c             |   39 +++++++++-----
+ drivers/usb/dwc_otg/dwc_otg_driver.c  |   17 ++++++
+ 7 files changed, 175 insertions(+), 15 deletions(-)
+ create mode 100644 arch/arm/plat-tcc/include/plat/pm.h
+ create mode 100644 arch/arm/plat-tcc/tcc_pm.c
+
+diff --git a/arch/arm/mach-tcc8900/board-tcc8900.c b/arch/arm/mach-tcc8900/board-tcc8900.c
+index e5697ce..18f372a 100644
+--- a/arch/arm/mach-tcc8900/board-tcc8900.c
++++ b/arch/arm/mach-tcc8900/board-tcc8900.c
+@@ -27,6 +27,7 @@
+ #include <mach/common.h>
+ #include <hhtech_gpio.h>
+ #include <mach/gpio.h>
++#include <plat/pm.h>
+ 
+ extern void __init tcc8900_irq_init(void);
+ extern void __init tcc8900_map_common_io(void);
+@@ -73,6 +74,7 @@ static void __init tcc8900_map_io(void)
+ {
+     pm_power_off = tcc8900_power_off;
+     tcc8900_map_common_io();
++    tcc8902_pm_init();
+ }
+ 
+ static void __init tcc8900_init_irq(void)
+diff --git a/arch/arm/plat-tcc/Makefile b/arch/arm/plat-tcc/Makefile
+index 56f01a9..e7242fc 100644
+--- a/arch/arm/plat-tcc/Makefile
++++ b/arch/arm/plat-tcc/Makefile
+@@ -6,6 +6,7 @@
+ #obj-$(CONFIG_TCA_PM)	+= tcc_asm.o
+ #endif
+ #
++obj-$(CONFIG_PM) 		+= tcc_pm.o
+ obj-$(CONFIG_DPM) 		+= tcc_dpm.o
+ obj-$(CONFIG_CPU_FREQ)		+= tcc_cpufreq.o
+ 
+diff --git a/arch/arm/plat-tcc/include/plat/pm.h b/arch/arm/plat-tcc/include/plat/pm.h
+new file mode 100644
+index 0000000..2a98f50
+--- /dev/null
++++ b/arch/arm/plat-tcc/include/plat/pm.h
+@@ -0,0 +1,34 @@
++/****************************************************************
++ * $ID: pm.h            六, 29  8月 2009 16:53:28 +0800  root $ *
++ *                                                              *
++ * Description:                                                 *
++ *                                                              *
++ * Maintainer:  ·¶Ã;Ô(Meihui Fan)  <mhfan@ustc.edu>            *
++ *                                                              *
++ * CopyRight (c)  2009  HHTech                                  *
++ *   www.hhcn.com, www.hhcn.org                                 *
++ *   All rights reserved.                                       *
++ *                                                              *
++ * This file is free software;                                  *
++ *   you are free to modify and/or redistribute it   	        *
++ *   under the terms of the GNU General Public Licence (GPL).   *
++ *                                                              *
++ * Last modified: 六, 29  8月 2009 16:54:15 +0800     by root #
++ ****************************************************************/
++#ifndef PM_H
++#define PM_H
++
++#ifdef CONFIG_PM
++
++extern __init int tcc8902_pm_init(void);
++
++#else
++
++static inline int tcc8902_pm_init(void)
++{
++        return 0;
++}
++#endif
++
++#endif//PM_H
++/********************** End Of File: pm.h **********************/
+diff --git a/arch/arm/plat-tcc/tcc_pm.c b/arch/arm/plat-tcc/tcc_pm.c
+new file mode 100644
+index 0000000..73b7416
+--- /dev/null
++++ b/arch/arm/plat-tcc/tcc_pm.c
+@@ -0,0 +1,95 @@
++/****************************************************************
++ * $ID: tcc_pm.c        六, 29  8月 2009 16:38:08 +0800  root $ *
++ *                                                              *
++ * Description: TCC8902 Power Manager (Suspend-To-RAM) support  *
++ *                                                              *
++ * Maintainer:  Guoqiang Wang  <gqwang@hhcn.com>                *
++ *                                                              *
++ * CopyRight (c)  2009  HHTech                                  *
++ *   www.hhcn.com, www.hhcn.org                                 *
++ *   All rights reserved.                                       *
++ *                                                              *
++ * This file is free software;                                  *
++ *   you are free to modify and/or redistribute it   	        *
++ *   under the terms of the GNU General Public Licence (GPL).   *
++ *                                                              *
++ * Last modified: 四, 03  9月 2009 21:12:57 +0800     by root #
++ ****************************************************************/
++#include <linux/init.h>
++#include <linux/suspend.h>
++#include <linux/errno.h>
++#include <linux/time.h>
++#include <linux/jiffies.h>
++#include <linux/interrupt.h>
++#include <linux/crc32.h>
++#include <linux/ioport.h>
++#include <linux/delay.h>
++#include <linux/serial_core.h>
++#include <linux/platform_device.h>
++#include <asm/cacheflush.h>
++#include <asm/io.h>
++#include <asm/mach/time.h>
++#include <asm/mach/irq.h>
++#include <linux/rtc.h>
++
++extern void selfrefresh_test(void);
++
++/* tcc8902_pm_enter
++ *
++ * central control for sleep/resume process
++*/
++static int tcc8902_pm_enter(suspend_state_t state)
++{
++	unsigned long regs_save[16];
++	unsigned int tmp;
++
++	/* ensure the debug is initialised (if enabled) */
++	if (state != PM_SUSPEND_MEM) {
++		printk(KERN_ERR "error: only PM_SUSPEND_MEM supported\n");
++		return -EINVAL;
++	}
++
++	printk("selfrefresh_test\n");
++	selfrefresh_test();
++	
++	return 0;
++}
++
++/*
++ * Called after processes are frozen, but before we shut down devices.
++ */
++static int tcc8902_pm_prepare(suspend_state_t state)
++{
++	return 0;
++}
++
++/*
++ * Called after devices are re-setup, but before processes are thawed.
++ */
++static int tcc8902_pm_finish(suspend_state_t state)
++{
++	return 0;
++}
++
++static struct platform_suspend_ops tcc8902_pm_ops = {
++	.prepare	= tcc8902_pm_prepare,
++	.enter		= tcc8902_pm_enter,
++	.finish		= tcc8902_pm_finish,
++	.valid		= suspend_valid_only_mem,
++};
++
++/* tcc8902_pm_init
++ *
++ * Attach the power management functions. This should be called
++ * from the board specific initialisation if the board supports
++ * it.
++*/
++
++int __init tcc8902_pm_init(void)
++{
++	printk("TCC8902 Power Management, (c) 2009 HHCN \n");
++
++	suspend_set_ops(&tcc8902_pm_ops);
++	return 0;
++}
++/******************** End Of File: tcc_pm.c ********************/
+diff --git a/drivers/char/Makefile b/drivers/char/Makefile
+index fe7f2d4..61f510a 100644
+--- a/drivers/char/Makefile
++++ b/drivers/char/Makefile
+@@ -119,7 +119,7 @@ js-rtc-y = rtc.o
+ obj-$(CONFIG_TCC_CKC_IOCTL)	+= tcc_ckc_ioctl.o 
+ obj-$(CONFIG_TCC_USER_INTR)	+= tcc_intr.o
+ obj-$(CONFIG_TCC_BL)		+= tcc_backlight.o tca_backlight.o
+-obj-y				+= tcc_proc.o
++obj-y				+= tcc_proc.o tcc_pwrkey.o
+ 
+ # Files generated that shall be removed upon make clean
+ clean-files := consolemap_deftbl.c defkeymap.c
+diff --git a/drivers/char/tcc_pwrkey.c b/drivers/char/tcc_pwrkey.c
+index 9127816..d7a5f38 100644
+--- a/drivers/char/tcc_pwrkey.c
++++ b/drivers/char/tcc_pwrkey.c
+@@ -38,13 +38,14 @@
+ #include <linux/sched.h>
+ 
+ #include <linux/interrupt.h>
+-#include <asm/arch/irqs.h>
+ #include <linux/workqueue.h>
+ #include <mach/io.h>
+ #include <asm/tlbflush.h>
+ #include <asm/cacheflush.h>
+ 
+ #include <bsp.h>
++#include <hhtech_gpio.h>
++#include <mach/gpio.h>
+ 
+ #define PM_DEV_NAME		"pwr"
+ #define PM_DEV_MAJOR 	201
+@@ -56,6 +57,7 @@ extern void arm_restorestack(unsigned int rst);
+ extern void IO_ARM_CleanCACHE(unsigned int val);
+ extern void IO_ARM_FlushCACHE(void);
+ 
++unsigned char SRAM_ADDR_VAR[0x110];
+ 
+ /*****************************************************************************
+ * Function Name : tca_off_sleep()
+@@ -184,7 +186,7 @@ volatile static void tca_off_sleep(void)
+ 
+     //go power down mode......
+ 
+-
++#if 0
+     *(volatile unsigned long *)0xF0102024 &= ~(0x0000f000); //
+     *(volatile unsigned long *)0xF0102004 &= ~(0x00000008); //
+ 
+@@ -192,10 +194,18 @@ volatile static void tca_off_sleep(void)
+     *(volatile unsigned long *)0xF0404008 = 0x00008000; // PMU-WKUPPOL  - SRCS[15](GPIO A3) active low
+     *(volatile unsigned long *)0xF0404004 = 0x00008000; // PMU-WKUPEN  - SRCS[15](GPIO A3) enable
+     *(volatile unsigned long *)0xF0404000 |= 0x00000004; // PMU-CONTROL - Power Off
+-
+-
+-
+-
++#else
++    *(volatile unsigned long *)0xF0404000 |= 0x00000010; // PMU-CONTROL - Download ITCM boot code
++    *(volatile unsigned long *)0xF0404000 |= 0x00000008; // PMU-CONTROL - Deep Power-Down
++    *(volatile unsigned long *)0xF0404000 |= 0x80000000; // PMU-CONTROL - I/O Retension Enable
++    gpio_direction_input(TCC_GPD18);
++    *(volatile unsigned long *)0xF0404008 = 0x00000800; // PMU-WKUPPOL  - SRCS[11](GPIO D18) active low
++    *(volatile unsigned long *)0xF0404004 = 0x00000800; // PMU-WKUPEN  - SRCS[11](GPIO D18) enable
++    *(volatile unsigned long *)0xF0404000 |= 0x00000002; // PMU-CONTROL - Power Off
++#endif
++
++
++    gpio_direction_output(GPIO_LED1_EN, 1);
+     //wakeup start
+ 
+         nCount = 10;
+@@ -325,6 +335,11 @@ volatile static void tca_off_sleep(void)
+ 
+ }
+ 
++typedef void (*lpfunc)(void);
++extern lpfunc lpSelfRefresh;
++#define SRAM_ADDR_STANDBY		0xEFF00000
++#define SRAM_FUNC_SIZE			0x600
++
+ 
+ volatile static void tca_off_copysram(void)
+ {
+@@ -351,9 +366,7 @@ volatile static void tca_off_copysram(void)
+     while(--i);
+ 
+     // Jump to Function Start Point
+-    lstack = arm_changestack();
+     lpSelfRefresh();
+-    arm_restorestack(lstack);
+ }
+ 
+ void selfrefresh_test(void)
+@@ -369,19 +382,17 @@ void selfrefresh_test(void)
+     pLCDC_BASE1->LCTRL &= ~Hw0;
+     pLCDC_BASE0->LCTRL &= ~Hw0;
+ 
++    int_alldisable();
+     local_flush_tlb_all();
+     flush_cache_all();
+ 
+-    IO_ARM_CleanDCACHE(1);
+-    IO_ARM_FlushCACHE();
++    //IO_ARM_CleanDCACHE(1);
++    //IO_ARM_FlushCACHE();
+ 
+     //WinCE
+     //OALCleanDCache();
+     //OALFlushICache();
+     
+-    local_irq_save(flags);
+-    local_irq_disable();
+-
+     pTIMER->TC32EN &= ~Hw24;
+     
+     retstack = arm_changestack();
+@@ -391,7 +402,7 @@ void selfrefresh_test(void)
+     arm_restorestack(retstack);
+ 
+     pTIMER->TC32EN |= Hw24;
+-    local_irq_restore(flags);
++    arm_restorestack(retstack);
+ 
+     //	LCDC Power Up
+     pLCDC_BASE0->LCTRL |= Hw0;
+diff --git a/drivers/usb/dwc_otg/dwc_otg_driver.c b/drivers/usb/dwc_otg/dwc_otg_driver.c
+index 70261ea..bd35df8 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_driver.c
++++ b/drivers/usb/dwc_otg/dwc_otg_driver.c
+@@ -1182,6 +1182,19 @@ fail:
+ 	return retval;
+ }
+ EXPORT_SYMBOL(hh_otg_device);
++
++#ifdef	CONFIG_PM
++static int dwc_otg_driver_suspend(struct platform_device *pdev, pm_message_t state)
++{
++	printk("dwc_otg_driver_suspend success\n");
++	return 0;
++}
++
++static int dwc_otg_driver_resume(struct platform_device *pdev)
++{
++	return 0;
++}
++#endif
+ /**
+  * This structure defines the methods to be called by a bus driver
+  * during the lifecycle of a device on that bus. Both drivers and
+@@ -1199,6 +1212,10 @@ static struct device_driver dwc_otg_driver =
+ 	.bus    = &platform_bus_type,
+ 	.probe  = dwc_otg_driver_probe,
+ 	.remove = dwc_otg_driver_remove,
++#ifdef CONFIG_PM
++	.suspend = dwc_otg_driver_suspend,
++	.resume	 = dwc_otg_driver_resume,
++#endif
+ };
+ 
+ 
+-- 
+1.6.3.3
+

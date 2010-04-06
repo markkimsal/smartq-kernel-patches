@@ -1,0 +1,25 @@
+From 3af831dcadd2b7f118cd670b3d8ca7b32725df4e Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Thu, 29 Oct 2009 14:42:25 +0800
+Subject: [PATCH] re-config PWDN for using VIQE
+
+---
+ drivers/char/hhtech_gpio.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 526658f..2e5cd52 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -285,7 +285,7 @@ static void shutdown_unused_devices(void)
+ 	*(volatile unsigned long *)0xF0510000 = 0x0;//mpefec off
+ 	*(volatile unsigned long *)0xF0240004 |= 0x80;//shut down clk of TV-OUT
+ 	*(volatile unsigned long *)0xF0200000 &= ~(0x1);//disable LCD0
+-//	*(volatile unsigned long *)0xF0251030 = 0x45;//shut down power of CIF,LCDC0,MSCL1
++	*(volatile unsigned long *)0xF0251030 = 0x45;//shut down power of CIF,LCDC0,MSCL1
+ 
+ 	//below is stop the peri clock
+ 	for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++)
+-- 
+1.6.3.3
+

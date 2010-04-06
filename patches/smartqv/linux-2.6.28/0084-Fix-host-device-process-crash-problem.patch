@@ -1,0 +1,24 @@
+From 47356bd2456df8ba02453688b0ce5b4e72e9bc52 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Tue, 10 Nov 2009 11:45:29 +0800
+Subject: [PATCH] Fix host->device process crash problem
+
+---
+ drivers/usb/dwc_otg/dwc_otg_pcd_intr.c |    1 +
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/usb/dwc_otg/dwc_otg_pcd_intr.c b/drivers/usb/dwc_otg/dwc_otg_pcd_intr.c
+index c9158ac..7cf7e68 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_pcd_intr.c
++++ b/drivers/usb/dwc_otg/dwc_otg_pcd_intr.c
+@@ -2632,6 +2632,7 @@ int32_t dwc_otg_pcd_handle_intr( dwc_otg_pcd_t *_pcd )
+ 		gintr_status.d32 = dwc_otg_read_core_intr(core_if);
+ 		if (!gintr_status.d32)
+ 		{
++			SPIN_UNLOCK(&_pcd->lock);
+ 			return 0;
+ 		}
+ 		DWC_DEBUGPL(DBG_PCDV, "%s: gintsts&gintmsk=%08x\n",
+-- 
+1.6.3.3
+

@@ -1,0 +1,1636 @@
+From 8e33b16e5520e4d93831fcf940d52ab34a174a4e Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Wed, 9 Dec 2009 18:54:46 +0800
+Subject: [PATCH] merge code from 2265 about PM
+
+---
+ arch/arm/mach-tcc8900/Makefile |    2 +-
+ arch/arm/mach-tcc8900/pm.c     | 1088 ++++++++++++++++++++++++++++++++++++++++
+ arch/arm/mach-tcc8900/pm.h     |  186 +++++++
+ arch/arm/mach-tcc8900/pm_asm.S |  283 +++++++++++
+ arch/arm/plat-tcc/tcc_pm.c     |    5 +-
+ 5 files changed, 1561 insertions(+), 3 deletions(-)
+ create mode 100644 arch/arm/mach-tcc8900/pm.c
+ create mode 100644 arch/arm/mach-tcc8900/pm.h
+ create mode 100644 arch/arm/mach-tcc8900/pm_asm.S
+
+diff --git a/arch/arm/mach-tcc8900/Makefile b/arch/arm/mach-tcc8900/Makefile
+index d8ab101..97c5099 100644
+--- a/arch/arm/mach-tcc8900/Makefile
++++ b/arch/arm/mach-tcc8900/Makefile
+@@ -49,5 +49,5 @@ ifeq ($(CONFIG_DRAM_MDDR), y)
+ obj-$(CONFIG_ARCH_TCC) += tcc_ckc_ctrl.o tcc/arm_ioctlutil.o tcc/tcc_ckcmddr_100to160.o tcc/tcc_ckcmddr_20to90.o
+ endif
+ 
+-
++obj-$(CONFIG_PM) += pm.o pm_asm.o
+ 
+diff --git a/arch/arm/mach-tcc8900/pm.c b/arch/arm/mach-tcc8900/pm.c
+new file mode 100644
+index 0000000..559d191
+--- /dev/null
++++ b/arch/arm/mach-tcc8900/pm.c
+@@ -0,0 +1,1088 @@
++/*
++ * arch/arm/mach-tcc8900/pm.c  
++ *
++ * Author:  <linux@telechips.com>
++ * Created: October, 2009
++ * Description: LINUX POWER MANAGEMENT FUNCTIONS
++ *
++ * Copyright (C) 2008-2009 Telechips 
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
++ *
++ *
++ * ChangeLog:
++ *
++ *
++ */
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/pm.h>
++#include <linux/syscalls.h>		// sys_sync()
++#include <linux/io.h>
++#include <asm/tlbflush.h>
++#include <asm/cacheflush.h>		// local_flush_tlb_all(), flush_cache_all();
++
++#include <bsp.h>
++#include <hhtech_gpio.h>
++#include <mach/gpio.h>
++#include "pm.h"
++
++#include <linux/suspend.h>
++
++#define BUS_CONTROL
++
++#define GPIOSIZE (16 * 6 + 8)
++#define SRAM_ADDR_STANDBY 0xEFF00000
++unsigned long bkreg[GPIOSIZE];
++
++typedef void (* lpfunc)(int);
++static lpfunc lpSelfRefresh;
++
++extern void IO_ARM_SaveREG(int sram_addr, unsigned int p89reg, void *);
++extern void Awake_address(void);
++extern void tca_bkl_powerup(unsigned int tmr_vaddr, unsigned int gpio_vaddr);
++
++
++static void tcc_gpio_default(unsigned int gpio_vaddr)
++{
++	PGPIO pGPIO = (PGPIO)gpio_vaddr;
++
++	/* GPC */
++	pGPIO->GPCDAT = 0x0000000;					//   0x080  R/W  0x00000000  GPC Data Register 
++	pGPIO->GPCEN = 0xFFFFFFFF;					//   0x084  R/W  0x00000000  GPC Output Enable Register 
++
++	//pGPIO->GPCPD1 &= ~Hw6; //pull - up remove
++	//pGPIO->GPCPD1 &= ~Hw7; //pull - down remove
++
++	pGPIO->GPCPD0 = 0; //pull - up 
++	pGPIO->GPCPD1 = 0; //pull - up 
++
++	pGPIO->GPCFN0 = 0x00000000;					//   0x0A4  W  0x00000000  Port Configuration on GPC Output Data 
++	pGPIO->GPCFN1 = 0x00000000;					//   0x0A8  W  0x00000000  Port Configuration on GPC Output Data 
++	pGPIO->GPCFN2 = 0x00000000;					//   0x0AC  W  0x00000000  Port Configuration on GPC Output Data 
++	pGPIO->GPCFN3 = 0x00000000;					//   0x0B0  W  0x00000000  Port Configuration on GPC Output Data 
++
++	/* GPD */
++	pGPIO->GPDDAT = 0x00000000;					//   0x0C0  R/W  0x00000000  GPD Data Register 
++	pGPIO->GPDEN = 0x00000000;					//   0x0C4  R/W  0x00000000  GPD Output Enable Register 
++	pGPIO->GPDFN0 = 0x00000000;					//   0x0E4  W  0x00000000  Port Configuration on GPD Output Data 
++	pGPIO->GPDFN1 = 0x00000000;					//   0x0E8  W  0x00000000  Port Configuration on GPD Output Data 
++	pGPIO->GPDFN2 = 0x00000000;					//   0x0EC  W  0x00000000  Port Configuration on GPD Output Data 
++	pGPIO->GPDFN3 = 0x00000000;					//   0x0F0  W  0x00000000  Port Configuration on GPD Output Data 
++
++	/* GPE */
++	pGPIO->GPEDAT = 0x00000000;					//   0x100  R/W  0x00000000  GPE Data Register 
++	pGPIO->GPEEN = 0x0F000000;					//   0x104  R/W  0x00000000  GPE Output Enable Register 
++	pGPIO->GPEFN0 = 0x00000000;					//   0x124  W  0x00000000  Port Configuration on GPE Output Data 
++	pGPIO->GPEFN1 = 0x00000000;					//   0x128  W  0x00000000  Port Configuration on GPE Output Data 
++	pGPIO->GPEFN2 = 0x00000000;					//   0x12C  W  0x00000000  Port Configuration on GPE Output Data 
++	pGPIO->GPEFN3 = 0x00000000;					//   0x130  W  0x00000000  Port Configuration on GPE Output Data 
++
++	/* GPF */
++	pGPIO->GPFDAT = 0x00000000|Hw6;					//   0x140  R/W  0x00000000  GPF Data Register 
++	pGPIO->GPFEN = 0xffffffff;					//   0x144  R/W  0x00000000  GPF Output Enable Register 
++	pGPIO->GPFFN0 = 0x00000000;					//   0x164  W  0x00000000  Port Configuration on GPF Output Data 
++	pGPIO->GPFFN1 = 0x00000000;					//   0x168  W  0x00000000  Port Configuration on GP Output Data 
++	pGPIO->GPFFN2 = 0x00000000;					//   0x16C  W  0x00000000  Port Configuration on GPF Output Data 
++	pGPIO->GPFFN3 = 0x00000000;					//   0x170  W  0x00000000  Port Configuration on GPF Output Data 
++
++	/* EXTEND */
++	pGPIO->EINTSEL0 = 0x00000000;				//   0x184  R/W  0x00000000  External Interrupt Select Register 01
++	pGPIO->EINTSEL1 = 0x00000000;				//   0x188  R/W  0x00000000  External Interrupt Select Register 1 
++	pGPIO->EINTSEL2 = 0x00000000;				//   0x18C  R/W  0x00000000  External Interrupt Select Register 2 
++	pGPIO->MON = 0x00000000;					//   0x190  R/W  0x00000000  System Monitor Enable Register   
++	pGPIO->ECID0 = 0x00000000;					//   0x194  R/W  0x00000000  CID output Register 
++	pGPIO->ECID1 = 0x00000000;					//   0x198  R  -  CID serial input Register 
++	pGPIO->ECID2 = 0x00000000;					//   0x19C  R  -  CID parallel input 0 Register 
++	pGPIO->ECID3 = 0x00000000;	
++}
++
++static void tcc_init_console(void)
++{
++	PUART pUART = (PUART)tcc_p2v(HwUARTCH0_BASE);
++	PGPIO pGPIO = (PGPIO)tcc_p2v(HwGPIO_BASE);
++
++	pUART->LCR      = Hw4 | Hw2 | Hw1 | Hw0;
++	pUART->LCR      &= ~Hw7;    //HwUART0_LCR_DLAB_OFF; //HwUART1_LCR_DLAB_OFF;
++	pUART->REG2.IER = 0;
++	pUART->LCR      |= Hw7; //HwUART0_LCR_DLAB_ON;
++	pUART->REG3.FCR = Hw5|Hw4|Hw2|Hw1|Hw0; //HwUART0_FCR_TXFR_EN | HwUART0_FCR_RXFR_EN | HwUART0_FCR_FE_EN;
++	pUART->REG1.DLL = 28;
++	pUART->REG2.DLM = 0;
++	pUART->LCR      &= ~Hw7;
++	pUART->REG2.IER = Hw0;
++
++	pGPIO->GPEEN    |= (Hw1|Hw0);
++	pGPIO->GPEFN0   |= (Hw4|Hw0); // UTXD0, URXD0
++}
++
++static void tcc_store_gpio(unsigned int gpio_vaddr)
++{
++	int i = 0;
++	PGPIO pGPIO = (PGPIO)gpio_vaddr;
++
++	for(i = 0 ; i < GPIOSIZE-8 ; i++ ) {
++		switch (i % 16) {
++			case 2:
++			case 3:
++			case 4:
++			case 13:
++			case 14:
++			case 15:
++				break;
++			default:
++				bkreg[i] = *((volatile unsigned int *)(gpio_vaddr + 4 * i));
++				break;
++		}
++	}
++
++	bkreg[GPIOSIZE-8] = pGPIO->EINTSEL0;
++	bkreg[GPIOSIZE-8+1] = pGPIO->EINTSEL1;
++	bkreg[GPIOSIZE-8+2] = pGPIO->EINTSEL2;
++	bkreg[GPIOSIZE-8+3] = pGPIO->MON;
++	bkreg[GPIOSIZE-8+4] = pGPIO->ECID0;
++
++	tcc_gpio_default(gpio_vaddr);
++}
++
++static void tcc_restore_gpio(unsigned int gpio_vaddr)
++{
++	int i = 0;
++	PGPIO pGPIO = (PGPIO)gpio_vaddr;
++
++	for (i = 0; i < GPIOSIZE-8; i++) {
++		switch (i % 16) {
++			case 2:
++			case 3:
++			case 4:
++			case 13:
++			case 14:
++			case 15:
++				break;
++			default:
++				*((volatile unsigned int *)(gpio_vaddr + 4 * i)) = bkreg[i];
++				break;
++		}
++	}
++
++	pGPIO->EINTSEL0 = bkreg[GPIOSIZE-8];
++	pGPIO->EINTSEL1 = bkreg[GPIOSIZE-8+1];
++	pGPIO->EINTSEL2 = bkreg[GPIOSIZE-8+2];
++	pGPIO->MON = bkreg[GPIOSIZE-8+3];
++	pGPIO->ECID0 = bkreg[GPIOSIZE-8+4];
++}
++
++
++/*****************************************************************************
++* Function Name : tca_off_sdramselfrefresh()
++*  DRAM into Self Refresh 
++******************************************************************************/
++static void ddr2_self_refresh(void)
++{
++	volatile unsigned int nCount = 0;
++
++	*(volatile unsigned long *)0xF0102004 |= Hw2;	// GPIOADAT == corebus
++	nCount = *(volatile unsigned long *)0xF0102000;
++
++	/* Enter Self-Refresh Mode */
++	*(volatile unsigned long *)0xF0302004 = 0x00000003;			// PL341_PAUSE
++	while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=2)	// Wait PL34X_STATUS_PAUSED
++		;
++
++	*(volatile unsigned long *)0xF0302004 = 0x00000001;			// PL341_SLEEP
++	while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=3)	// Wait PL34X_STATUS_LOWPOWER
++		;
++
++	/* To prevent input leakage */
++	*(volatile unsigned long *)0xF0304400 |= 0x00000004; 
++	/* DLL OFF */
++	*(volatile unsigned long *)0xF0304404 &=  ~(0x00000003);	// DLL-0FF,DLL-Stop running
++	*(volatile unsigned long *)0xF0304428 &= ~(0x00000003);		// Calibration Start,Update Calibration
++	*(volatile unsigned long *)0xF030302C &=  ~(0x00004000);	//SDRAM IO Control Register Gatein Signal Power Down
++
++	nCount = ((*(volatile unsigned long *)0xF030200C) & ~(0x00004000));
++	*(volatile unsigned long *)0xF030200C = nCount| (1<<14);	// Stop-MCLK Enter Self-refresh mode
++
++	for (nCount = 1600; nCount > 0; nCount --)	// Wait
++		;
++
++	*(volatile unsigned long *)0xF0400000 = 0x002ffff4; // CKC-CLKCTRL0 - set cpu clk to XIN
++	*(volatile unsigned long *)0xF0400004 = 0x00200014; // CKC-CLKCTRL1 - set display clk to XIN
++	*(volatile unsigned long *)0xF0400008 = 0x00200014; // CKC-CLKCTRL2 - set memory clk to XIN
++	*(volatile unsigned long *)0xF040000c = 0x00200014; // CKC-CLKCTRL3 - set graphic clk to XIN
++	*(volatile unsigned long *)0xF0400010 = 0x00200014; // CKC-CLKCTRL4 - set io clk to XIN
++
++	*(volatile unsigned long *)0xF0400014 = 0x00200014; // CKC-CLKCTRL5 - set video bus clk to XIN
++	*(volatile unsigned long *)0xF0400018 = 0x00200014; // CKC-CLKCTRL6 - set video core clk to XIN
++	*(volatile unsigned long *)0xF040001c = 0x00200014; // CKC-CLKCTRL7 - set SMU clk to XIN
++
++#if 0
++*(volatile unsigned long *)0xF0404000 |= 0x00000002; // PMU-CONTROL - Power Off
++#endif
++
++	*(volatile unsigned long *)0xF0400020 &= ~0x80000000; // CKC-PLL0CFG - PLL disable
++	*(volatile unsigned long *)0xF0400024 &= ~0x80000000; // CKC-PLL1CFG - PLL disable
++	*(volatile unsigned long *)0xF0400028 &= ~0x80000000; // CKC-PLL2CFG - PLL disable
++	*(volatile unsigned long *)0xF040002c &= ~0x80000000; // CKC-PLL3CFG - PLL disable
++
++#if 0
++*(volatile unsigned long *)0xF0404001 = 0x00000000;
++*(volatile unsigned long *)0xF0404002 = 0x00000000;
++*(volatile unsigned long *)0xF0404008 = 0x00000000;
++*(volatile unsigned long *)0xF0404020 = 0x00000000;
++*(volatile unsigned long *)0xF0404000 |= 0x00000002; // PMU-CONTROL - Power Off
++#endif
++
++	while (1) {
++		*(volatile unsigned long *)0xF0102000 &= ~Hw2;
++		*(volatile unsigned long *)0xF0102000 &= ~Hw2;
++	}
++}
++
++/*****************************************************************************
++* Function Name : suspend_mode_on()
++******************************************************************************/
++//static void suspend_mode_on(void)
++void suspend_mode_on(void)
++{
++	volatile unsigned int nCount = 0;
++
++	TCC_REG *p89reg;
++	unsigned int *pVaddr;
++	unsigned int *pPaddr;
++
++	CKC *ckc = (CKC *)tcc_p2v(HwCLK_BASE); 
++	PIC *pic = (PIC *)tcc_p2v(HwPIC_BASE); 
++	VIC *vic = (VIC *)tcc_p2v(HwVIC_BASE); 
++	TIMER *timer = (TIMER *)tcc_p2v(HwTMR_BASE); 
++	PMU *pmu = (PMU *)tcc_p2v(HwPMU_BASE); 
++	GPIO *gpio = (GPIO *)tcc_p2v(HwGPIO_BASE); 
++	//DRAM *dram= (DRAM *)tcc_p2v(HwDRAM_BASE);
++	//DRAMMX *drammx= (DRAMMX *)tcc_p2v(HwDRAM_BASE);
++	//DRAMPHY *dramphy= (DRAMPHY *)tcc_p2v(HwDRAMPHY_BASE);
++	//DRAMMISC *drammisc= (DRAMMISC *)tcc_p2v(HwDRAMMISC_BASE);
++	//DRAMMEMBUS *drammembus= (DRAMMEMBUS *)tcc_p2v(HwDRAMMEMBUS_BASE);
++	MISCCOREBUS *misccorebus= (MISCCOREBUS *)tcc_p2v(HwCORECFG_BASE);
++	IOBUSCFG *iobuscfg= (IOBUSCFG *)tcc_p2v(HwIOBUSCFG_BASE);
++	TSADC *tsadc = (TSADC *)tcc_p2v(HwTSADC_BASE);
++
++	VMTREGION *vmtregion = (VMTREGION *)tcc_p2v(HwREGION_BASE);		//twkwon
++
++	//SMUI2CMASTER *smui2cmaster0 = (SMUI2CMASTER*)tcc_p2v(HwSMU_I2CMASTER0_BASE);
++	//SMUI2CMASTER *smui2cmaster1 = (SMUI2CMASTER*)tcc_p2v(HwSMU_I2CMASTER1_BASE);
++	//SMUI2CICLK *smui2ciclk = (SMUI2CICLK*)tcc_p2v(HwSMU_I2CICLK_BASE);
++
++	DDICONFIG *ddiconfig = (DDICONFIG*)tcc_p2v(HwDDI_CONFIG_BASE);
++	DDICACHE *ddicache = (DDICACHE*)tcc_p2v(HwDDI_CACHE_BASE);
++
++	USBHOST11 *usbhost11 = (USBHOST11*)tcc_p2v(HwUSBHOST_BASE);
++	USBHOST11CFG *usbhost11cfg = (USBHOST11CFG*)tcc_p2v(HwUSBHOSTCFG_BASE);
++
++	//USB20OTG *usb20otg = (USB20OTG*)tcc_p2v(HwUSB20OTG_BASE);
++	//USBOTGCFG *usbotgconfig = (USBOTGCFG*)tcc_p2v(HwUSBOTGCFG_BASE);
++	//USBPHYCFG *usbphycfg = (USBPHYCFG*)tcc_p2v(HwUSBPHYCFG_BASE);
++
++	RTC *rtc = (RTC *)tcc_p2v(HwRTC_BASE);
++	//NFC *nfc = (NFC *)tcc_p2v(HwNFC_BASE);
++	//LCDC *lcdc0 = (LCDC *)tcc_p2v(HwLCDC0_BASE);
++	//LCDC *lcdc1 = (LCDC *)tcc_p2v(HwLCDC1_BASE);
++
++	//M2MSCALER *m2mscaler0 = (M2MSCALER *)tcc_p2v(HwM2MSCALER0_BASE);
++	//M2MSCALER *m2mscaler1 = (M2MSCALER *)tcc_p2v(HwM2MSCALER1_BASE);
++
++	UARTPORTMUX *uartportmux = (UARTPORTMUX *)tcc_p2v(HwUARTPORTMUX_BASE);
++
++/*
++ * BACKUP REGISTER
++ */
++	pPaddr = ioremap_nocache(DRAM_PHYS_ADDRESS, PAGE_ALIGN(sizeof(unsigned int)));
++	pVaddr = ioremap_nocache(DRAM_VIRT_ADDRESS, PAGE_ALIGN(sizeof(unsigned int)));
++	p89reg = ioremap_nocache(DRAM_DATA_ADDRESS, PAGE_ALIGN(sizeof(TCC_REG)));
++
++	/* backup iobus state */	
++	p89reg->backup_peri_iobus0 = *(volatile unsigned long *)0xF05F5010;
++	p89reg->backup_peri_iobus1 = *(volatile unsigned long *)0xF05F5014;
++	/* all peri io bus on */
++	*(volatile unsigned long *)0xF05F5010 = 0xFFFFFFFF;
++	*(volatile unsigned long *)0xF05F5014 |= 0x7;
++
++	memcpy(&p89reg->ckc, ckc, sizeof(CKC));
++	memcpy(&p89reg->pic, pic, sizeof(PIC));
++	memcpy(&p89reg->vic, vic, sizeof(VIC));
++	memcpy(&p89reg->timer, timer, sizeof(TIMER));
++	memcpy(&p89reg->pmu, pmu, sizeof(PMU));
++	memcpy(&p89reg->gpio, gpio, sizeof(GPIO));
++	//memcpy(&p89reg->dram, dram, sizeof(DRAM));
++	//memcpy(&p89reg->drammx, drammx, sizeof(DRAMMX));
++	//memcpy(&p89reg->dramphy, dramphy, sizeof(DRAMPHY));
++	//memcpy(&p89reg->drammisc, drammisc, sizeof(DRAMMISC));
++	//memcpy(&p89reg->drammembus, drammembus, sizeof(DRAMMEMBUS));
++	memcpy(&p89reg->misccorebus, misccorebus, sizeof(MISCCOREBUS));
++	memcpy(&p89reg->iobuscfg, iobuscfg, sizeof(IOBUSCFG));
++	memcpy(&p89reg->tsadc, tsadc, sizeof(TSADC));
++
++	memcpy(&p89reg->vmtregion, vmtregion, sizeof(VMTREGION));		//twkwon
++
++	//memcpy(&p89reg->smui2cmaster0, smui2cmaster0, sizeof(SMUI2CMASTER));
++	//memcpy(&p89reg->smui2cmaster1, smui2cmaster1, sizeof(SMUI2CMASTER));
++	//memcpy(&p89reg->smui2ciclk, smui2ciclk, sizeof(SMUI2CICLK));
++	memcpy(&p89reg->ddiconfig, ddiconfig, sizeof(DDICONFIG));
++	memcpy(&p89reg->ddicache, ddicache, sizeof(DDICACHE));
++
++	memcpy(&p89reg->usbhost11, usbhost11, sizeof(USBHOST11));
++	memcpy(&p89reg->usbhost11cfg, usbhost11cfg, sizeof(USBHOST11CFG));
++	//memcpy(&p89reg->usb20otg, usb20otg, sizeof(USB20OTG));
++	//memcpy(&p89reg->usbotgconfig, usbotgconfig, sizeof(USBOTGCFG));
++	//memcpy(&p89reg->usbphycfg, usbphycfg, sizeof(USBPHYCFG));
++
++	memcpy(&p89reg->rtc, rtc, sizeof(RTC));
++	//memcpy(&p89reg->nfc, nfc, sizeof(NFC));
++
++	//memcpy(&p89reg->lcdc0, lcdc0, sizeof(LCDC));
++	//memcpy(&p89reg->lcdc1, lcdc1, sizeof(LCDC));
++	//memcpy(&p89reg->m2mscaler0, m2mscaler0, sizeof(M2MSCALER));
++	//memcpy(&p89reg->m2mscaler1, m2mscaler1, sizeof(M2MSCALER));
++
++	memcpy(&p89reg->uartportmux,uartportmux,sizeof(UARTPORTMUX));
++
++	p89reg->uMASK = BSP_SUSPEND_MASK;
++	*pVaddr = (unsigned int)p89reg;
++	*pPaddr = DRAM_DATA_ADDRESS;
++
++#if 0
++	/* flush TLB and I/D cache */
++	local_flush_tlb_all();
++	flush_cache_all();
++	IO_ARM_SaveREG(0x10000000, p89reg, Awake_address);
++#else
++	IO_ARM_SaveREG(SRAM_ADDR_STANDBY, (unsigned int)p89reg, Awake_address);
++#endif
++
++	__asm__ __volatile__ ("nop\n");
++
++/*
++ * RESTORE REGISTER
++ */
++	for (nCount = 100; nCount > 0; nCount --)
++		;
++
++	/* all peri io bus on */
++	*(volatile unsigned long *)0xF05F5010 = 0xFFFFFFFF;
++	*(volatile unsigned long *)0xF05F5014 |= 0x7;
++
++	ckc = (CKC *)tcc_p2v(HwCLK_BASE);
++	pic = (PIC *)tcc_p2v(HwPIC_BASE);
++	vic = (VIC *)tcc_p2v(HwVIC_BASE);
++	timer = (TIMER *)tcc_p2v(HwTMR_BASE);
++	pmu = (PMU *)tcc_p2v(HwPMU_BASE);
++	gpio = (GPIO *)tcc_p2v(HwGPIO_BASE);
++	//dram= (DRAM *)tcc_p2v(HwDRAM_BASE);
++	//drammx= (DRAMMX *)tcc_p2v(HwDRAM_BASE);
++	//dramphy= (DRAMPHY *)tcc_p2v(HwDRAMPHY_BASE);
++	//drammisc= (DRAMMISC *)tcc_p2v(HwDRAMMISC_BASE);
++	//drammembus= (DRAMMEMBUS *)tcc_p2v(HwDRAMMEMBUS_BASE);
++	misccorebus= (MISCCOREBUS *)tcc_p2v(HwCORECFG_BASE);
++	iobuscfg= (IOBUSCFG *)tcc_p2v(HwIOBUSCFG_BASE);
++	tsadc = (TSADC *)tcc_p2v(HwTSADC_BASE);
++
++	vmtregion = (VMTREGION *)tcc_p2v(HwREGION_BASE);		//twkwon
++	//usbphycfg = (USBPHYCFG *)tcc_p2v(HwUSBPHYCFG_BASE);
++
++	//smui2cmaster0 = (SMUI2CMASTER*)tcc_p2v(HwSMU_I2CMASTER0_BASE);
++	//smui2cmaster1 = (SMUI2CMASTER*)tcc_p2v(HwSMU_I2CMASTER1_BASE);
++	//smui2ciclk = (SMUI2CICLK*)tcc_p2v(HwSMU_I2CICLK_BASE);
++
++	ddiconfig = (DDICONFIG*)tcc_p2v(HwDDI_CONFIG_BASE);
++	ddicache = (DDICACHE*)tcc_p2v(HwDDI_CACHE_BASE);
++
++	usbhost11 = (USBHOST11*)tcc_p2v(HwUSBHOST_BASE);
++	usbhost11cfg = (USBHOST11CFG*)tcc_p2v(HwUSBHOSTCFG_BASE);
++
++	//usb20otg = (USB20OTG*)tcc_p2v(HwUSB20OTG_BASE);
++	//usbotgconfig = (USBOTGCFG*)tcc_p2v(HwUSBOTGCFG_BASE);
++	//usbphycfg = (USBPHYCFG*)tcc_p2v(HwUSBPHYCFG_BASE);
++
++	rtc = (RTC *)tcc_p2v(HwRTC_BASE);
++	//nfc = (NFC *)tcc_p2v(HwNFC_BASE);
++	//lcdc0 = (LCDC *)tcc_p2v(HwLCDC0_BASE);
++	//lcdc1 = (LCDC *)tcc_p2v(HwLCDC1_BASE);
++
++	//m2mscaler0 = (M2MSCALER *)tcc_p2v(HwM2MSCALER0_BASE);
++	//m2mscaler1 = (M2MSCALER *)tcc_p2v(HwM2MSCALER1_BASE);
++
++	uartportmux = (UARTPORTMUX *)tcc_p2v(HwUARTPORTMUX_BASE);
++	
++	memcpy(ckc, &p89reg->ckc, sizeof(CKC));
++	memcpy(pic, &p89reg->pic, sizeof(PIC));
++	memcpy(vic, &p89reg->vic, sizeof(VIC));
++	memcpy(timer, &p89reg->timer, sizeof(TIMER));
++	memcpy(pmu, &p89reg->pmu, sizeof(PMU));
++	memcpy(gpio, &p89reg->gpio, sizeof(GPIO));
++	//memcpy(dram, &p89reg->dram, sizeof(DRAM));
++	//memcpy(drammx, &p89reg->drammx, sizeof(DRAMMX));
++	//memcpy(dramphy, &p89reg->dramphy, sizeof(DRAMPHY));
++	//memcpy(drammisc, &p89reg->drammisc, sizeof(DRAMMISC));
++	//memcpy(drammembus, &p89reg->drammembus, sizeof(DRAMMEMBUS));
++	memcpy(misccorebus, &p89reg->misccorebus, sizeof(MISCCOREBUS));
++	memcpy(iobuscfg, &p89reg->iobuscfg, sizeof(IOBUSCFG));
++
++	memcpy(tsadc, &p89reg->tsadc, sizeof(TSADC));
++
++	memcpy(vmtregion, &p89reg->vmtregion, sizeof(VMTREGION));		//twkwon
++
++	//memcpy(smui2cmaster0, &p89reg->smui2cmaster0, sizeof(SMUI2CMASTER));
++	//memcpy(smui2cmaster1, &p89reg->smui2cmaster1, sizeof(SMUI2CMASTER));
++	//memcpy(smui2ciclk, &p89reg->smui2ciclk, sizeof(SMUI2CICLK));
++	memcpy(ddiconfig, &p89reg->ddiconfig, sizeof(DDICONFIG));
++	memcpy(ddicache, &p89reg->ddicache, sizeof(DDICACHE));
++
++	memcpy(usbhost11, &p89reg->usbhost11, sizeof(USBHOST11));
++	memcpy(usbhost11cfg, &p89reg->usbhost11cfg, sizeof(USBHOST11CFG));
++	//memcpy(usb20otg, &p89reg->usb20otg, sizeof(USB20OTG));
++	//memcpy(usbotgconfig, &p89reg->usbotgconfig, sizeof(USBOTGCFG));
++	//memcpy(usbphycfg, &p89reg->usbphycfg, sizeof(USBPHYCFG));
++
++	memcpy(rtc, &p89reg->rtc, sizeof(RTC));
++	//memcpy(nfc, &p89reg->nfc, sizeof(NFC));
++
++	//memcpy(lcdc0, &p89reg->lcdc0, sizeof(LCDC));
++	//memcpy(lcdc1, &p89reg->lcdc1, sizeof(LCDC));
++	//memcpy(m2mscaler0, &p89reg->m2mscaler0, sizeof(M2MSCALER));
++	//memcpy(m2mscaler1, &p89reg->m2mscaler1, sizeof(M2MSCALER));
++
++	memcpy(uartportmux, &p89reg->uartportmux, sizeof(UARTPORTMUX));
++
++	//all peri io bus restore
++	*(volatile unsigned long *)0xF05F5010 = p89reg->backup_peri_iobus0;
++	*(volatile unsigned long *)0xF05F5014 = p89reg->backup_peri_iobus1;
++
++	iounmap(pPaddr);
++	iounmap(pVaddr);
++	iounmap(p89reg);
++}
++
++/************************************************************************************************
++* FUNCTION		: sleep_mode_on 
++* DESCRIPTION	: This Function have to be executed in SRAM. 
++*                 All Registers related to Clock are Backed up. 
++************************************************************************************************/
++static void sleep_mode_on(int type)
++{
++	volatile unsigned int nCount = 0;
++
++	unsigned long *lPLL0, *lPLL1, *lPLL2, *lPLL3;
++	unsigned long *lFBUS_CORE, *lFBUS_MEM, *lFBUS_DDI, *lFBUS_GRP, *lFBUS_IOB, *lFBUS_VBUS, *lFBUS_VCODEC, *lFBUS_SMU;
++	unsigned long *i, *pPCK, *BAKPCK;
++
++	unsigned long *BACK4, *BACK5; //for pmu backup
++
++	int lmem_div = 0;
++	int lmem_source = 0;
++	int tmpread = *(volatile unsigned long *)0xF0400008;
++
++	tmpread &= ~0x00200000;
++	lmem_source = tmpread & 0xf;
++	tmpread &= 0xf0;
++
++	while (tmpread) {
++		tmpread -= 16;
++		lmem_div++;
++	}
++
++	lmem_div += 1;
++
++	/* Let CPU Speed Lower, Low Clock Operation */
++	/* Assign Registers to Pointers */
++	lPLL0        = (unsigned long *)(SRAM_ADDR_VAR);
++	lPLL1        = (unsigned long *)(SRAM_ADDR_VAR + 0x04);
++	lPLL2        = (unsigned long *)(SRAM_ADDR_VAR + 0x08);
++	lPLL3        = (unsigned long *)(SRAM_ADDR_VAR + 0x0C);
++	BACK4        = (unsigned long *)(SRAM_ADDR_VAR + 0x10);
++	BACK5        = (unsigned long *)(SRAM_ADDR_VAR + 0x14);
++	lFBUS_CORE   = (unsigned long *)(SRAM_ADDR_VAR + 0x18);
++	lFBUS_MEM    = (unsigned long *)(SRAM_ADDR_VAR + 0x1C);
++	lFBUS_DDI    = (unsigned long *)(SRAM_ADDR_VAR + 0x20);
++	lFBUS_GRP    = (unsigned long *)(SRAM_ADDR_VAR + 0x24);
++	lFBUS_IOB    = (unsigned long *)(SRAM_ADDR_VAR + 0x28);
++	lFBUS_VBUS   = (unsigned long *)(SRAM_ADDR_VAR + 0x30);
++	lFBUS_VCODEC = (unsigned long *)(SRAM_ADDR_VAR + 0x34);
++	lFBUS_SMU    = (unsigned long *)(SRAM_ADDR_VAR + 0x38);
++	i            = (unsigned long *)(SRAM_ADDR_VAR + 0x3C);
++	BAKPCK       = (unsigned long *)(SRAM_ADDR_VAR + 0x40);
++
++	*lFBUS_CORE   = *(volatile unsigned long *)0xF0400000;
++	*lFBUS_DDI    = *(volatile unsigned long *)0xF0400004;
++	*lFBUS_MEM    = *(volatile unsigned long *)0xF0400008;
++	*lFBUS_GRP    = *(volatile unsigned long *)0xF040000C;  
++	*lFBUS_IOB    = *(volatile unsigned long *)0xF0400010;   
++	*lFBUS_VBUS   = *(volatile unsigned long *)0xF0400014;
++	*lFBUS_VCODEC = *(volatile unsigned long *)0xF0400018;
++	*lFBUS_SMU    = *(volatile unsigned long *)0xF040001C;
++
++	*lPLL0 = *(volatile unsigned long *)0xF0400020;
++	*lPLL1 = *(volatile unsigned long *)0xF0400024;
++	*lPLL2 = *(volatile unsigned long *)0xF0400028;
++	*lPLL3 = *(volatile unsigned long *)0xF040002c;
++
++	/* Save All of PCK_XXX Register */
++	pPCK = (unsigned long *)(0xF0400080);
++
++	for (*i = 0; *i < 37; (*i)++ ) {
++		BAKPCK[*i] = *pPCK;
++		if (((BAKPCK[*i] & 0x1f000000) != 0x14000000)) {
++			*pPCK = (BAKPCK[*i] & ~0x10000000);
++		}
++		pPCK++;
++	}
++
++	*BACK4 = *(volatile unsigned long *)0xF0404004;
++	*BACK5 = *(volatile unsigned long *)0xF0404000;
++	*BACK5 = *(volatile unsigned long *)0xF0240050;
++	    
++	*BACK4 = (*(volatile unsigned long *)0xF0404018) & 0xFF;
++	
++	/* Enter Self-Refresh Mode */
++	*(volatile unsigned long *)0xF0302004 = 0x00000003; // PL341_PAUSE
++	while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=2) //Wait PL34X_STATUS_PAUSED
++		;
++
++	*(volatile unsigned long *)0xF0302004 = 0x00000001; // PL341_SLEEP
++	while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=3) // Wait PL34X_STATUS_LOWPOWER
++		;
++
++	/* To prevent input leakage */
++	*(volatile unsigned long *)0xF0304400 |= 0x00000004; 
++
++	/* DLL OFF */
++	*(volatile unsigned long *)0xF0304404 &=  ~(0x00000003);	 // DLL-0FF,DLL-Stop running
++	*(volatile unsigned long *)0xF0304428 &= ~(0x00000003); // Calibration Start,Update Calibration
++	*(volatile unsigned long *)0xF030302c &=  ~(0x00004000);  //SDRAM IO Control Register Gatein Signal Power Down
++
++	nCount = ((*(volatile unsigned long *)0xF030200C) & ~(0x00004000));
++	*(volatile unsigned long *)0xF030200C = nCount| (1<<14);		// Stop-MCLK Enter Self-refresh mode
++
++	/* DRAM controller power down */
++	*(volatile unsigned long *)0xF030302C =0x3fff;
++	*(volatile unsigned long *)0xF030302C &= ~Hw14;
++	for (nCount = 0; nCount < 10; nCount++)
++		;
++	*(volatile unsigned long *)0xF0304400 = 0x2;
++	for (nCount = 0; nCount < 10; nCount++)
++		;
++	*(volatile unsigned long *)0xF0304404 &= ~(Hw0|Hw1);
++	*(volatile unsigned long *)0xF0304428 &= ~(Hw0|Hw1);
++	*(volatile unsigned long *)0xF0304428 |= Hw12;
++	*(volatile unsigned long *)0xF0304428 |= Hw0;
++
++	*(volatile unsigned long *)0xF0304400 = 0x6;
++
++	for (nCount = 800; nCount > 0; nCount --)	// Wait 
++		;
++	for (nCount = 800; nCount > 0; nCount --)	// Wait 
++		;
++
++	*(volatile unsigned long *)0xF0400000 = 0x002ffff4; // CKC-CLKCTRL0 - set cpu clk to XIN
++	*(volatile unsigned long *)0xF0400004 = 0x00200014; // CKC-CLKCTRL1 - set display clk to XIN
++	*(volatile unsigned long *)0xF0400008 = 0x00200014; // CKC-CLKCTRL2 - set memory clk to XIN
++
++	*(volatile unsigned long *)0xF040000c = 0x00200014; // CKC-CLKCTRL3 - set graphic clk to XIN
++	*(volatile unsigned long *)0xF0400010 = 0x00200014; // CKC-CLKCTRL4 - set io clk to XIN
++
++	*(volatile unsigned long *)0xF0400014 = 0x00200014; // CKC-CLKCTRL5 - set video bus clk to XIN
++	*(volatile unsigned long *)0xF0400018 = 0x00200014; // CKC-CLKCTRL6 - set video core clk to XIN
++	*(volatile unsigned long *)0xF040001c = 0x00200014; // CKC-CLKCTRL7 - set SMU clk to XIN
++
++	*(volatile unsigned long *)0xF0400020 &= ~0x80000000; // CKC-PLL0CFG - PLL disable
++	*(volatile unsigned long *)0xF0400024 &= ~0x80000000; // CKC-PLL1CFG - PLL disable
++	*(volatile unsigned long *)0xF0400028 &= ~0x80000000; // CKC-PLL2CFG - PLL disable
++	*(volatile unsigned long *)0xF040002c &= ~0x80000000; // CKC-PLL3CFG - PLL disable
++
++	for (nCount = 100; nCount > 0 ;nCount --);	// Wait 
++
++	/* go power down mode...... */
++
++        *(volatile unsigned long *)0xF01020EC &= ~(0x00000f00); 
++	*(volatile unsigned long *)0xF01020C4 &= ~(0x00040000);
++
++	if(type == 0)
++	{
++		*(volatile unsigned long *)0xF0404008 = 0x00002800; // PMU-WKUPPOL  - SRCS[15](GPIO A3) active low
++		*(volatile unsigned long *)0xF0404004 = 0x00002800; // PMU-WKUPEN  - SRCS[15](GPIO A3) enable
++	}else if(type == 1)
++	{
++		*(volatile unsigned long *)0xF0404008 = 0x00000800;
++		*(volatile unsigned long *)0xF0404004 = 0x00000800;
++	
++	}else if(type == 2)
++	{
++		*(volatile unsigned long *)0xF0404008 = 0x00002000;
++		*(volatile unsigned long *)0xF0404004 = 0x00002000;
++	}else
++	{
++		*(volatile unsigned long *)0xF0404008 = 0x00002800;
++		*(volatile unsigned long *)0xF0404004 = 0x00002800;
++	}
++
++#ifdef BUS_CONTROL
++	*(volatile unsigned long *)0xF0240050 |= Hw0;
++	*(volatile unsigned long *)0xF0404018 &= ~0x1F; 
++	for (nCount = 5000; nCount > 0; nCount --)	// delay
++		;
++	*(volatile unsigned long *)0xF0404018 |= 0x1F; 
++
++	/* Video Bus, DDi Bus, Graphic Bus, IO Bus  off */
++	/* SWRESET ON */
++//	*(volatile unsigned long *)0xF0400044 |= Hw6|Hw5;	// Graphic Bus 
++//	*(volatile unsigned long *)0xF0400044 |= Hw3;		// Video Bus 
++//	*(volatile unsigned long *)0xF0400044 |= Hw1;		// Ddi Bus
++//	for (nCount = 5000; nCount > 0; nCount --)			// delay
++//		;
++
++	/* pmu disable */
++//	*(volatile unsigned long *)0xF0404018 |= Hw8;	// Graphic Bus  
++//	*(volatile unsigned long *)0xF0404018 |= Hw6;	// Video Bus 
++//	*(volatile unsigned long *)0xF0404018 |= Hw7;	// Ddi Bus 
++
++	for (nCount = 1000; nCount > 0; nCount --)		// Wait 
++		;
++#endif
++
++	*(volatile unsigned long *)0xF0404000 |= 0x00000004;	// PMU-CONTROL - Power Down(BSP default)
++	for (nCount = 10; nCount > 0; nCount --)				// Wait 
++		;
++
++	*(volatile unsigned long *)0xF0400020 = *lPLL0;
++	*(volatile unsigned long *)0xF0400024 = *lPLL1;
++	*(volatile unsigned long *)0xF0400028 = *lPLL2;
++	*(volatile unsigned long *)0xF040002c = *lPLL3;
++
++	/* wakeup start */
++#ifdef BUS_CONTROL
++	for (nCount = 1000; nCount > 0; nCount --)	// Wait 
++		;
++	/* pmu disable */
++//	*(volatile unsigned long *)0xF0404018 &= ~Hw8;	// Graphic Bus  
++//	*(volatile unsigned long *)0xF0404018 &= ~Hw6;	// Video Bus 
++//	*(volatile unsigned long *)0xF0404018 &= ~Hw7;	// Ddi Bus 
++//	for (nCount = 10000; nCount > 0; nCount --)		// delay
++//		;
++
++	/* SWRESET OFF */
++//	*(volatile unsigned long *)0xF0400044 &= ~(Hw6|Hw5);	// Graphic Bus 
++//	*(volatile unsigned long *)0xF0400044 &= ~(Hw3);		// Video Bus 
++//	*(volatile unsigned long *)0xF0400044 &= ~(Hw1);		// Ddi Bus
++	*(volatile unsigned long *)0xF0404018 = *BACK4;
++	*(volatile unsigned long *)0xF0240050 = *BACK5;
++#endif	
++
++	for (nCount = 10; nCount > 0; nCount --)	// Wait 
++		;
++
++	*(volatile unsigned long *)0xF0400000 = *lFBUS_CORE;
++	*(volatile unsigned long *)0xF0400008 = *lFBUS_MEM;
++
++	pPCK = (unsigned long*)(0xF0400080);
++
++	for((*i) = 0; (*i) < 37; (*i)++) {
++		*pPCK++ = BAKPCK[*i];
++	}
++
++	for (nCount = 0x100; nCount > 0; nCount --)	// Wait 
++		;
++
++	*(volatile unsigned long *)0xF0400004 = *lFBUS_DDI;
++	*(volatile unsigned long *)0xF040000C = *lFBUS_GRP;  
++	*(volatile unsigned long *)0xF0400010 = *lFBUS_IOB;	
++	*(volatile unsigned long *)0xF0400014 = *lFBUS_VBUS;
++	*(volatile unsigned long *)0xF0400018 = *lFBUS_VCODEC;
++	*(volatile unsigned long *)0xF040001C = *lFBUS_SMU;
++
++	/* Exit Self-Refresh Mode */
++	*(volatile unsigned long *)0xF030200C &= ~(0x00004000);
++	*(volatile unsigned long *)0xF0304400 &= ~(0x00000004); 
++
++	 //*(volatile unsigned long *)0xF0302004 = 0x00000002;			// PL341_WakeUP
++	 //while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=2);	//Wait PL34X_STATUS_PAUSED
++	 //*(volatile unsigned long *)0xF0302004 = 0x00000004;			// PL341_Configure
++	 //while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=0);	//Wait PL34X_STATUS_CONFIG
++	 //*(volatile unsigned long *)0xF0302004 = 0x00000003;			// PL341_PAUSE
++	 //while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=2);	//Wait PL34X_STATUS_PAUSED
++	 //*(volatile unsigned long *)0xF0302004 = 0x00000001;			// PL341_SLEEP
++	 //while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=3);	// Wait PL34X_STATUS_LOWPOWER
++
++	/* DLL ON */
++	*(volatile unsigned long *)0xF030302C |= 0x00004000;	// SSTL SDRAM IO Control Register 
++	*(volatile unsigned long *)0xF0303020 |= 0x00000001;	// Common Register AXI_SEL
++	*(volatile unsigned long *)0xF0303020 |= 0x00000002;	// Common Register IO_SEL 
++	*(volatile unsigned long *)0xF0303024 &= ~(0x00000100);	// PHYCTRL Seletct DDR2
++
++	*(volatile unsigned long *)0xF0304400 =  0x0;
++	*(volatile unsigned long *)0xF0304404 =  0x00000001;	// DLL-On
++	
++	/* 330Mhz */
++	if (lmem_div == 1) {
++		if ((*lPLL0/1) >= 400 && lmem_source == 0) {
++			*(volatile unsigned long *)0xF0304408 = 0x00001212; // DLLPDCFG
++		} else {
++			*(volatile unsigned long *)0xF0304408 = 0x00001717; // DLLPDCFG
++		}
++	} else {
++		if ((*lPLL0/2) >= 400 && lmem_source == 0) {
++			*(volatile unsigned long *)0xF0304408 = 0x00001212; // DLLPDCFG
++		} else {
++			*(volatile unsigned long *)0xF0304408 = 0x00001717; // DLLPDCFG
++		}
++	}
++
++
++	//*(volatile unsigned long *)0xF0304408 = 0x00001414; // DLLPDCFG
++	*(volatile unsigned long *)0xF0304404 = 0x00000003;	  // DLL-On, DLL-Start
++	while (((*(volatile unsigned long *)0xF0304404) & (0x00000018)) != (0x00000018)) // Wait DLL Lock
++		;
++
++	*(volatile unsigned long *)0xF0304424 = 0x35;	// DLL Force Lock Value Register
++	*(volatile unsigned long *)0xF030440C = 0x6;	// Gate Control
++
++	if (lmem_div == 1) {
++		if ((*lPLL0/1) >= 400 && lmem_source == 0) {
++			*(volatile unsigned long *)0xF0304430 = 0x1; // uRDDELAY  Read Delay Register
++		} else {
++			*(volatile unsigned long *)0xF0304430 = 0x4; // uRDDELAY  Read Delay Register
++		}
++	} else {
++		if ((*lPLL0/2) >= 400 && lmem_source == 0) {
++			*(volatile unsigned long *)0xF0304430 = 0x1; // uRDDELAY  Read Delay Register
++		} else {
++			*(volatile unsigned long *)0xF0304430 = 0x4; // uRDDELAY  Read Delay Register
++		}
++	}
++
++	/*
++	 *(volatile unsigned long *)0xF0304428 = 0
++	 									   | (0x1 << 0)		// Calibration Start
++	 									   | (0x0 << 1)		// Update Calibration
++	 									   | (0x0 << 2)		// Override ctrl_force_impp[2:0]/impn[2:0]
++	 									   | (0x2 << 3)		// Calibration PULL-UP forced value
++	 									   | (0x5 << 6)		// Calibration PULL-DOWN forced value
++	 									   | (0x0 << 9)		// On-Die Termination Resistor Value Selection
++	 									   | (0x1 << 12)	// Termination Selection	: 0 for disable
++	 									   | (0x4 << 13)	// Drive Strength
++	 									   | (0x0 << 16)	// Periodic Calibration
++	 									   | (0x3 << 17)	// Update Counter Load Value
++	 									   ;
++	 */
++
++	*(volatile unsigned long *)0xF0304428 = (3 << 17)	// PRD_CAL
++										  | (0 << 16)	// PRD_CEN
++										  | (7 << 13)	// DRV_STR
++										  | (0 << 12)	// TERM_DIS
++										  | (2 << 9)	// ODT(PHY) value
++										  | (5 << 6)	// PULL UP
++										  | (2 << 3)	// PULL DOWN
++										  | (0 << 2)	// ZQ
++										  | (0 << 1)	// UPDATE
++										  | (1 << 0);	// CAL_START
++
++	/* ZQCalWait */
++	while (((*(volatile unsigned long *)0xF030442C	& (0x00000001)) != (0x00000001)))
++		;
++
++	/* ZQCalUpdate */
++	*(volatile unsigned long *)0xF0304428 |= 0x00000002;
++	*(volatile unsigned long *)0xF0304428 &= ~0x00000002;
++	/* END DLL On */
++
++	*(volatile unsigned long *)0xF0302004 = 0x00000002;				// PL341_WakeUP
++	while (((*(volatile unsigned long *)0xF0302000) & 0x3) != 2)	//Wait PL34X_STATUS_PAUSED
++		;
++	*(volatile unsigned long *)0xF0302004 = 0x00000004;				// PL341_Configure
++	while (((*(volatile unsigned long *)0xF0302000) & 0x3) != 0)	//Wait PL34X_STATUS_CONFIG
++		;
++	*(volatile unsigned long *)0xF0302004 = 0x00000000;				// PL341_GO
++	while (((*(volatile unsigned long *)0xF0302000) & 0x3) != 1)	//Wait PL34X_STATUS_READY	
++		;
++}
++
++/************************************************************************************************
++* FUNCTION		: copy_func_to_sram 
++*
++* DESCRIPTION	: This Function copies sleep_mode_on Function to SRAM. 
++* 				  mode 0: sleep mode, mode 1: suspend mode
++*                  
++************************************************************************************************/
++extern int noneed_respond;
++extern int sleep_type;
++extern void set_hdmi_en(int sw);
++static void copy_func_to_sram(int mode)
++{
++	volatile unsigned int *fPtr, *p;
++	int i, hdmi_change = 0;
++	
++	PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
++        PGPIO vGpioAddr = (PGPIO)((unsigned int)&HwGPIO_BASE);
++	/*
++	 * copy function sleep_mode_on to SRAM
++	 */
++
++	if (1) {
++		fPtr = (volatile unsigned int *)sleep_mode_on;
++		lpSelfRefresh = (lpfunc)SRAM_ADDR_STANDBY;
++		p = (volatile unsigned int *)SRAM_ADDR_STANDBY;
++
++		for (i = 0; i < SRAM_FUNC_SIZE; i++) {
++			*(p++) = *(fPtr++);
++		}
++
++		while (--i)
++			;
++			
++		if(gpio_get_value(GPIO_HDMI_EN))
++		{
++			hdmi_change = 1;
++			set_hdmi_en(0);
++		}
++	
++		noneed_respond = 1;// ignore first touch when wakeup
++
++		*(volatile unsigned long *)0xF0102024 &= ~(0xff0000);// set gpio func
++		*(volatile unsigned long *)0xF0102004 |= 0x30;// set GPIOA4 and GPIOA5 as output
++		*(volatile unsigned long *)0xF0102000 &= ~(0x30);//turn off lcd power and backlight
++
++		// Jump to SRAM excute self-refresh mode
++		lpSelfRefresh(sleep_type);
++
++		*(volatile unsigned long *)0xF0102000 |= 0x10;//turn on a4 
++		tca_bkl_powerup((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);//turn on backlight
++
++		if(hdmi_change)
++			set_hdmi_en(1);
++
++	} else if (mode == BSP_SUSPEND_KEY) {
++		fPtr = (volatile unsigned int *)ddr2_self_refresh;
++		p = (volatile unsigned int *)SRAM_ADDR_STANDBY;
++
++		for (i = 0; i < SRAM_FUNC_SIZE; i++) {
++			*(p++) = *(fPtr++);
++		}
++
++		while (--i)
++			;
++
++		suspend_mode_on();
++	}
++}
++
++void enter_sleep_mode(void)
++{
++	unsigned int temp;
++	PGPIO pGPIO = (PGPIO)tcc_p2v(HwGPIO_BASE);
++
++	volatile PLCDC	pLCDC_BASE0 = (volatile PLCDC)tcc_p2v(HwLCDC0_BASE);
++        volatile PLCDC	pLCDC_BASE1 = (volatile PLCDC)tcc_p2v(HwLCDC1_BASE);
++
++//	tcc_store_gpio((unsigned int)pGPIO);
++
++	temp = *(volatile unsigned long *)0xF0102024; // GPIOAFN == corebus
++	temp = *(volatile unsigned long *)0xF0102004; //
++	temp = *(volatile unsigned long *)0xF0230000;
++	temp = *(volatile unsigned long *)0xF0404018;
++	temp = *(volatile unsigned long *)0xF0400044;
++
++	temp =	*(volatile unsigned long *)0xF0400000;
++	temp =	*(volatile unsigned long *)0xF0400004;
++	temp =	*(volatile unsigned long *)0xF0400008;
++	temp =	*(volatile unsigned long *)0xF040000c;
++	temp =	*(volatile unsigned long *)0xF0400010;
++	temp =	*(volatile unsigned long *)0xF0400014;
++	temp =	*(volatile unsigned long *)0xF0400018;
++	temp =	*(volatile unsigned long *)0xF040001c;
++
++	temp =	*(volatile unsigned long *)0xF0240050;
++	temp =	*(volatile unsigned long *)0xF030302C;
++	temp =	*(volatile unsigned long *)0xF0304400;
++	temp =	*(volatile unsigned long *)0xF0304404;
++	temp =	*(volatile unsigned long *)0xF0304428;
++
++	pLCDC_BASE1->LCTRL &= ~Hw0;
++	pLCDC_BASE0->LCTRL &= ~Hw0;
++
++	copy_func_to_sram(BSP_SLEEP_KEY);
++
++	pLCDC_BASE1->LCTRL |= Hw0;
++
++//	tcc_restore_gpio((unsigned int)pGPIO);
++
++	tcc_init_console();
++}
++EXPORT_SYMBOL(enter_sleep_mode);
++
++void enter_suspend_mode(void)
++{
++	unsigned int temp;
++
++	temp = *(volatile unsigned long *)0xF0400000; // pll0 == corebus
++	temp = *(volatile unsigned long *)0xF0102024; // GPIOAFN == corebus
++	temp = *(volatile unsigned long *)0xF0102004; // GPIOAEN == corebus
++	temp = *(volatile unsigned long *)0xF0102000; // GPIOADAT == corebus
++
++	temp = *(volatile unsigned long *)0xF05F5010; // iobus
++	temp = *(volatile unsigned long *)0xF05F5014; // iobus
++
++#if 1
++// test
++	temp = *(volatile unsigned long *)0xF0302004; // PL341_PAUSE
++	temp = *(volatile unsigned long *)0xF0302000; // Wait PL34X_STATUS_PAUSED
++	temp = *(volatile unsigned long *)0xF0304400; 
++	temp = *(volatile unsigned long *)0xF0304404; // DLL-0FF,DLL-Stop running
++	temp = *(volatile unsigned long *)0xF0304428; // Calibration Start,Update Calibration
++	temp = *(volatile unsigned long *)0xF030302C; //SDRAM IO Control Register Gatein Signal Power Down
++	temp = *(volatile unsigned long *)0xF030200C;
++	temp = *(volatile unsigned long *)0xF0400004; // CKC-CLKCTRL1 - set display clk to XIN
++	temp = *(volatile unsigned long *)0xF0400008; // CKC-CLKCTRL2 - set memory clk to XIN
++	temp = *(volatile unsigned long *)0xF040000c; // CKC-CLKCTRL3 - set graphic clk to XIN
++	temp = *(volatile unsigned long *)0xF0400010; // CKC-CLKCTRL4 - set io clk to XIN
++	temp = *(volatile unsigned long *)0xF0400014; // CKC-CLKCTRL5 - set video bus clk to XIN
++	temp = *(volatile unsigned long *)0xF0400018; // CKC-CLKCTRL6 - set video core clk to XIN
++	temp = *(volatile unsigned long *)0xF040001c; // CKC-CLKCTRL7 - set SMU clk to XIN
++	temp = *(volatile unsigned long *)0xF0400020; // CKC-PLL0CFG - PLL disable
++	temp = *(volatile unsigned long *)0xF0400024; // CKC-PLL1CFG - PLL disable
++	temp = *(volatile unsigned long *)0xF0400028; // CKC-PLL2CFG - PLL disable
++	temp = *(volatile unsigned long *)0xF040002c; // CKC-PLL3CFG - PLL disable
++#endif
++
++	copy_func_to_sram(BSP_SUSPEND_KEY);
++}
++
++#if 0
++/************************************************************************************************
++* FUNCTION		: tcc_pm
++*
++* DESCRIPTION	: It is called by Power key driver. 
++*                  
++************************************************************************************************/
++int tcc_pm(int mode)
++{
++	int err = 0;
++	unsigned long save_cpsr;
++	//	PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
++	//	PGPIO vGpioAddr = (PGPIO)((unsigned int)&HwGPIO_BASE);
++
++	/*
++	 * all filesystem flush especially SD/MMC
++	 */
++	sys_sync();	
++
++	/*
++	 * send SUSPEND message to all platform driver
++	 */
++	err = device_suspend(PMSG_SUSPEND);
++	if (err){
++		printk("device_suspend() fail\n");
++		goto exit;
++	}
++
++	/*
++	 * Before enter Power Down Mode, MUST mask CPSR Irq bit
++	 */
++	local_irq_save(save_cpsr);
++	local_irq_disable();
++
++	if (mode == BSP_SUSPEND_KEY) {
++		enter_suspend_mode();
++	} else if (mode == BSP_SLEEP_KEY) {
++		enter_sleep_mode();
++	}
++
++	/*
++	 * backlight ON
++	 */
++	//tca_bkl_init((unsigned int)vTimerAddr, (unsigned int)vGpioAddr);
++	//tca_bkl_powerup((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
++
++	/*
++	 * console init
++	 */
++	tcc_init_console();
++
++	/*
++	 * restore CPSR Irq bit
++	 */
++	local_irq_restore(save_cpsr);
++
++	/*
++	 * send RESUME message to all platform driver
++	 */
++	device_resume(PMSG_RESUME);
++
++exit:
++	return err;
++}
++EXPORT_SYMBOL(tcc_pm);
++#endif
++
++#if 0 	/* comment by csduan */
++#define TCC_PM_STATE_NORMAL             0x249
++static int tcc_power_state = TCC_PM_STATE_NORMAL;
++static int tcc_pm_enter(suspend_state_t state)
++{
++	if (tcc_power_state == BSP_SUSPEND_KEY) {
++		enter_suspend_mode();
++	} else if (tcc_power_state == BSP_SLEEP_KEY) {
++		enter_sleep_mode();
++	}
++
++	tcc_init_console();
++	return 0;
++}
++
++static int tcc_pm_begin(suspend_state_t state)
++{
++	return 0;
++}
++
++static int tcc_pm_prepare(void)
++{
++	return 0;
++}
++
++static void tcc_pm_finish(void)
++{
++}
++
++static struct platform_suspend_ops tcc_pm_ops = {
++	.valid		= suspend_valid_only_mem,
++	.begin		= tcc_pm_begin,
++	.prepare	= tcc_pm_prepare,
++	.enter		= tcc_pm_enter,	
++	.finish		= tcc_pm_finish,
++};
++
++static void tcc_pm_power_off(void)
++{
++	while (1)
++		;
++}
++
++static int __init tcc_pm_init(void)
++{
++	pm_power_off = tcc_pm_power_off;
++	suspend_set_ops(&tcc_pm_ops);
++	return 0;
++}
++__initcall(tcc_pm_init);
++
++#endif	/* comment by csduan */
+diff --git a/arch/arm/mach-tcc8900/pm.h b/arch/arm/mach-tcc8900/pm.h
+new file mode 100644
+index 0000000..4008b26
+--- /dev/null
++++ b/arch/arm/mach-tcc8900/pm.h
+@@ -0,0 +1,186 @@
++/*
++ * arch/arm/mach-tcc8900/pm.h
++ *
++ * Author:  <linux@telechips.com>
++ * Created: April 21, 2008
++ * Description: LINUX POWER MANAGEMENT FUNCTIONS
++ *
++ * Copyright (C) 2008-2009 Telechips 
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
++ *
++ */
++#ifndef __TCC_PM_H__
++#define __TCC_PM_H__
++
++#define BSP_SUSPEND_MASK      	0x424E4654 /* "TFNB" */
++
++#define BSP_SUSPEND_KEY			0x2491
++#define BSP_SLEEP_KEY			0x2492
++
++/* SRAM (on-chip 16KB) addr: physical 0x10000000 -> virtual 0xEFF00000 */
++#define SRAM_ADDR_STANDBY		0xEFF00000
++#define SRAM_ADDR_VAR			0xEFF01000
++#define SRAM_FUNC_SIZE			0x300
++
++/* SDRAM start address for backup (kernel start - MMU(1MB) - 1MB) */
++#define DRAM_PHYS_ADDRESS		0x40100000
++#define DRAM_VIRT_ADDRESS		0x40100004
++#define DRAM_DATA_ADDRESS		0x40100008
++
++
++
++typedef struct _TCC_REG_{
++	unsigned int uMASK;					// 0x00
++	
++	unsigned int SleepState_WakeAddr;	// 0x04
++	
++	unsigned int SleepState_SYSCTL;		// 0x08
++	unsigned int SleepState_MMUTTB0;	// 0x0C
++	unsigned int SleepState_MMUTTB1;	// 0x10
++	unsigned int SleepState_MMUTTBCTL;	// 0x14
++	unsigned int SleepState_MMUDOMAIN;	// 0x18
++
++	unsigned int SleepState_SVC_SP;		// 0x1C
++	unsigned int SleepState_SVC_SPSR;	// 0x20
++	unsigned int SleepState_FIQ_SPSR;	// 0x24
++	unsigned int SleepState_FIQ_R8;		// 0x28
++	unsigned int SleepState_FIQ_R9;		// 0x2C
++	unsigned int SleepState_FIQ_R10;	// 0x30
++	unsigned int SleepState_FIQ_R11;	// 0x34
++	unsigned int SleepState_FIQ_R12;	// 0x38
++	unsigned int SleepState_FIQ_SP;		// 0x3C
++	unsigned int SleepState_FIQ_LR;		// 0x40
++	unsigned int SleepState_ABT_SPSR;	// 0x44
++	unsigned int SleepState_ABT_SP;		// 0x48
++	unsigned int SleepState_ABT_LR;		// 0x4C
++	unsigned int SleepState_IRQ_SPSR;	// 0x50
++	unsigned int SleepState_IRQ_SP;		// 0x54
++	unsigned int SleepState_IRQ_LR;		// 0x58
++	unsigned int SleepState_UND_SPSR;	// 0x5C
++	unsigned int SleepState_UND_SP;		// 0x60
++	unsigned int SleepState_UND_LR;		// 0x64
++	unsigned int SleepState_SYS_SP;		// 0x68
++	unsigned int SleepState_SYS_LR;		// 0x70
++
++	unsigned int SleepState_SVC_LR;		// 0x7C
++	unsigned int temp;					// 0x80
++	
++	CKC ckc;
++	PIC pic;
++	VIC vic;
++	TIMER timer;
++	PMU pmu;
++	
++	//SMUI2CMASTER smui2cmaster0;
++	//SMUI2CMASTER smui2cmaster1;
++	//SMUI2CICLK smui2ciclk;
++
++	GPIO gpio;
++	//DRAM dram;
++	//DRAMMX drammx;
++	//DRAMPHY dramphy;
++	//DRAMMISC drammisc;
++	//DRAMMEMBUS drammembus;
++	MISCCOREBUS misccorebus;
++	VMTREGION vmtregion;
++	//SMSHC smshc;
++	//SMSHCPORTCFG smshcportcfg;
++	//SDHOST sdhost;
++	//SDCHCTRL sdchctrl;
++	//NFC nfc;
++	//SMC smc;
++	//EDI edi;
++	//IDE ide;
++	//SATA sata;
++	//ADMA adma;
++	//ADMADAI admadai;
++	//ADMACDIF admacdif;
++	//ADMASPDIFTX admaspdiftx;
++	//RXCAP rxcap;
++	//ADMASPDIFRX admaspdifrx
++	//DAI dai;
++	//CDIF cdif;
++	//SPDIF spdif;
++	
++	USBHOST11 usbhost11;
++	USBHOST11CFG usbhost11cfg;
++	//USB20OTG usb20otg;
++	//USBOTG usbotg;
++	//USBOTGCFG usbotgconfig;
++	//USBPHYCFG usbphycfg;
++	
++	//EHI ehi;
++	//GPSB gpsb;
++	//GPSBPIDTABLE  gpsbpidtable;
++	//TSIF tsif;
++	//TSIFPORTSEL tsifportsel;
++	//REMOTECON remotecon;
++	//I2CMASTER i2cmaster;
++	//I2C i2c;
++	//I2CSLAVE i2cslave;
++	//I2CSTATUS i2cstatus;
++	//UART uart0;
++	//UART uart1;
++	//UART uart2;
++	//UART uart3;
++	//UART uart4;
++	//UART uart5;
++	UARTPORTMUX uartportmux;
++	//CANCTRL canctrl;
++	//GDMACTRL gdmactrl0;	
++	//GDMACTRL gdmactrl1;
++	//GDMACTRL gdmactrl2;
++	//GDMACTRL gdmactrl3;
++	RTC rtc;
++	TSADC tsadc;
++	//ECC ecc;
++	//SLCECC slcecc;
++	//MPEFEC mpefec
++	IOBUSCFG iobuscfg;
++	//EMC emc;
++	//LCDC lcdc0;
++	//LCDC lcdc1;
++	//LCDSI0 lcdsi0;
++	//LCDSI1 lcdsi1;
++	//M2MSCALER m2mscaler0;
++	//M2MSCALER m2mscaler1;
++	//NTSCPAL ntscpal;
++	//HDMICTRL hdmictrl;
++	//HDMICORE hdmicore;
++	//HDMIAES hdmiaes;
++	//HDMISPDIF hdmispdif;
++	//HDMII2S hdmii2s;
++	//HDMICEC hdmicec;
++	//CIF cif;
++	//EFFECT effect;
++	//CIFSACLER cifsacler;
++	//VIQE viqe;
++	DDICONFIG ddiconfig;
++	DDICACHE ddicache;
++	//JPEGENCODER jpegencoder;
++	//JPEGDECODER jpegdecoder;
++	//OVERLAYMIXER overlaymixer;
++	//GPUPIXELPROCESSOR gpupixelprocessor;
++	//GPUGEOMETRYPROCESSOR gpugeometryprocessor;
++	//GPUPLBCFG gpuplbcfg;
++	//GPUMMUCONFIG gpummuconfig;
++	//GPUGRPBUSCONFIG gpugrpbusconfig;
++	//GPUGRPBUSBWRAP gpugrpbusbwrap;
++	volatile unsigned int backup_peri_iobus0;
++	volatile unsigned int backup_peri_iobus1;
++} TCC_REG, *PTCC_REG;
++
++#endif  /*__TCC_PM_H__*/
+diff --git a/arch/arm/mach-tcc8900/pm_asm.S b/arch/arm/mach-tcc8900/pm_asm.S
+new file mode 100644
+index 0000000..aacce2a
+--- /dev/null
++++ b/arch/arm/mach-tcc8900/pm_asm.S
+@@ -0,0 +1,283 @@
++/*
++ * linux/arch/arm/mach-tcc8900/pm_asm.S
++ *
++ * Author:  <linux@telechips.com>
++ * Created: October, 2009
++ * Description: LINUX POWER MANAGEMENT FUNCTIONS
++ *
++ * Copyright (C) 2008-2009 Telechips 
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
++ *
++ */
++
++#include <linux/linkage.h>
++#include <asm/ptrace.h>
++
++
++#define Mode_USR		0x10
++#define Mode_FIQ		0x11
++#define Mode_IRQ		0x12
++#define Mode_SVC		0x13
++#define Mode_ABT		0x17
++#define Mode_UND		0x1B
++#define Mode_SYS		0x1F
++#define Mode_MASK		0x1F
++#define NOINT			0xC0
++#define I_Bit			0x80
++#define F_Bit			0x40
++
++#define SYSCTL_SBZ_MASK		0xCC1A0000
++#define SYSCTL_SBO_MASK		0x00000070
++#define MMUTTB_SBZ_MASK		0x00001FE0		// for 8KB Boundary Size of TTB0
++
++	.text
++
++/*
++ * IO_ARM_SaveREG
++ * --------------
++ *
++ * Save ARM registers, MMU data and MODE data for suspend mode.
++ *
++ * input parameters:
++ *	r0: SRAM_ADDR_STANDBY
++ *	r1: TCC_REG
++ *	r2: Awake_address
++ */
++
++ENTRY(IO_ARM_SaveREG)
++	@ address of sdram_self_refresh() (r0)
++	mov r12, r0
++
++	@ Save register state
++	stmdb sp!, {r4-r12}
++	stmdb sp!, {lr}
++	str r2, [r1, #0x4]				// save resume function address (virtual)
++	mov r3, r1						// r1 (&p89reg) -> r3
++
++
++@
++@ Save MMU to DRAM
++@
++
++	@ CP15 System Control Register
++	mrc p15, 0, r2, c1, c0, 0		// load r2 with System Control Register
++	ldr r0, =SYSCTL_SBZ_MASK		// Should Be Zero Mask for System Control Register
++	bic r2, r2, r0
++	ldr r0, =SYSCTL_SBO_MASK		// Should Be One Mask for System Control Register
++	orr r2, r2, r0
++	str r2, [r3, #0x08]				// [SleepState_SYSCTL]
++
++	@ CP15 TTB Register0
++	mrc p15, 0, r2, c2, c0, 0		// load r2 with TTB Register0
++	ldr r0, =MMUTTB_SBZ_MASK		// Should Be Zero Mask for TTB Register0
++	bic r2, r2, r0
++	str r2, [r3, #0x0C]				// [SleepState_MMUTTB0]
++
++	@ CP15 TTB Register1
++	mrc p15, 0, r2, c2, c0, 1		// load r2 with TTB Register1
++//	ldr r0, =MMUTTB_SBZ_MASK		// Should Be Zero Mask for TTB Register1
++//	bic r2, r2, r0
++	str r2, [r3, #0x10]				// [SleepState_MMUTTB1]
++
++	@ CP15 TTB Control Register
++	mrc p15, 0, r2, c2, c0, 2		// load r2 with TTB Control Register
++//	ldr r0, =MMUTTB_CTLSBZ_MASK		// Should Be Zero Mask for TTB Register0
++//	bic r2, r2, r0
++	str r2, [r3, #0x14]				// [SleepState_MMUTTBCTL]
++
++	@ CP15 Domain Access Control Register
++	mrc p15, 0, r2, c3, c0, 0		// load r2 with Domain Access Control Register
++	str r2, [r3, #0x18]				// [SleepState_MMUDOMAIN]
++
++
++@
++@ Save CPU register to DRAM
++@
++
++	@ Supervisor mode CPU Register
++	str sp, [r3, #0x1C]				// [SleepState_SVC_SP]
++	mrs r2, spsr					// Status Register
++	str r2, [r3, #0x20]				// [SleepState_SVC_SPSR]
++	
++	add r3, r1, #0x24
++
++	@ FIQ mode CPU Registers
++	mov r1, #Mode_FIQ | NOINT		// Enter FIQ mode, no interrupts
++	msr cpsr, r1
++	mrs r2, spsr					// Status Register
++	stmia r3!, {r2, r8-r12, sp, lr}	// Store FIQ mode registers [SleepState_FIQ_SPSR~SleepState_FIQ_LR]
++
++	@ Abort mode CPU Registers
++	mov r1, #Mode_ABT | NOINT		// Enter ABT mode, no interrupts
++	msr cpsr, r1
++	mrs r0, spsr					// Status Register
++	stmia r3!, {r0, sp, lr}			// Store ABT mode Registers [SleepState_ABT_SPSR~SleepState_ABT_LR]
++
++	@ IRQ mode CPU Registers
++	mov r1, #Mode_IRQ | NOINT		// Enter IRQ mode, no interrupts
++	msr cpsr, r1
++	mrs r0, spsr					// Status Register
++	stmia r3!, {r0, sp, lr}			// Store the IRQ Mode Registers [SleepState_IRQ_SPSR~SleepState_IRQ_LR]
++
++	@Undefined mode CPU Registers
++	mov r1, #Mode_UND | NOINT		// Enter UND mode, no interrupts
++	msr cpsr, r1
++	mrs r0, spsr					// Status Register
++	stmia r3!, {r0, sp, lr}			// Store the UND mode Registers [SleepState_UND_SPSR~SleepState_UND_LR]
++
++	@ System(User) mode CPU Registers
++	mov r1, #Mode_SYS | NOINT		// Enter SYS mode, no interrupts
++	msr cpsr, r1
++	stmia r3!, {sp, lr}				// Store the SYS mode Registers [SleepState_SYS_SP, SleepState_SYS_LR]
++
++	@ Return to SVC mode
++	mov r1, #Mode_SVC | NOINT		// Back to SVC mode, no interrupts
++	msr cpsr, r1
++	
++	ldr r2, [sp]
++	str r2, [r3], #4
++
++	bl IO_ARM_CleanCACHE
++
++	nop
++	nop
++	nop
++
++#if 0
++	ldr r0, =0x00050078
++	mcr p15, 0, r0, c1, c0, 0		// Disable Cache/MMU Control
++	nop
++	nop
++	nop
++	nop
++	nop
++	nop
++	nop
++	nop
++	nop
++#endif
++
++	@ jump to power-off code.
++	mov pc, r12						// jump to self-refresh code
++ENDPROC(IO_ARM_SaveREG)
++
++
++/*
++ * Awake_address
++ * --------------
++ *
++ * Restore CPU Register from Sleep Data Area in DRAM
++ * r3 : p89reg ioremap virtual address, r3 is assigned by IO_ARM_RestoreREG in bootloader
++ */
++ENTRY(Awake_address)
++	@ FIQ mode CPU Registers
++	mov r1, #Mode_FIQ | NOINT		// Enter FIQ mode, no interrupts
++	msr cpsr, r1
++	ldr r0,	[r3, #0x24]
++	msr spsr, r0
++	ldr r8,	[r3, #0x28]
++	ldr r9,	[r3, #0x2C]
++	ldr r10,[r3, #0x30]
++	ldr r11,[r3, #0x34]
++	ldr r12,[r3, #0x38]
++	ldr sp,	[r3, #0x3C]
++	ldr lr,	[r3, #0x40]
++
++	@ Abort mode CPU Registers
++	mov r1, #Mode_ABT | I_Bit		// Enter ABT mode, no IRQ - FIQ is available
++	msr cpsr, r1
++	ldr r0,	[r3, #0x44]
++	msr spsr, r0
++	ldr sp,	[r3, #0x48]
++	ldr lr,	[r3, #0x4C]
++
++	@ IRQ mode CPU Registers
++	mov r1, #Mode_IRQ | I_Bit		// Enter IRQ mode, no IRQ - FIQ is available
++	msr cpsr, r1
++	ldr r0, [r3, #0x50]
++	msr spsr, r0
++	ldr sp, [r3, #0x54]
++	ldr lr, [r3, #0x58]
++		
++	@ Undefined mode CPU Registers
++	mov r1, #Mode_UND | I_Bit		// Enter UND mode, no IRQ - FIQ is available
++	msr cpsr, r1
++	ldr r0, [r3, #0x5C]
++	msr spsr, r0
++	ldr sp, [r3, #0x60]
++	ldr lr, [r3, #0x64]
++
++	@ System(User) mode CPU Registers
++	mov r1, #Mode_SYS | I_Bit		// Enter SYS mode, no IRQ - FIQ is available
++	msr cpsr, r1
++	ldr sp, [r3, #0x68]
++	ldr lr, [r3, #0x6C]
++	
++	@ Supervisor mode CPU Registers
++	mov r1, #Mode_SVC | I_Bit		// Enter SVC mode, no IRQ - FIQ is available
++	msr cpsr, r1
++	ldr r0, [r3, #0x20]
++	msr spsr, r0
++	ldr sp, [r3, #0x1C]
++
++
++	@ Pop SVC Register from our Stack
++	ldr lr, [sp], #4
++	ldmia sp!, {r4-r12}
++
++	@ Return to PM functions
++	mov pc, lr
++ENDPROC(Awake_address)
++
++
++/*
++ * Clean & Flush Cache
++ * -------------------
++ */
++ENTRY(IO_ARM_CleanCACHE)
++	stmdb r13!, {lr}
++
++	bl IO_ARM_CleanDCACHE
++
++	cmp	r0, #0
++	movne	r0, #0				@ Drain Write Buffer
++	mcrne	p15, 0, r0, c7, c10, 4
++
++	ldmia r13!, {pc}
++ENDPROC(IO_ARM_CleanCACHE)
++
++
++ENTRY(IO_ARM_CleanDCACHE)
++		stmdb r13!, {r0-r2, lr}
++
++		mov r1, #0                  @ r1 - way (0~3)
++l01:
++		mov r1, r1, lsl #30
++		mov r2, #0                  @ r2 - set index (128 set : 0~0x1000)
++l02:
++		orr r0, r1, r2              @ set index (way & set)
++		mcr p15, 0, r0, c7, c10, 2  @ clean cache (using index)
++		add r2, r2, #0x20        @ cache block size : 32 Bytes
++		cmp r2, #0x1000             @ cache set size : 4 KBytes
++		bne l02                    @ loop until done
++		
++		mov r1, r1, lsr #30
++		add r1, r1, #1
++		cmp r1, #4                  @ cache way size : 4
++		bne l01
++
++		ldmia r13!, {r0-r2, pc}
++ENDPROC(IO_ARM_CleanDCACHE)
+\ No newline at end of file
+diff --git a/arch/arm/plat-tcc/tcc_pm.c b/arch/arm/plat-tcc/tcc_pm.c
+index 73b7416..2a242f3 100644
+--- a/arch/arm/plat-tcc/tcc_pm.c
++++ b/arch/arm/plat-tcc/tcc_pm.c
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 四, 03  9月 2009 21:12:57 +0800     by root #
++ * Last modified: 一, 07 12月 2009 16:05:41 +0800  by duanius #
+  ****************************************************************/
+ #include <linux/init.h>
+ #include <linux/suspend.h>
+@@ -38,6 +38,7 @@ extern void selfrefresh_test(void);
+  *
+  * central control for sleep/resume process
+ */
++extern void enter_sleep_mode(void);
+ static int tcc8902_pm_enter(suspend_state_t state)
+ {
+ 	unsigned long regs_save[16];
+@@ -50,7 +51,7 @@ static int tcc8902_pm_enter(suspend_state_t state)
+ 	}
+ 
+ 	printk("selfrefresh_test\n");
+-	selfrefresh_test();
++	enter_sleep_mode();
+ 	
+ 	return 0;
+ }
+-- 
+1.6.3.3
+

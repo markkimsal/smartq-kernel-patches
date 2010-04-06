@@ -1,0 +1,208 @@
+From fd343e677715492f9f547d251630b03e8792a716 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Fri, 4 Dec 2009 17:30:22 +0800
+Subject: [PATCH] merge code from 2265 about uart ,and also add adc and sdhc suspend & resume
+
+---
+ drivers/input/touchscreen/tcc_ts.c |   11 +++++-
+ drivers/mmc/host/tcc_sdhc.c        |   12 ++++++
+ drivers/serial/tcc_serial.c        |   71 ++++++++++--------------------------
+ 3 files changed, 41 insertions(+), 53 deletions(-)
+
+diff --git a/drivers/input/touchscreen/tcc_ts.c b/drivers/input/touchscreen/tcc_ts.c
+index b3a9968..4bb7e70 100644
+--- a/drivers/input/touchscreen/tcc_ts.c
++++ b/drivers/input/touchscreen/tcc_ts.c
+@@ -40,7 +40,7 @@
+ 
+ #include <bsp.h>
+ #include <mach/irqs.h>
+-
++#include <mach/TCC89x_Structures.h>
+ #define CONFIG_TOUCHSCREEN_TCC_DEBUG
+ //#undef CONFIG_TOUCHSCREEN_TCC_DEBUG
+ 
+@@ -630,14 +630,21 @@ static int tcc_ts_remove(struct platform_device *dev)
+ 
+ #ifdef CONFIG_PM
+ #if 1
+-
+ static int tcc_ts_suspend(struct platform_device *dev, pm_message_t state)
+ {
++	*(volatile unsigned long *)0xF05F4018 = Hw0; 
++	*(volatile unsigned long *)0xF05F4020 = Hw0; 
++	*(volatile unsigned long *)0xF05F4004 |= ADCTSC_WAIT_PENDOWN; 
++
++	BITSET(*(volatile unsigned long *)0xF05F4000, (1<<2));
++
+ 	return 0;
+ }
+ 
+ static int tcc_ts_resume(struct platform_device *pdev)
+ {
++	BITCLR(*(volatile unsigned long *)0xF05F4000, (1<<2));
++
+ 	return 0;
+ }
+ #endif
+diff --git a/drivers/mmc/host/tcc_sdhc.c b/drivers/mmc/host/tcc_sdhc.c
+index 90e64ad..275160c 100644
+--- a/drivers/mmc/host/tcc_sdhc.c
++++ b/drivers/mmc/host/tcc_sdhc.c
+@@ -1215,6 +1215,12 @@ static int tcc_mmc_suspend(struct platform_device *pdev, pm_message_t mesg)
+ 			host->suspended = 1;
+ 	}
+ 
++	if(!strcmp(pdev->dev.bus_id,"tcc-sdhc0.0"))
++	{
++		tca_ckc_set_iobus_swreset(RB_SDMMCCONTROLLER, OFF);
++		tca_ckc_setiobus(RB_SDMMCCONTROLLER, DISABLE);
++	}
++	
+ 	return ret;
+ }
+ 
+@@ -1224,6 +1230,12 @@ static int tcc_mmc_resume(struct platform_device *pdev)
+ 
+ 	struct tcc_mmc_host *host = platform_get_drvdata(pdev);
+ 
++	if(!strcmp(pdev->dev.bus_id,"tcc-sdhc0.0"))
++	{
++		tca_ckc_set_iobus_swreset(RB_SDMMCCONTROLLER, ON);
++		tca_ckc_setiobus(RB_SDMMCCONTROLLER, ENABLE);
++
++	}
+ 	if (host && !host->suspended)
+ 		return 0;
+ 
+diff --git a/drivers/serial/tcc_serial.c b/drivers/serial/tcc_serial.c
+index 821985b..7c93253 100644
+--- a/drivers/serial/tcc_serial.c
++++ b/drivers/serial/tcc_serial.c
+@@ -638,6 +638,7 @@ static void tcc_serial_stop_rx(struct uart_port *port)
+ 	dbg("%s\n", __func__);
+     if (rx_enabled(port)) {
+         disable_irq(port->irq);
++        mdelay(10);
+ #ifdef CONFIG_SERIAL_TCC_DMA_TX
+        // disable_irq(DMA_TX_INT);
+ #endif
+@@ -1365,12 +1366,6 @@ static int tcc_serial_remove(struct platform_device *dev)
+     volatile PGDMACTRL pDMA = (volatile PGDMACTRL)tcc_p2v(HwGDMA_BASE);
+ #endif
+  
+-    if(port->line == UART1){
+-        tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, BT_ON, OUTPUT, LOW, SET_DIRECTION|SET_VALUE);
+-        dbg("tcc_uart: BT power %s\n", (tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, 0, OUTPUT, 0, GET_VALUE)&BT_ON)?"ON":"OFF");
+-    }
+-
+-
+ 	if (port)
+ 		uart_remove_one_port(&tcc_uart_drv, port);
+ 
+@@ -1402,30 +1397,16 @@ static int tcc_serial_remove(struct platform_device *dev)
+ static int tcc_serial_suspend(struct platform_device *dev, pm_message_t state)
+ {
+ 	struct uart_port *port = tcc_dev_to_port(&dev->dev);
+-	struct tcc_reg_info *reg = &tcc_serial_ports[port->line].reg;
+ 
+-	if (port && port_used(port)) {
++	if (port) {
+ 		port->suspended = 1;
+ 
+-		// disable interrupt
+-		wr_regl(port, OFFSET_IER, (rd_regl(port, OFFSET_IER) & (~UART_IER_ELSI)));
++		uart_suspend_port(&tcc_uart_drv, port);
+ 
+-		reg->bLCR = rd_regl(port, OFFSET_LCR);
+-
+-		// DLAB = 0
+-		wr_regl(port, OFFSET_LCR, (reg->bLCR & (~Hw7)));
+-		reg->bIER = rd_regl(port, OFFSET_IER);
+-
+-		// DLAB = 1
+-		wr_regl(port, OFFSET_LCR, (reg->bLCR | Hw7));
+-//		reg->bFCR = 0x07;						// set in tcc_serial_startup()			
+-		reg->bDLL = rd_regl(port, OFFSET_DLL);
+-		reg->bDLM = rd_regl(port, OFFSET_DLM);
+-
+-		reg->bMCR = rd_regl(port, OFFSET_MCR);
+-		reg->bAFT = rd_regl(port, OFFSET_AFT);
+-		reg->bUCR = rd_regl(port, OFFSET_UCR);
+-	}
++        if(port->line == UART1){
++            tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, BT_ON, OUTPUT, LOW, SET_DIRECTION|SET_VALUE);
++        }
++    }
+ 	
+ 	return 0;
+ }
+@@ -1433,33 +1414,20 @@ static int tcc_serial_suspend(struct platform_device *dev, pm_message_t state)
+ static int tcc_serial_resume(struct platform_device *dev)
+ {
+ 	struct uart_port *port = tcc_dev_to_port(&dev->dev);
+-	struct tcc_reg_info *reg = &tcc_serial_ports[port->line].reg;
+ 
+-	if (port && port_used(port)) {
++    if(port) {
+ 		if (port->suspended) {
+-			// DLAB = 0
+-			wr_regl(port, OFFSET_LCR, (reg->bLCR & (~Hw7)));
+-			wr_regl(port, OFFSET_IER, reg->bIER);
+ 
+-			// DLAB = 1
+-			wr_regl(port, OFFSET_LCR, (reg->bLCR | Hw7));
+-			wr_regl(port, OFFSET_FCR, reg->bFCR);
+-			wr_regl(port, OFFSET_DLL, reg->bDLL);
+-			wr_regl(port, OFFSET_DLM, reg->bDLM);
++            if(port->line == UART1){
++                tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, BT_ON, OUTPUT, HIGH, SET_DIRECTION|SET_VALUE);
++            }
+ 
+-			wr_regl(port, OFFSET_MCR, reg->bMCR);
+-			wr_regl(port, OFFSET_AFT, reg->bAFT);
+-			wr_regl(port, OFFSET_UCR, reg->bUCR);
++            uart_resume_port(&tcc_uart_drv, port);
+ 
+ 			port->suspended = 0;
+-			// DLAB = 0
+-			wr_regl(port, OFFSET_LCR, (reg->bLCR & (~Hw7)));
+-			wr_regl(port, OFFSET_IER, (rd_regl(port, OFFSET_IER) | UART_IER_ELSI));
++        }
++    }
+ 
+-			wr_regl(port, OFFSET_LCR, reg->bLCR);
+-		}
+-	}
+-	
+ 	return 0;
+ }
+ 
+@@ -1474,10 +1442,12 @@ static int tcc_serial_probe(struct platform_device *dev)
+ }
+ 
+ static struct platform_driver tcc_serial_drv = {
+-	.probe		= tcc_serial_probe,
+-	.remove		= tcc_serial_remove,
+-	.suspend	= tcc_serial_suspend,
+-	.resume		= tcc_serial_resume,
++	.probe			= tcc_serial_probe,
++	.remove			= tcc_serial_remove,
++	.suspend		= tcc_serial_suspend,
++	.resume			= tcc_serial_resume,
++//	.suspend_late	= tcc_serial_suspend,
++//	.resume_early	= tcc_serial_resume,
+ 	.driver		= {
+ 		.name	= DRV_NAME,
+ 		.owner	= THIS_MODULE,
+@@ -1599,7 +1569,6 @@ int tcc_serial_init_ports(struct tcc_uart_port *ourport,
+ 	port->line	    = pdev->id;
+ 	port->dev	    = &pdev->dev;
+ 	port->type      = PORT_TCC;
+-	ourport->info   = info;
+ 
+     res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (res == NULL) {
+-- 
+1.6.3.3
+

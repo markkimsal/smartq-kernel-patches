@@ -1,0 +1,27 @@
+From af91e4d6d3dd173d8015c8efeaefff16978e631e Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Wed, 9 Dec 2009 14:19:36 +0800
+Subject: [PATCH] Avoid some buggy batteries can't reach 1000 when fullly charged
+
+---
+ drivers/char/hhtech_gpio.c |    4 ++++
+ 1 files changed, 4 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index bcf3078..78f0fe3 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -327,6 +327,10 @@ static void battery_update_work(struct work_struct* work)
+ 	    if (current_battery < 785)
+ 		set_sys_power(0);
+ 	}
++	/* Add the current_battery with 40, because the current_battery value of some buggy batteries can't reach 1000 when fullly charged */
++	current_battery += 40;
++	if(current_battery > 1000)
++	    current_battery = 1000;
+ 	schedule_delayed_work(&battery_work, 30 * HZ);
+ }
+ 
+-- 
+1.6.3.3
+

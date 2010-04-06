@@ -1,0 +1,64 @@
+From c298da7cded98ed4c80a2838c7d199145eea67b6 Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Tue, 1 Dec 2009 16:45:18 +0800
+Subject: [PATCH] Avoid LCD to be lightened when HDMI out and user clicks the touchscreen
+
+---
+ drivers/video/tccfb.c |   13 ++++++++-----
+ 1 files changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index 34c3571..70aa1b7 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -225,9 +225,7 @@ typedef struct {
+ 
+ PLCDC_IMG	pLCDC1_IMG[3], pLCDC0_IMG[1];
+ 
+-#if defined(ROADSHOW_DEMO_TYPE1)
+-static unsigned int gLCDOnOffFlag=1;
+-#endif
++static unsigned int gLCDOnOffFlag=1;	// 1: LCD controller on, 0: LCD controller off
+ 
+ void tcc_lcd_on(void)
+ {
+@@ -377,6 +375,8 @@ void tcc_lcd_on(void)
+ 
+ //	LCD_BL_EN(Backlight) On
+ 	bl_control(1);
++
++	gLCDOnOffFlag = 1;
+ #endif
+ }
+ EXPORT_SYMBOL(tcc_lcd_on);
+@@ -494,6 +494,8 @@ void tcc_lcd_off(void)
+ 
+ //	LCD_BL_EN(Backlight) Off
+ 	bl_control(0);
++
++	gLCDOnOffFlag = 0;
+ #endif
+ }
+ EXPORT_SYMBOL(tcc_lcd_off);
+@@ -1230,7 +1232,7 @@ unsigned int tvo_status(void)
+  	2. HDMI_EN = 1 && LCD_EN = 0
+ 	*/
+ 	return gTvoStatus | (gpio_get_value(GPIO_HDMI_EN) 
+-	 & (gpio_get_value(GPIO_LCD_PWR_EN) == 0));
++	 & (gLCDOnOffFlag == 0));
+ }
+ void tvo_powerup(void)
+ {
+@@ -2466,7 +2468,8 @@ static int tccfb_blank(int blank_mode, struct fb_info *info)
+ //	printk(KERN_EMERG"blank(mode=%d, info=%p)\n", blank_mode, info);
+ 	switch (blank_mode) {
+ 		case VESA_NO_BLANKING:  /* lcd on, backlight on */
+-			bl_control(1);
++			if(0 == tvo_status())
++			    bl_control(1);
+ 			break;
+ 		case VESA_VSYNC_SUSPEND: /* lcd on, backlight off */
+ 		case VESA_HSYNC_SUSPEND:
+-- 
+1.6.3.3
+

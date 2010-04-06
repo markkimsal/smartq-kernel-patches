@@ -1,0 +1,43 @@
+From 229991ca94ed5593a4bb4b4ddf811d2c33556525 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Tue, 3 Nov 2009 14:39:53 +0800
+Subject: [PATCH] Default configure support sd8686 proc
+
+---
+ arch/arm/configs/SmartV5_defconfig |    4 ++--
+ arch/arm/configs/SmartV7_defconfig |    4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/configs/SmartV5_defconfig b/arch/arm/configs/SmartV5_defconfig
+index e3af052..17bcdda 100644
+--- a/arch/arm/configs/SmartV5_defconfig
++++ b/arch/arm/configs/SmartV5_defconfig
+@@ -555,8 +555,8 @@ CONFIG_WLAN_80211=y
+ # CONFIG_LIBERTAS is not set
+ # CONFIG_LIBERTAS_THINFIRM is not set
+ CONFIG_MARVELL_8686_SDIO=m
+-# CONFIG_MARVELL_8686_PROC_FS is not set
+-# CONFIG_MARVELL_8686_DEBUG is not set
++CONFIG_MARVELL_8686_PROC_FS=y
++CONFIG_MARVELL_8686_DEBUG=y
+ # CONFIG_USB_ZD1201 is not set
+ # CONFIG_USB_NET_RNDIS_WLAN is not set
+ # CONFIG_RTL8187 is not set
+diff --git a/arch/arm/configs/SmartV7_defconfig b/arch/arm/configs/SmartV7_defconfig
+index 83f06e7..3ecbef7 100644
+--- a/arch/arm/configs/SmartV7_defconfig
++++ b/arch/arm/configs/SmartV7_defconfig
+@@ -555,8 +555,8 @@ CONFIG_WLAN_80211=y
+ # CONFIG_LIBERTAS is not set
+ # CONFIG_LIBERTAS_THINFIRM is not set
+ CONFIG_MARVELL_8686_SDIO=m
+-# CONFIG_MARVELL_8686_PROC_FS is not set
+-# CONFIG_MARVELL_8686_DEBUG is not set
++CONFIG_MARVELL_8686_PROC_FS=y
++CONFIG_MARVELL_8686_DEBUG=y
+ # CONFIG_USB_ZD1201 is not set
+ # CONFIG_USB_NET_RNDIS_WLAN is not set
+ # CONFIG_RTL8187 is not set
+-- 
+1.6.3.3
+

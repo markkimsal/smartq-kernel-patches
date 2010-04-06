@@ -1,0 +1,57 @@
+From 5a0c2c46574025060e3e9b1cd286a93468fd3c82 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Tue, 25 Aug 2009 14:46:24 +0800
+Subject: [PATCH] Limit the maximum backlight level to 99% for avoiding LCD blanking
+
+---
+ drivers/char/hhtech_gpio.c |   24 ++++++++++++------------
+ 1 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index de769d8..ebbce45 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -371,28 +371,28 @@ static int hhtech_sysfs_show_blight(struct device *dev, struct device_attribute
+ static ssize_t hhtech_sysfs_store_blight(struct device *dev,
+ 					 struct device_attribute *attr, const char *buf, size_t len)
+ {
+-	unsigned long value = simple_strtoul(buf, NULL, 10);
++	unsigned long value;
+ 	PTIMER vTimerAddr; 	
+ 
+ 	if (len < 1)
+ 		return -EINVAL;
+ 
+ 	value = simple_strtoul(buf, NULL, 10);
++	if(value >= 100) value = 99;
++
+ 	if(!value)
+-    	{
++	{
+ 	    if(curblight)
+ 		bl_control(0);
+ 	    curblight = 0;
+-	
+-	}else if((value <= 100)&&(value > 0))
+-	      {
+-		  if(!curblight)
+-		      bl_control(1);
+-		  vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
+-		  tca_bkl_setpowerval(value,(unsigned int)vTimerAddr);
+-		  curblight = value;	      
+-	      }else 
+-		  return -EINVAL;	
++
++	} else {
++	    if(!curblight)
++		bl_control(1);
++	    vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
++	    tca_bkl_setpowerval(value,(unsigned int)vTimerAddr);
++	    curblight = value;
++	}
+ 	
+ 	return len;
+ }
+-- 
+1.6.3.3
+

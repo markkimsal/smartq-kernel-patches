@@ -1,0 +1,42 @@
+From 6e15fb7c42bb59510a822491f2cecc3280d1bf5f Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Thu, 21 Jan 2010 14:07:18 +0800
+Subject: [PATCH] restore sdhc.c to before for stability
+
+---
+ drivers/mmc/host/tcc_sdhc.c |   12 ------------
+ 1 files changed, 0 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/mmc/host/tcc_sdhc.c b/drivers/mmc/host/tcc_sdhc.c
+index 2a9fde6..8485eb4 100644
+--- a/drivers/mmc/host/tcc_sdhc.c
++++ b/drivers/mmc/host/tcc_sdhc.c
+@@ -1215,12 +1215,6 @@ static int tcc_mmc_suspend(struct platform_device *pdev, pm_message_t mesg)
+ 			host->suspended = 1;
+ 	}
+ 
+-	if(!strcmp(pdev->dev.bus_id,"tcc-sdhc0.0"))
+-	{
+-		tca_ckc_set_iobus_swreset(RB_SDMMCCONTROLLER, OFF);
+-		tca_ckc_setiobus(RB_SDMMCCONTROLLER, DISABLE);
+-	}
+-	
+ 	return ret;
+ }
+ 
+@@ -1230,12 +1224,6 @@ static int tcc_mmc_resume(struct platform_device *pdev)
+ 
+ 	struct tcc_mmc_host *host = platform_get_drvdata(pdev);
+ 
+-	if(!strcmp(pdev->dev.bus_id,"tcc-sdhc0.0"))
+-	{
+-		tca_ckc_set_iobus_swreset(RB_SDMMCCONTROLLER, ON);
+-		tca_ckc_setiobus(RB_SDMMCCONTROLLER, ENABLE);
+-
+-	}
+ 	if (host && !host->suspended)
+ 		return 0;
+ 
+-- 
+1.6.3.3
+

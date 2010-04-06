@@ -1,0 +1,228 @@
+From 9762d3d11bffae7aa887852819ac25852b76ec2c Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Tue, 22 Sep 2009 09:34:48 +0800
+Subject: [PATCH] Modify some files for CPU sleep and wakeup
+
+---
+ arch/arm/configs/SmartV5_defconfig |    8 +++---
+ arch/arm/configs/SmartV7_defconfig |    8 +++---
+ arch/arm/plat-tcc/tcc_cpufreq.c    |   15 +-----------
+ drivers/char/tcc_pwrkey.c          |   46 +++++++++++------------------------
+ 4 files changed, 24 insertions(+), 53 deletions(-)
+
+diff --git a/arch/arm/configs/SmartV5_defconfig b/arch/arm/configs/SmartV5_defconfig
+index 3ca52f7..b3bfc56 100644
+--- a/arch/arm/configs/SmartV5_defconfig
++++ b/arch/arm/configs/SmartV5_defconfig
+@@ -49,7 +49,7 @@ CONFIG_LOG_BUF_SHIFT=17
+ CONFIG_RELAY=y
+ # CONFIG_NAMESPACES is not set
+ # CONFIG_BLK_DEV_INITRD is not set
+-# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set
++CONFIG_CC_OPTIMIZE_FOR_SIZE=y
+ CONFIG_SYSCTL=y
+ CONFIG_EMBEDDED=y
+ # CONFIG_UID16 is not set
+@@ -179,8 +179,8 @@ CONFIG_DRAM_DDR2=y
+ CONFIG_RAM_256MB=y
+ # CONFIG_HD720p_LEVEL41 is not set
+ # CONFIG_HD720p_LEVEL51 is not set
+-CONFIG_HD1080p_LEVEL41=y
+-# CONFIG_HD1080p_LEVEL51 is not set
++# CONFIG_HD1080p_LEVEL41 is not set
++CONFIG_HD1080p_LEVEL51=y
+ CONFIG_TCC_STRING="tcc8900"
+ 
+ #
+@@ -992,7 +992,7 @@ CONFIG_USB_ACM=m
+ # see USB_STORAGE Help for more information
+ #
+ CONFIG_USB_STORAGE=m
+-CONFIG_USB_STORAGE_DEBUG=y
++# CONFIG_USB_STORAGE_DEBUG is not set
+ CONFIG_USB_STORAGE_DATAFAB=y
+ CONFIG_USB_STORAGE_FREECOM=y
+ CONFIG_USB_STORAGE_ISD200=y
+diff --git a/arch/arm/configs/SmartV7_defconfig b/arch/arm/configs/SmartV7_defconfig
+index 9f52b84..611330e 100644
+--- a/arch/arm/configs/SmartV7_defconfig
++++ b/arch/arm/configs/SmartV7_defconfig
+@@ -49,7 +49,7 @@ CONFIG_LOG_BUF_SHIFT=17
+ CONFIG_RELAY=y
+ # CONFIG_NAMESPACES is not set
+ # CONFIG_BLK_DEV_INITRD is not set
+-# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set
++CONFIG_CC_OPTIMIZE_FOR_SIZE=y
+ CONFIG_SYSCTL=y
+ CONFIG_EMBEDDED=y
+ # CONFIG_UID16 is not set
+@@ -179,8 +179,8 @@ CONFIG_DRAM_DDR2=y
+ CONFIG_RAM_256MB=y
+ # CONFIG_HD720p_LEVEL41 is not set
+ # CONFIG_HD720p_LEVEL51 is not set
+-CONFIG_HD1080p_LEVEL41=y
+-# CONFIG_HD1080p_LEVEL51 is not set
++# CONFIG_HD1080p_LEVEL41 is not set
++CONFIG_HD1080p_LEVEL51=y
+ CONFIG_TCC_STRING="tcc8900"
+ 
+ #
+@@ -992,7 +992,7 @@ CONFIG_USB_ACM=m
+ # see USB_STORAGE Help for more information
+ #
+ CONFIG_USB_STORAGE=m
+-CONFIG_USB_STORAGE_DEBUG=y
++# CONFIG_USB_STORAGE_DEBUG is not set
+ CONFIG_USB_STORAGE_DATAFAB=y
+ CONFIG_USB_STORAGE_FREECOM=y
+ CONFIG_USB_STORAGE_ISD200=y
+diff --git a/arch/arm/plat-tcc/tcc_cpufreq.c b/arch/arm/plat-tcc/tcc_cpufreq.c
+index 0a2c390..3fbba7e 100644
+--- a/arch/arm/plat-tcc/tcc_cpufreq.c
++++ b/arch/arm/plat-tcc/tcc_cpufreq.c
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 二, 15  9月 2009 11:47:30 +0800     by root #
++ * Last modified: 五, 18  9月 2009 11:08:32 +0800     by root #
+  ****************************************************************/
+ #include <linux/types.h>
+ #include <linux/kernel.h>
+@@ -31,18 +31,6 @@
+ 
+ extern unsigned int tca_ckc_getcpu(void);
+ extern int tcc_ckc_change_cpu(unsigned int cpuvalue);
+-extern void memchange(unsigned int freq);
+-
+-/* frequency */
+-static unsigned int mem_freq_table[] = {
+-	3300000,
+-	2800000,
+-	2400000,
+-	2100000,
+-	1800000,
+-	1600000,
+-	1410000,
+-};
+ static struct cpufreq_frequency_table tcc8902_freq_table[] = {
+ 	{0, 540000},
+ 	{1, 506250},
+@@ -97,7 +85,6 @@ static int tcc8902_target(struct cpufreq_policy *policy,
+ 
+ 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+ 	ret = tcc_ckc_change_cpu(freqs.new * 10);
+-//	memchange(mem_freq_table[index]);
+ 	//ret = clk_set_rate(mpu_clk, freqs.new * KHZ_T);
+ 	if(ret != 0)
+ 		printk("frequency scaling error\n");
+diff --git a/drivers/char/tcc_pwrkey.c b/drivers/char/tcc_pwrkey.c
+index d7a5f38..2c851ef 100644
+--- a/drivers/char/tcc_pwrkey.c
++++ b/drivers/char/tcc_pwrkey.c
+@@ -57,7 +57,9 @@ extern void arm_restorestack(unsigned int rst);
+ extern void IO_ARM_CleanCACHE(unsigned int val);
+ extern void IO_ARM_FlushCACHE(void);
+ 
+-unsigned char SRAM_ADDR_VAR[0x110];
++#define SRAM_ADDR_VAR 0xEFF00600
++#define SRAM_ADDR_STANDBY 0xEFF00000
++#define SRAM_FUNC_SIZE 0x600
+ 
+ /*****************************************************************************
+ * Function Name : tca_off_sleep()
+@@ -76,6 +78,9 @@ volatile static void tca_off_sleep(void)
+         int tmpread = *(volatile unsigned long *)0xF0400008;
+         int count = 0;
+ 
++	*(volatile unsigned long *)0xF0102024 &= ~(0xff0000);
++	*(volatile unsigned long *)0xF0102004 |= 0x30;
++	*(volatile unsigned long *)0xF0102000 &= ~(0x30);
+ 
+         tmpread &= ~0x00200000;
+         lmem_source = tmpread & 0xf;
+@@ -186,26 +191,14 @@ volatile static void tca_off_sleep(void)
+ 
+     //go power down mode......
+ 
+-#if 0
+-    *(volatile unsigned long *)0xF0102024 &= ~(0x0000f000); //
+-    *(volatile unsigned long *)0xF0102004 &= ~(0x00000008); //
++    *(volatile unsigned long *)0xF01020EC &= ~(0x00000f00); 
++    *(volatile unsigned long *)0xF01020C4 &= ~(0x00040000);
+ 
+-
+-    *(volatile unsigned long *)0xF0404008 = 0x00008000; // PMU-WKUPPOL  - SRCS[15](GPIO A3) active low
+-    *(volatile unsigned long *)0xF0404004 = 0x00008000; // PMU-WKUPEN  - SRCS[15](GPIO A3) enable
++    *(volatile unsigned long *)0xF0404008 = 0x00000800; // PMU-WKUPPOL  - SRCS[15](GPIO A3) active low
++    *(volatile unsigned long *)0xF0404004 = 0x00000800; // PMU-WKUPEN  - SRCS[15](GPIO A3) enable
+     *(volatile unsigned long *)0xF0404000 |= 0x00000004; // PMU-CONTROL - Power Off
+-#else
+-    *(volatile unsigned long *)0xF0404000 |= 0x00000010; // PMU-CONTROL - Download ITCM boot code
+-    *(volatile unsigned long *)0xF0404000 |= 0x00000008; // PMU-CONTROL - Deep Power-Down
+-    *(volatile unsigned long *)0xF0404000 |= 0x80000000; // PMU-CONTROL - I/O Retension Enable
+-    gpio_direction_input(TCC_GPD18);
+-    *(volatile unsigned long *)0xF0404008 = 0x00000800; // PMU-WKUPPOL  - SRCS[11](GPIO D18) active low
+-    *(volatile unsigned long *)0xF0404004 = 0x00000800; // PMU-WKUPEN  - SRCS[11](GPIO D18) enable
+-    *(volatile unsigned long *)0xF0404000 |= 0x00000002; // PMU-CONTROL - Power Off
+-#endif
+-
+-
+-    gpio_direction_output(GPIO_LED1_EN, 1);
++
++    
+     //wakeup start
+ 
+         nCount = 10;
+@@ -331,15 +324,13 @@ volatile static void tca_off_sleep(void)
+         *(volatile unsigned long *)0xF0302004 = 0x00000000; // PL341_GO
+         while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=1); //Wait PL34X_STATUS_READY
+ 
++	*(volatile unsigned long *)0xF0102000 |= 0x30;
+ 
+ 
+ }
+ 
+ typedef void (*lpfunc)(void);
+ extern lpfunc lpSelfRefresh;
+-#define SRAM_ADDR_STANDBY		0xEFF00000
+-#define SRAM_FUNC_SIZE			0x600
+-
+ 
+ volatile static void tca_off_copysram(void)
+ {
+@@ -356,7 +347,7 @@ volatile static void tca_off_copysram(void)
+ 
+     p = (volatile unsigned int*)SRAM_ADDR_STANDBY;
+ 
+-    for (i = 0;i < (SRAM_FUNC_SIZE+0x100);i++)
++    for (i = 0;i < (SRAM_FUNC_SIZE);i++)
+     {
+         *p = *fptr;
+         p++;
+@@ -386,13 +377,6 @@ void selfrefresh_test(void)
+     local_flush_tlb_all();
+     flush_cache_all();
+ 
+-    //IO_ARM_CleanDCACHE(1);
+-    //IO_ARM_FlushCACHE();
+-
+-    //WinCE
+-    //OALCleanDCache();
+-    //OALFlushICache();
+-    
+     pTIMER->TC32EN &= ~Hw24;
+     
+     retstack = arm_changestack();
+@@ -402,7 +386,7 @@ void selfrefresh_test(void)
+     arm_restorestack(retstack);
+ 
+     pTIMER->TC32EN |= Hw24;
+-    arm_restorestack(retstack);
++    int_restore();
+ 
+     //	LCDC Power Up
+     pLCDC_BASE0->LCTRL |= Hw0;
+-- 
+1.6.3.3
+

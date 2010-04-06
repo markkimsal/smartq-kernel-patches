@@ -1,0 +1,121 @@
+From 7445e70aaf3a830437af941ff3f59f17aed6328a Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Tue, 10 Nov 2009 14:56:06 +0800
+Subject: [PATCH] merge code from patch 2265 about ohci
+
+---
+ drivers/usb/host/ohci-tcc.c |   51 ++++++++++++++++++++++++++++++++++++------
+ 1 files changed, 43 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/usb/host/ohci-tcc.c b/drivers/usb/host/ohci-tcc.c
+index 95188ad..61e4a50 100644
+--- a/drivers/usb/host/ohci-tcc.c
++++ b/drivers/usb/host/ohci-tcc.c
+@@ -107,6 +107,30 @@ extern int usb_disabled(void);
+ 
+ /*-------------------------------------------------------------------------*/
+ 
++/*
++ * TCC89/91/92 has two down stream ports.
++ * Down stream port1 interfaces with USB1.1 transceiver.
++ * Down stream port2 interfaces with USB2.0 OTG PHY.
++ * port1 should be power off, because OTG use USB2.0 OTG PHY.
++ */
++void ohci_port_power_control(void)
++{
++	PUSBHOST11 ohci = (PUSBHOST11)tcc_p2v(HwUSBHOST_BASE);
++
++	/* Port power switch mode & each port is powered individually 
++	 */
++	BITCSET(ohci->HcRhDescriptorA, Hw9|Hw8, Hw8);	// NPS 0, PSM 1
++	
++	/* port2 power state is only affected by per-port power control (Set/ClearPortPower)
++	 * port1 is controlled by the global power switch (Set/ClearGlobalPower)
++	 */
++	BITSET(ohci->HcRhDescriptorB, Hw18);	// PPCM bit2 1
++	
++	/* Clear the PortPowerStatus (port2 power off)
++	 */
++	ohci->HcRhPortStatus2 = Hw9;	// port2 LSDA 1
++}
++
+ static void USBHostVBUSControl(int on)
+ {	
+ 	/* GPIO_EXPAND HVBUS & PWR_GP1 control */
+@@ -318,6 +342,8 @@ static int __devinit ohci_tcc_start (struct usb_hcd *hcd)
+ 		return ret;
+ 	}
+ 
++	ohci_port_power_control();
++
+ 	return 0;
+ }
+ 
+@@ -371,10 +397,11 @@ static const struct hc_driver ohci_tcc_hc_driver = {
+ /*-------------------------------------------------------------------------*/
+ 
+ #ifdef	CONFIG_PM
+-static int ohci_hcd_tcc_drv_suspend(struct platform_device *pdev, pm_message_t state)
++int ohci_hcd_tcc_drv_suspend(struct platform_device *pdev, pm_message_t state)
+ {
+ 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
+ 	struct ohci_hcd *ohci = hcd_to_ohci(hcd);
++
+ 	if (time_before(jiffies, ohci->next_statechange))
+ 		msleep(5);
+ 	ohci->next_statechange = jiffies;
+@@ -382,6 +409,8 @@ static int ohci_hcd_tcc_drv_suspend(struct platform_device *pdev, pm_message_t s
+ 	tcc_stop_hc(&pdev->dev);
+ 	hcd->state = HC_STATE_SUSPENDED;
+ 
++	USBHostVBUSControl(0);
++
+ 	return 0;
+ }
+ 
+@@ -390,6 +419,9 @@ static int ohci_hcd_tcc_drv_resume(struct platform_device *pdev)
+ 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
+ 	struct ohci_hcd *ohci = hcd_to_ohci(hcd);
+ 	int status;
++
++	USBHostVBUSControl(1);
++	
+ 	if (time_before(jiffies, ohci->next_statechange))
+ 		msleep(5);
+ 	ohci->next_statechange = jiffies;
+@@ -398,8 +430,13 @@ static int ohci_hcd_tcc_drv_resume(struct platform_device *pdev)
+ 		return status;
+ 	ohci_finish_controller_resume(hcd);
+ 
++	ohci_port_power_control();
++
+ 	return 0;
+ }
++#else
++#define ohci_hcd_tcc_drv_suspend		NULL
++#define ohci_hcd_tcc_drv_resume			NULL
+ #endif
+ 
+ /*-----------------------------------------------------------------
+@@ -471,13 +508,11 @@ static int ohci_hcd_tcc_drv_remove(struct platform_device *pdev)
+ 
+ 
+ static struct platform_driver ohci_hcd_tcc_driver = {
+-	.probe		= ohci_hcd_tcc_drv_probe,
+-	.remove		= ohci_hcd_tcc_drv_remove,
+-#ifdef CONFIG_PM
+-	.suspend	= ohci_hcd_tcc_drv_suspend,
+-	.resume		= ohci_hcd_tcc_drv_resume,
+-#endif
+-	.driver		= {
++	.probe			= ohci_hcd_tcc_drv_probe,
++	.remove			= ohci_hcd_tcc_drv_remove,
++	.suspend		= ohci_hcd_tcc_drv_suspend,
++	.resume			= ohci_hcd_tcc_drv_resume,
++	.driver			= {
+ 		.name	= "tcc-ohci",
+ 		.owner	= THIS_MODULE,
+ 	},
+-- 
+1.6.3.3
+

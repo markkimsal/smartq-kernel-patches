@@ -1,0 +1,53 @@
+From 81768650b3289c9e123b86fbff479884b3d514aa Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Tue, 22 Dec 2009 11:42:09 +0800
+Subject: [PATCH] can be auto power down when dram runs at 330 mhz ,and also other small modifications
+
+---
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c    |   14 +++++++++-----
+ 1 files changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
+index 9a085e9..a3569cd 100644
+--- a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
++++ b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
+@@ -2,6 +2,10 @@
+ 
+ #if !defined(DRAM_MDDR)
+ 
++#define DRAM_AUTOPD_ENABLE Hw13
++#define DRAM_AUTOPD_PERIOD 7<<7 // must larger than CAS latency
++#define DRAM_SET_AUTOPD DRAM_AUTOPD_ENABLE|DRAM_AUTOPD_PERIOD
++
+ //300Mhz
+ void init_clockchange300Mhz(void)
+ {
+@@ -741,12 +745,12 @@ void init_clockchange330Mhz(void)
+ 	*(volatile unsigned long *) 0xF0302004=0x00000004;			// PL341_CONFIGURE
+ 	while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=0); //Wait PL34X_STATUS_CONFIG
+ // memory arb.
+-	*(volatile unsigned long *)0xF030200C |= 0x00140000; 
++	*(volatile unsigned long *)0xF030200C |= 0x00140000|DRAM_SET_AUTOPD;
+ // memory arb. end
+-	*(volatile unsigned long *) 0xF0303000 |= 0x80800000;		// bit23 enable -synopt enable
+-	*(volatile unsigned long *) 0xF0303010 |= 0x80800000;		// bit23 enable -synopt enable
++//	*(volatile unsigned long *) 0xF0303000 |= 0x80800000;		// bit23 enable -synopt enable
++//	*(volatile unsigned long *) 0xF0303010 |= 0x80800000;		// bit23 enable -synopt enable
+ 
+-	*(volatile unsigned long *)0xF030200C = 0x00150012; 		// config0 cas 10bit, ras 13bit
++	*(volatile unsigned long *)0xF030200C = 0x00150012|DRAM_SET_AUTOPD; 	// config0 cas 10bit, ras 13bit
+ 	*(volatile unsigned long *)0xF0302010 = 0x00000507; 	// refresh 
+ 	
+ #if defined(DRAM_BANK3)
+@@ -805,7 +809,7 @@ void init_clockchange330Mhz(void)
+ 	*(volatile unsigned long *)0xF0302004 = 0x00000001; 		// PL341_SLEEP
+ 	while (((*(volatile unsigned long *)0xF0302000) & (0x03)) != 3);	// Wait until SLEEP
+ 
+-	*(volatile unsigned long *)0xF030302C = 0x00004000; 		// SSTL SDRAM IO Control Register 
++	*(volatile unsigned long *)0xF030302C |= 0x00004000; 		// SSTL SDRAM IO Control Register 
+ 	
+ 	*(volatile unsigned long *)0xF0303020 = 0x00010103; 		// emccfg_config0
+ 	*(volatile unsigned long *)0xF0303024 = 0x00000000; 		// SDRAM PHY Control Register 
+-- 
+1.6.3.3
+

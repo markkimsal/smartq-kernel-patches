@@ -1,0 +1,74 @@
+From c234bbcafa6a170f07839358b01a158fe36cb15b Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Wed, 30 Sep 2009 10:49:37 +0800
+Subject: [PATCH] Get rid of boot logo
+
+---
+ arch/arm/configs/SmartV5_defconfig |    5 +----
+ arch/arm/configs/SmartV7_defconfig |    5 +----
+ drivers/video/tccfb.c              |    2 ++
+ drivers/video/tccfb.h              |    3 +++
+ 4 files changed, 7 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm/configs/SmartV5_defconfig b/arch/arm/configs/SmartV5_defconfig
+index bdc2ce2..2c36109 100644
+--- a/arch/arm/configs/SmartV5_defconfig
++++ b/arch/arm/configs/SmartV5_defconfig
+@@ -862,10 +862,7 @@ CONFIG_FB_TCC_TD043MTEX=y
+ # CONFIG_VGA_CONSOLE is not set
+ CONFIG_DUMMY_CONSOLE=y
+ # CONFIG_FRAMEBUFFER_CONSOLE is not set
+-CONFIG_LOGO=y
+-# CONFIG_LOGO_LINUX_MONO is not set
+-# CONFIG_LOGO_LINUX_VGA16 is not set
+-CONFIG_LOGO_LINUX_CLUT224=y
++# CONFIG_LOGO is not set
+ CONFIG_SOUND=y
+ CONFIG_SOUND_OSS_CORE=y
+ CONFIG_SND=y
+diff --git a/arch/arm/configs/SmartV7_defconfig b/arch/arm/configs/SmartV7_defconfig
+index 2235d7b..6940bf0 100644
+--- a/arch/arm/configs/SmartV7_defconfig
++++ b/arch/arm/configs/SmartV7_defconfig
+@@ -862,10 +862,7 @@ CONFIG_FB_TCC_A070VW04=y
+ # CONFIG_VGA_CONSOLE is not set
+ CONFIG_DUMMY_CONSOLE=y
+ # CONFIG_FRAMEBUFFER_CONSOLE is not set
+-CONFIG_LOGO=y
+-# CONFIG_LOGO_LINUX_MONO is not set
+-# CONFIG_LOGO_LINUX_VGA16 is not set
+-CONFIG_LOGO_LINUX_CLUT224=y
++# CONFIG_LOGO is not set
+ CONFIG_SOUND=y
+ CONFIG_SOUND_OSS_CORE=y
+ CONFIG_SND=y
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index 5f34b8c..ea95055 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -2807,6 +2807,8 @@ static int __init tccfb_probe(struct platform_device *pdev)
+ 		fbinfo->fbops				= &tccfb_ops;
+ 		fbinfo->flags				= FBINFO_FLAG_DEFAULT;
+ 
++		fbinfo->pseudo_palette	= info->pseudo_pal;
++
+ 		fbinfo->var.xres			= fb_width[plane];
+ 		fbinfo->var.xres_virtual	= fb_width[plane];
+ 		fbinfo->var.yres			= fb_height[plane];
+diff --git a/drivers/video/tccfb.h b/drivers/video/tccfb.h
+index dbcfd51..c122b61 100644
+--- a/drivers/video/tccfb.h
++++ b/drivers/video/tccfb.h
+@@ -41,6 +41,9 @@ struct tccfb_info {
+ 	u_char *		screen_cpu;	/* virtual address of buffer */
+ 	dma_addr_t		screen_dma;	/* physical address of buffer */
+ 
++	/* keep these registers in case we need to re-write palette */
++	unsigned int		pseudo_pal[16];
++
+ 	u_int			imgch;
+ 
+ };
+-- 
+1.6.3.3
+

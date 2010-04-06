@@ -1,0 +1,54 @@
+From ede21188707c3c2acde746ff25a13ef03ab1c39d Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Mon, 26 Oct 2009 12:09:51 +0800
+Subject: [PATCH] Solve the machine crash problem
+
+---
+ arch/arm/plat-tcc/tcc_cpufreq.c          |    8 ++++----
+ drivers/block/tcc/inc/tnftl/nand_io_v7.h |    4 ++--
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/plat-tcc/tcc_cpufreq.c b/arch/arm/plat-tcc/tcc_cpufreq.c
+index fcedd58..ca5ca78 100644
+--- a/arch/arm/plat-tcc/tcc_cpufreq.c
++++ b/arch/arm/plat-tcc/tcc_cpufreq.c
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 五, 25  9月 2009 10:43:37 +0800     by root #
++ * Last modified: 一, 26 10月 2009 12:08:06 +0800     by root #
+  ****************************************************************/
+ #include <linux/types.h>
+ #include <linux/kernel.h>
+@@ -36,9 +36,9 @@ static struct cpufreq_frequency_table tcc8902_freq_table[] = {
+ 	{0, 540000},
+ 	{1, 506250},
+ 	{2, 405000},
+-	{3, 303750},
+-	{4, 202500},
+-	{5, 101500},
++	{3, 324000},
++	{4, 216000},
++	{5, 108000},
+ 	{6, 54000},
+ 	{0, CPUFREQ_TABLE_END},
+ };
+diff --git a/drivers/block/tcc/inc/tnftl/nand_io_v7.h b/drivers/block/tcc/inc/tnftl/nand_io_v7.h
+index 7abdc9f..0655838 100644
+--- a/drivers/block/tcc/inc/tnftl/nand_io_v7.h
++++ b/drivers/block/tcc/inc/tnftl/nand_io_v7.h
+@@ -23,8 +23,8 @@
+ #define NAND_2CS_ONLY
+ #define NAND_8BIT_ONLY
+ #else
+-//#define NAND_2CS_ONLY
+-//#define NAND_8BIT_ONLY
++#define NAND_2CS_ONLY
++#define NAND_8BIT_ONLY
+ #endif
+ 
+ //**********************************************************************
+-- 
+1.6.3.3
+

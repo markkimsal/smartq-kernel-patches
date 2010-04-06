@@ -1,0 +1,36 @@
+From 6c2e2c34ee831de90e6047a5754463a5eb794905 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Tue, 3 Nov 2009 16:31:07 +0800
+Subject: [PATCH] Fix lcd_on report 1 after blink
+
+---
+ drivers/char/hhtech_gpio.c |    4 +---
+ 1 files changed, 1 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 2e5cd52..013d3a9 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -644,10 +644,9 @@ static ssize_t hhtech_sysfs_store_vpu_on(struct device *dev, struct device_attri
+ }
+ 
+ //lcd pm ops
+-static int lcd_on = 1;
+ static int hhtech_sysfs_show_lcd(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    return snprintf(buf, PAGE_SIZE, "%d\n", lcd_on);
++    return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_LCD_PWR_EN));
+ }
+ static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+@@ -657,7 +656,6 @@ static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribut
+     int value = simple_strtoul(buf, NULL, 10);
+ 
+     value = !!value;
+-    lcd_on = value;
+ 
+     gpio_direction_output(GPIO_LCD_PWR_EN, value);
+ 
+-- 
+1.6.3.3
+

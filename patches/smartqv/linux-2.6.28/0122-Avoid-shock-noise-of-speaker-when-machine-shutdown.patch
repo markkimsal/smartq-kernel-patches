@@ -1,0 +1,24 @@
+From 5c8c0502ae9ea65daf4b0fd1a5afe3214dc556c8 Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Thu, 31 Dec 2009 16:41:32 +0800
+Subject: [PATCH] Avoid shock noise of speaker when machine shutdown
+
+---
+ arch/arm/mach-tcc8900/board-tcc8900.c |    1 +
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/board-tcc8900.c b/arch/arm/mach-tcc8900/board-tcc8900.c
+index 7d7a0e4..638d63d 100644
+--- a/arch/arm/mach-tcc8900/board-tcc8900.c
++++ b/arch/arm/mach-tcc8900/board-tcc8900.c
+@@ -62,6 +62,7 @@ static struct i2c_board_info __initdata tcc8900_i2c_board_info[] = {
+ 
+ static void tcc8900_power_off(void)
+ {
++	gpio_direction_output(GPIO_SPEAKER_EN, 0);
+ 	gpio_direction_output(GPIO_PWR_EN, 0);
+ }
+ 
+-- 
+1.6.3.3
+

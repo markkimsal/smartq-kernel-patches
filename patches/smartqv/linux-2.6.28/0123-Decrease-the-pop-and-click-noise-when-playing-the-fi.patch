@@ -1,0 +1,117 @@
+From 0e1ca6e87960181e6a3e5fdb2113b1bf50b04290 Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Tue, 5 Jan 2010 11:13:49 +0800
+Subject: [PATCH] Decrease the pop and click noise when playing the first and next song
+
+---
+ drivers/i2c/i2c-core.c    |    8 ++++++++
+ sound/soc/codecs/wm8987.c |   36 +++++++++++++++++++++++++-----------
+ 2 files changed, 33 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/i2c/i2c-core.c b/drivers/i2c/i2c-core.c
+index 5053947..00d45dd 100644
+--- a/drivers/i2c/i2c-core.c
++++ b/drivers/i2c/i2c-core.c
+@@ -35,6 +35,7 @@
+ #include <linux/hardirq.h>
+ #include <linux/irqflags.h>
+ #include <asm/uaccess.h>
++#include <linux/delay.h>
+ 
+ #include "i2c-core.h"
+ 
+@@ -1087,6 +1088,13 @@ int i2c_master_send(struct i2c_client *client,const char *buf ,int count)
+ 
+ 	ret = i2c_transfer(adap, &msg, 1);
+ 
++	/* delay 200ms after enable LOUT2 and ROUT2 Output Buffer of WM8987 (bit4 and bit3 of R26),
++	   to avoid pop and click noise */
++	if(msg.addr == 0x1a) {
++		if(buf[0] == 0x35 && (buf[1] & 0x18))
++		    mdelay(200);
++	}
++
+ 	/* If everything went ok (i.e. 1 msg transmitted), return #bytes
+ 	   transmitted, else error code. */
+ 	return (ret == 1) ? count : ret;
+diff --git a/sound/soc/codecs/wm8987.c b/sound/soc/codecs/wm8987.c
+index 3d76999..897062b 100755
+--- a/sound/soc/codecs/wm8987.c
++++ b/sound/soc/codecs/wm8987.c
+@@ -33,9 +33,8 @@
+ 
+ #define WM8987_VERSION "0.12"
+ 
+-#if defined (CONFIG_LCD_4)
+ static struct snd_soc_codec *p_codec = NULL;
+-#endif
++static struct delayed_work wm8987_unmute_work;
+ 
+ /* codec private data */
+ struct wm8987_priv {
+@@ -664,15 +663,30 @@ static int wm8987_pcm_hw_params(struct snd_pcm_substream *substream,
+ 	return 0;
+ }
+ 
++static void wm8987_delayed_unmute(struct work_struct* work)
++{
++	u16 mute_reg;
++
++	if (p_codec == NULL)
++		return;
++	else {
++		mute_reg = wm8987_read_reg_cache(p_codec, WM8987_ADCDAC) & 0xfff7;
++		wm8987_write(p_codec, WM8987_ADCDAC, mute_reg);
++	}
++}
++
+ static int wm8987_mute(struct snd_soc_dai *dai, int mute)
+ {
+ 	struct snd_soc_codec *codec = dai->codec;
+-	u16 mute_reg = wm8987_read_reg_cache(codec, WM8987_ADCDAC) & 0xfff7;
++	u16 mute_reg = wm8987_read_reg_cache(codec, WM8987_ADCDAC);
+ 
+ 	if (mute)
+ 		wm8987_write(codec, WM8987_ADCDAC, mute_reg | 0x8);
+-	else
+-		wm8987_write(codec, WM8987_ADCDAC, mute_reg);
++	else if(mute_reg & 0x8) {
++		cancel_delayed_work(&wm8987_unmute_work);
++		schedule_delayed_work(&wm8987_unmute_work, msecs_to_jiffies(200));
++	}
++
+ 	return 0;
+ }
+ 
+@@ -683,12 +697,12 @@ static int wm8987_set_bias_level(struct snd_soc_codec *codec,
+ 
+ 	switch (level) {
+ 	case SND_SOC_BIAS_ON:
+-		/* set vmid to 50k and unmute dac */
+-		wm8987_write(codec, WM8987_PWR1, pwr_reg | 0x00c0);
++		/* do nothing, because 'case SND_SOC_BIAS_PREPARE' has done everything */
+ 		break;
+ 	case SND_SOC_BIAS_PREPARE:
+-		/* set vmid to 5k for quick power up */
+-		wm8987_write(codec, WM8987_PWR1, pwr_reg | 0x01c1);
++		/* set vmid to 500k and unmute dac, this results the longest start-up time
++		   and least pop and click noise */
++		wm8987_write(codec, WM8987_PWR1, pwr_reg | 0x0140);
+ 		break;
+ 	case SND_SOC_BIAS_STANDBY:
+ 		/* mute dac and set vmid to 500k, enable VREF */
+@@ -866,9 +880,9 @@ static int wm8987_init(struct snd_soc_device *socdev)
+ 		printk(KERN_ERR "wm8987: failed to register card\n");
+ 		goto card_err;
+ 	}
+-#if defined (CONFIG_LCD_4)
+ 	p_codec = codec;
+-#endif
++	INIT_DELAYED_WORK(&wm8987_unmute_work, wm8987_delayed_unmute);
++
+ 	return ret;
+ 
+ card_err:
+-- 
+1.6.3.3
+

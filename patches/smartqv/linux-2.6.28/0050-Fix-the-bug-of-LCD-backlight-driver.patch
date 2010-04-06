@@ -1,0 +1,84 @@
+From 3fdbb3e4ee36604dcf418a79c1ce89bb46f48fc3 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Wed, 23 Sep 2009 18:31:56 +0800
+Subject: [PATCH] Fix the bug of LCD backlight driver
+
+---
+ drivers/char/hhtech_gpio.c |    3 ++-
+ drivers/video/tccfb.c      |   10 +++++-----
+ 2 files changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index abc7fc7..6344598 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -677,7 +677,8 @@ static ssize_t hhtech_sysfs_store_charge(struct device *dev,
+ 
+ extern void tca_bkl_setpowerval(int inValue, unsigned int tmr_vaddr);
+ extern void bl_control(bool flag);
+-static int curblight = 100;
++int curblight = 100;
++EXPORT_SYMBOL(curblight);
+ 
+ static int hhtech_sysfs_show_blight(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index 52d22a4..5f34b8c 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -374,7 +374,7 @@ void tcc_lcd_on(void)
+ 	gpio_direction_output(GPIO_LCD_PWR_EN, 1);
+ 
+ //	LCD_BL_EN(Backlight) On
+-	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 1);
++	bl_control(1);
+ #endif
+ }
+ EXPORT_SYMBOL(tcc_lcd_on);
+@@ -491,7 +491,7 @@ void tcc_lcd_off(void)
+ 	gpio_direction_output(GPIO_LCD_PWR_EN, 0);
+ 
+ //	LCD_BL_EN(Backlight) Off
+-	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 0);
++	bl_control(0);
+ #endif
+ }
+ EXPORT_SYMBOL(tcc_lcd_off);
+@@ -2454,7 +2454,6 @@ static int tccfb_blank(int blank_mode, struct fb_info *info)
+ 	dprintk("blank(mode=%d, info=%p)\n", blank_mode, info);
+ 	switch (blank_mode) {
+ 		case VESA_NO_BLANKING:  /* lcd on, backlight on */
+-			bl_control(1);
+ 			tcc_lcd_on();
+ 			break;
+ 		case VESA_VSYNC_SUSPEND: /* lcd on, backlight off */
+@@ -2464,7 +2463,6 @@ static int tccfb_blank(int blank_mode, struct fb_info *info)
+ 		case VESA_POWERDOWN + 1: // XXX: compatible with X
+ 		case VESA_POWERDOWN: /* lcd and backlight off */
+ 			tcc_lcd_off();
+-			bl_control(0);
+ 			break;
+ 		default:
+ 			return -EINVAL;
+@@ -2962,6 +2960,7 @@ static int tccfb_suspend(struct platform_device *dev, pm_message_t state)
+ 	return 0;
+ }
+ 
++extern int curblight;
+ static int tccfb_resume(struct platform_device *dev)
+ {
+ 	PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
+@@ -2971,8 +2970,9 @@ static int tccfb_resume(struct platform_device *dev)
+ 	#ifdef TV_OUT_INCLUDE
+ 	tvo_powerup();
+ 	#endif
+-	
++
+ 	tca_bkl_powerup((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
++	tca_bkl_setpowerval(curblight,(unsigned int)vTimerAddr);
+ 
+ 	return 0;
+ }
+-- 
+1.6.3.3
+

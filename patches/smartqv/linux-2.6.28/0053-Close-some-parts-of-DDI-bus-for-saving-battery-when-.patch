@@ -1,0 +1,48 @@
+From 714dfd2ad97476304b17958c2cccb4e39a5cbe41 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Mon, 28 Sep 2009 10:09:59 +0800
+Subject: [PATCH] Close some parts of DDI bus for saving battery when boot (from dcs)
+
+---
+ drivers/char/hhtech_gpio.c |   10 ++++++----
+ 1 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 2da9a44..f748ebb 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -99,9 +99,10 @@ static void set_charge_mode(int sw)
+ // HHTECH set TV-OUT switch
+ static void set_tv_out(int sw)
+ {
+-	if (sw)
++	if (sw) {
++		*(volatile unsigned long *)0xF0240004 &= ~0x80;//open clk of TV-OUT
+ 		gpio_set_value(GPIO_TVOUT_EN, 1);	    //open
+-	else
++	} else
+ 		gpio_set_value(GPIO_TVOUT_EN, 0);	    //close
+ }
+ 
+@@ -267,7 +268,9 @@ static void shutdown_unused_devices(void)
+ 
+ 	*(volatile unsigned long *)0xF053B004 = 0x0;
+ 	*(volatile unsigned long *)0xF0510000 = 0x0;
+-	*(volatile unsigned long *)0xF0240004 |= 0x80;
++	*(volatile unsigned long *)0xF0240004 |= 0x80;//shut down clk of TV-OUT
++
++	*(volatile unsigned long *)0xF0251030 = 0x47;//shut down power of CIF,VIQE,LCDC0,MSCL1
+ 
+ 	//below is stop the peri clock
+ 	for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++)
+@@ -673,7 +676,6 @@ static ssize_t hhtech_sysfs_store_etcblock(struct device *dev, struct device_att
+ 
+     ckc_etcblock(value);
+ 
+-    printk(KERN_EMERG"!!!dcs: %x \n", value);
+     
+     return len;
+ }
+-- 
+1.6.3.3
+

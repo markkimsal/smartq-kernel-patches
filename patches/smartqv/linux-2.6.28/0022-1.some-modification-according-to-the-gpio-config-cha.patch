@@ -1,0 +1,420 @@
+From 200ca0957239368b6f9178b1add2e61dc490d897 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Wed, 19 Aug 2009 18:10:58 +0800
+Subject: [PATCH] 1.some modification according to the gpio config change of 8902 new board
+ 2.automatic power control of v5&v7 otg when mode switching between device and host
+
+---
+ arch/arm/mach-tcc8900/include/hhtech_gpio.h |    4 +-
+ drivers/char/hhtech_gpio.c                  |    6 +-
+ drivers/char/tca_backlight.c                |  266 +++++++++++++-------------
+ drivers/usb/dwc_otg/dwc_otg_cil_intr.c      |   12 ++
+ drivers/video/tccfb.c                       |    8 +-
+ 5 files changed, 155 insertions(+), 141 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/include/hhtech_gpio.h b/arch/arm/mach-tcc8900/include/hhtech_gpio.h
+index 22632f8..c86e36a 100644
+--- a/arch/arm/mach-tcc8900/include/hhtech_gpio.h
++++ b/arch/arm/mach-tcc8900/include/hhtech_gpio.h
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 二, 28  7月 2009 12:47:43 +0800     by root #
++ * Last modified: 三, 19  8月 2009 11:28:12 +0800  by duanius #
+  ****************************************************************/
+ 
+ #ifndef __HHTECH_GPIO_H
+@@ -39,7 +39,7 @@
+ //Charging
+ #define GPIO_DC_DETE				TCC_GPF8    /* DC insert Detect, 0:inserted */
+ #define GPIO_CHARG_S1				TCC_GPF1    /* Charging status 1,*/
+-#define GPIO_CHARG_S2				TCC_GPF3    /* Charging status 2,*/
++#define GPIO_CHARG_S2				TCC_GPF2    /* Charging status 2,*/
+ #define GPIO_CHARGER_EN				TCC_GPF0    /* Quick charging mode enable, 1:open */
+ 
+ //System Power 
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 784b949..de769d8 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -91,13 +91,14 @@ static void set_tv_out(int sw)
+ }
+ 
+ // HHTECH set USB system (HOST and OTG)  power enable
+-static void set_usb_syspwr_en(int sw)
++void set_usb_syspwr_en(int sw)
+ {
+ 	if (sw)
+ 		gpio_set_value(GPIO_USB_EN, 1);		    //open
+ 	else
+ 		gpio_set_value(GPIO_USB_EN, 0);		    //close
+ }
++EXPORT_SYMBOL(set_usb_syspwr_en);
+ 
+ // HHTECH set USB HOST  power enable
+ static void set_usb_hostpwr_en(int sw)
+@@ -109,13 +110,14 @@ static void set_usb_hostpwr_en(int sw)
+ }
+ 
+ // HHTECH set USB OTG  DRV enable
+-static void set_usb_otgdrv_en(int sw)
++void set_usb_otgdrv_en(int sw)
+ {
+ 	if (sw)
+ 		gpio_set_value(GPIO_USB_OTGDRV_EN, 1);	    //open
+ 	else
+ 		gpio_set_value(GPIO_USB_OTGDRV_EN, 0);	    //close
+ }
++EXPORT_SYMBOL(set_usb_otgdrv_en);
+ 
+ // HHTECH set speaker 
+ static void set_speaker_en(int sw)
+diff --git a/drivers/char/tca_backlight.c b/drivers/char/tca_backlight.c
+index d40b930..483a3db 100644
+--- a/drivers/char/tca_backlight.c
++++ b/drivers/char/tca_backlight.c
+@@ -1,133 +1,133 @@
+-
+-/****************************************************************************
+- *   FileName    : tca_backlight.c
+- *   Description : 
+- ****************************************************************************
+- *
+- *   TCC Version 1.0
+- *   Copyright (c) Telechips, Inc.
+- *   ALL RIGHTS RESERVED
+- *
+- ****************************************************************************/
+-/*****************************************************************************
+-*
+-* Header Files Include
+-*
+-******************************************************************************/
+-#include "bsp.h"
+-#include "tca_backlight.h"
+-
+-/*****************************************************************************
+-*
+-* Defines
+-*
+-******************************************************************************/
+-#define BKL_LEVEL_MAX	(50)
+-/*****************************************************************************
+-*
+-* structures
+-*
+-******************************************************************************/
+-
+-/*****************************************************************************
+-*
+-* Variables
+-*
+-******************************************************************************/
+-
+-/*****************************************************************************
+-*
+-* Functions
+-*
+-******************************************************************************/
+-
+-/*****************************************************************************
+-* Function Name : tca_bkl_init()
+-******************************************************************************/
+-void tca_bkl_init(unsigned int tmr_vaddr, unsigned int gpio_vaddr)
+-{
+-	PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
+-	PGPIO vGpioAddr = (PGPIO) gpio_vaddr;
+-
+-	vTimerAddr->TCFG3 = 0x124;
+-	vTimerAddr->TREF3 = BKL_LEVEL_MAX;
+-	vTimerAddr->TMREF3= BKL_LEVEL_MAX;
+-	vTimerAddr->TCFG3 = 0x125;
+-	
+-	BITCSET(vGpioAddr->GPAFN0, Hw32-Hw28, Hw29);
+-	BITSET(vGpioAddr->GPAEN,Hw7);
+-	BITSET(vGpioAddr->GPADAT,Hw7);
+-}
+-
+-/*****************************************************************************
+-* Function Name : tca_bkl_powerup()
+-******************************************************************************/
+-void tca_bkl_powerup(unsigned int tmr_vaddr, unsigned int gpio_vaddr)
+-{
+-
+-	//PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
+-	PGPIO vGpioAddr = (PGPIO) gpio_vaddr;
+-
+-	BITCSET(vGpioAddr->GPAFN0,Hw32-Hw28,Hw29);//set GPIO_A7 as TCO0 Mode
+-	BITSET(vGpioAddr->GPAEN,Hw7);
+-	BITSET(vGpioAddr->GPADAT,Hw7);
+-}
+-
+-/*****************************************************************************
+-* Function Name : tca_bkl_powerdown()
+-******************************************************************************/
+-void tca_bkl_powerdown(unsigned int tmr_vaddr, unsigned int gpio_vaddr)
+-{
+-
+-	//PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
+-	PGPIO vGpioAddr = (PGPIO) gpio_vaddr;
+-
+-	//BL ON/OFF config
+-	BITCLR(vGpioAddr->GPAFN0,Hw32-Hw28);//set GPIO_A7 as TCO0 Mode
+-	BITSET(vGpioAddr->GPAEN,Hw7);
+-	BITCLR(vGpioAddr->GPADAT,Hw7);
+-}
+-
+-
+-/*****************************************************************************
+-* Function Name : tca_bkl_setpowerval()
+-******************************************************************************/
+-void tca_bkl_setpowerval(int inValue, unsigned int tmr_vaddr)
+-{
+-	PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
+-	
+-	if(inValue <= 0)
+-		inValue=1;
+-
+-	if(inValue > 100)
+-		inValue=100;
+-
+-	vTimerAddr->TMREF3 = (BKL_LEVEL_MAX*inValue)/100;
+-}
+-
+-
+-/*****************************************************************************
+-* Function Name : tca_bkl_getpowerval()
+-******************************************************************************/
+-int tca_bkl_getpowerval(unsigned int tmr_vaddr)
+-{
+-	int outValue=0;
+-	PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
+-
+-	outValue = (int)((100*vTimerAddr->TMREF3)/BKL_LEVEL_MAX);
+-
+-	return outValue;
+-}
+-
+-/*****************************************************************************
+-* Function Name : tca_bkl_getpowerval()
+-******************************************************************************/
+-int tca_bkl_gettmrref(unsigned int tmr_vaddr)
+-{
+-	int tmrref=0;
+-	PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
+-
+-	tmrref = vTimerAddr->TMREF3;
+-	
+-	return tmrref;
+-}
++
++/****************************************************************************
++ *   FileName    : tca_backlight.c
++ *   Description : 
++ ****************************************************************************
++ *
++ *   TCC Version 1.0
++ *   Copyright (c) Telechips, Inc.
++ *   ALL RIGHTS RESERVED
++ *
++ ****************************************************************************/
++/*****************************************************************************
++*
++* Header Files Include
++*
++******************************************************************************/
++#include "bsp.h"
++#include "tca_backlight.h"
++
++/*****************************************************************************
++*
++* Defines
++*
++******************************************************************************/
++#define BKL_LEVEL_MAX	(50)
++/*****************************************************************************
++*
++* structures
++*
++******************************************************************************/
++
++/*****************************************************************************
++*
++* Variables
++*
++******************************************************************************/
++
++/*****************************************************************************
++*
++* Functions
++*
++******************************************************************************/
++
++/*****************************************************************************
++* Function Name : tca_bkl_init()
++******************************************************************************/
++void tca_bkl_init(unsigned int tmr_vaddr, unsigned int gpio_vaddr)
++{
++	PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
++	PGPIO vGpioAddr = (PGPIO) gpio_vaddr;
++
++	vTimerAddr->TCFG1 = 0x124;
++	vTimerAddr->TREF1 = BKL_LEVEL_MAX;
++	vTimerAddr->TMREF1= BKL_LEVEL_MAX;
++	vTimerAddr->TCFG1 = 0x125;
++	
++	BITCSET(vGpioAddr->GPAFN0, Hw24-Hw20, Hw21);
++	BITSET(vGpioAddr->GPAEN,Hw5);
++	BITSET(vGpioAddr->GPADAT,Hw5);
++}
++
++/*****************************************************************************
++* Function Name : tca_bkl_powerup()
++******************************************************************************/
++void tca_bkl_powerup(unsigned int tmr_vaddr, unsigned int gpio_vaddr)
++{
++
++	//PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
++	PGPIO vGpioAddr = (PGPIO) gpio_vaddr;
++
++	BITCSET(vGpioAddr->GPAFN0,Hw24-Hw20,Hw21);//set GPIO_A5 as TCO1 Mode
++	BITSET(vGpioAddr->GPAEN,Hw5);
++	BITSET(vGpioAddr->GPADAT,Hw5);
++}
++
++/*****************************************************************************
++* Function Name : tca_bkl_powerdown()
++******************************************************************************/
++void tca_bkl_powerdown(unsigned int tmr_vaddr, unsigned int gpio_vaddr)
++{
++
++	//PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
++	PGPIO vGpioAddr = (PGPIO) gpio_vaddr;
++
++	//BL ON/OFF config
++	BITCLR(vGpioAddr->GPAFN0,Hw24-Hw20);//clear GPIO_A5 as TCO1 Mode
++	BITSET(vGpioAddr->GPAEN,Hw5);
++	BITCLR(vGpioAddr->GPADAT,Hw5);
++}
++
++
++/*****************************************************************************
++* Function Name : tca_bkl_setpowerval()
++******************************************************************************/
++void tca_bkl_setpowerval(int inValue, unsigned int tmr_vaddr)
++{
++	PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
++	
++	if(inValue <= 0)
++		inValue=1;
++
++	if(inValue > 100)
++		inValue=100;
++
++	vTimerAddr->TMREF1 = (BKL_LEVEL_MAX*inValue)/100;
++}
++
++
++/*****************************************************************************
++* Function Name : tca_bkl_getpowerval()
++******************************************************************************/
++int tca_bkl_getpowerval(unsigned int tmr_vaddr)
++{
++	int outValue=0;
++	PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
++
++	outValue = (int)((100*vTimerAddr->TMREF1)/BKL_LEVEL_MAX);
++
++	return outValue;
++}
++
++/*****************************************************************************
++* Function Name : tca_bkl_getpowerval()
++******************************************************************************/
++int tca_bkl_gettmrref(unsigned int tmr_vaddr)
++{
++	int tmrref=0;
++	PTIMER vTimerAddr = (PTIMER) tmr_vaddr;
++
++	tmrref = vTimerAddr->TMREF1;
++	
++	return tmrref;
++}
+diff --git a/drivers/usb/dwc_otg/dwc_otg_cil_intr.c b/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
+index f1783cc..77a6f1c 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
++++ b/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
+@@ -39,6 +39,7 @@
+  *
+  * This file contains the Common Interrupt handlers.
+  */
++#include <mach/gpio.h>
+ #include "dwc_otg_driver.h"
+ #include "dwc_otg_plat.h"
+ #include "dwc_otg_regs.h"
+@@ -349,6 +350,8 @@ int32_t dwc_otg_handle_otg_intr(dwc_otg_core_if_t *_core_if)
+  */
+ int set_otg_num = 1;
+ EXPORT_SYMBOL(set_otg_num);
++extern void set_usb_syspwr_en(int sw);
++extern void set_usb_otgdrv_en(int sw);
+ int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if)
+ {
+ 	uint32_t count = 0;
+@@ -389,6 +392,11 @@ int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if)
+ 			if (++count > 10000) *(uint32_t*)NULL=0;
+ 		}
+ 		printk("ID change ISR : Device\n");
++
++		set_usb_otgdrv_en(0);
++		if(!gpio_get_value(TCC_GPF25))
++		    set_usb_syspwr_en(0);
++
+ 		_core_if->op_state = B_PERIPHERAL;
+ 		dwc_otg_core_init(_core_if);
+ 		dwc_otg_enable_global_interrupts(_core_if);
+@@ -402,6 +410,10 @@ int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if)
+ 			if (++count > 10000) *(uint32_t*)NULL=0;
+ 		}
+ 		printk("ID change ISR : Host\n");
++
++		set_usb_syspwr_en(1);
++		set_usb_otgdrv_en(1);
++
+ 		_core_if->op_state = A_HOST;
+ 		/*
+ 		 * Initialize the Core for Host mode.
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index 2ef97b3..61192b3 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -369,10 +369,10 @@ void tcc_lcd_on(void)
+ 
+ #else
+ //	LCD_DISP On
+-	BITSET(pGPIO->GPADAT, Hw6);
++	BITSET(pGPIO->GPADAT, Hw4);
+ 
+ //	LCD_BL_EN(Backlight) On
+-	BITSET(pGPIO->GPADAT, Hw7);
++	BITSET(pGPIO->GPADAT, Hw5);
+ #endif
+ }
+ 
+@@ -485,10 +485,10 @@ void tcc_lcd_off(void)
+ 	PGPIO	pGPIO 	= (GPIO *)&HwGPIO_BASE;
+ 
+ //	LCD_DISP Off
+-	BITCLR(pGPIO->GPADAT, Hw6);
++	BITCLR(pGPIO->GPADAT, Hw4);
+ 
+ //	LCD_BL_EN(Backlight) Off
+-	BITCLR(pGPIO->GPADAT, Hw7);
++	BITCLR(pGPIO->GPADAT, Hw5);
+ #endif
+ }
+ 
+-- 
+1.6.3.3
+

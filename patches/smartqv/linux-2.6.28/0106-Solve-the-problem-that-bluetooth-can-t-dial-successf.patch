@@ -1,0 +1,68 @@
+From 313d9a48523ae2bdb3cf7e5de4bf7762016745c3 Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Mon, 30 Nov 2009 16:58:46 +0800
+Subject: [PATCH] Solve the problem that bluetooth can't dial successfully first time
+
+---
+ drivers/serial/serial_core.c |    4 ++++
+ drivers/serial/tcc_serial.c  |    1 +
+ net/bluetooth/rfcomm/tty.c   |    2 ++
+ 3 files changed, 7 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/serial/serial_core.c b/drivers/serial/serial_core.c
+index 874786a..fb6e4f6 100644
+--- a/drivers/serial/serial_core.c
++++ b/drivers/serial/serial_core.c
+@@ -1085,6 +1085,8 @@ static int uart_get_count(struct uart_state *state,
+ /*
+  * Called via sys_ioctl.  We can use spin_lock_irq() here.
+  */
++int rfcomm_tty_ioctl_called = 0;
++EXPORT_SYMBOL(rfcomm_tty_ioctl_called);
+ static int
+ uart_ioctl(struct tty_struct *tty, struct file *filp, unsigned int cmd,
+ 	   unsigned long arg)
+@@ -1160,6 +1162,8 @@ uart_ioctl(struct tty_struct *tty, struct file *filp, unsigned int cmd,
+ 		struct uart_port *port = state->port;
+ 		if (port->ops->ioctl)
+ 			ret = port->ops->ioctl(port, cmd, arg);
++		else if(cmd == TCSETS && rfcomm_tty_ioctl_called == 1)
++			ret = 0;
+ 		break;
+ 	}
+ 	}
+diff --git a/drivers/serial/tcc_serial.c b/drivers/serial/tcc_serial.c
+index 80e7510..821985b 100644
+--- a/drivers/serial/tcc_serial.c
++++ b/drivers/serial/tcc_serial.c
+@@ -1599,6 +1599,7 @@ int tcc_serial_init_ports(struct tcc_uart_port *ourport,
+ 	port->line	    = pdev->id;
+ 	port->dev	    = &pdev->dev;
+ 	port->type      = PORT_TCC;
++	ourport->info   = info;
+ 
+     res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (res == NULL) {
+diff --git a/net/bluetooth/rfcomm/tty.c b/net/bluetooth/rfcomm/tty.c
+index d3340dd..5620f62 100644
+--- a/net/bluetooth/rfcomm/tty.c
++++ b/net/bluetooth/rfcomm/tty.c
+@@ -818,6 +818,7 @@ static int rfcomm_tty_write_room(struct tty_struct *tty)
+ 	return room;
+ }
+ 
++extern int rfcomm_tty_ioctl_called;
+ static int rfcomm_tty_ioctl(struct tty_struct *tty, struct file *filp, unsigned int cmd, unsigned long arg)
+ {
+ 	BT_DBG("tty %p cmd 0x%02x", tty, cmd);
+@@ -840,6 +841,7 @@ static int rfcomm_tty_ioctl(struct tty_struct *tty, struct file *filp, unsigned
+ 		break;
+ 
+ 	case TIOCGSERIAL:
++		rfcomm_tty_ioctl_called = (rfcomm_tty_ioctl_called == 1) ? 0 : 1;
+ 		BT_ERR("TIOCGSERIAL is not supported");
+ 		return -ENOIOCTLCMD;
+ 
+-- 
+1.6.3.3
+

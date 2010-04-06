@@ -1,0 +1,81 @@
+From 5a052664382af2b4da2c6cf63d858d66c5a56a01 Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Wed, 27 Jan 2010 17:28:54 +0800
+Subject: [PATCH] Further reduce the click and pop noise when stop and then play
+
+---
+ sound/soc/codecs/wm8987.c |   29 +++++++++++++++++++++++------
+ 1 files changed, 23 insertions(+), 6 deletions(-)
+
+diff --git a/sound/soc/codecs/wm8987.c b/sound/soc/codecs/wm8987.c
+index 983950f..ee4060a 100755
+--- a/sound/soc/codecs/wm8987.c
++++ b/sound/soc/codecs/wm8987.c
+@@ -35,7 +35,9 @@
+ 
+ static struct snd_soc_codec *p_codec = NULL;
+ static struct delayed_work wm8987_unmute_work;
++static struct delayed_work wm8987_bias_standby_work;
+ static unsigned char wm8987_first_bias_on = 0;
++static unsigned char wm8987_bias_on = 0;
+ 
+ /* codec private data */
+ struct wm8987_priv {
+@@ -690,12 +692,23 @@ static int wm8987_mute(struct snd_soc_dai *dai, int mute)
+ 		if(wm8987_first_bias_on)
+ 		    schedule_delayed_work(&wm8987_unmute_work, msecs_to_jiffies(500));
+ 		else
+-		    schedule_delayed_work(&wm8987_unmute_work, msecs_to_jiffies(200));
++		    schedule_delayed_work(&wm8987_unmute_work, msecs_to_jiffies(250));
+ 	}
+ 
+ 	return 0;
+ }
+ 
++static void wm8987_delayed_bias_standby(struct work_struct* work)
++{
++	if (p_codec == NULL)
++		return;
++	else {
++		/* mute dac and disable VREF, this results the minimum power consumption */
++		wm8987_write(p_codec, WM8987_PWR1, 0x0001);
++		wm8987_bias_on = 0;
++	}
++}
++
+ static int wm8987_set_bias_level(struct snd_soc_codec *codec,
+ 				 enum snd_soc_bias_level level)
+ {
+@@ -707,13 +720,16 @@ static int wm8987_set_bias_level(struct snd_soc_codec *codec,
+ 		/* do nothing, because 'case SND_SOC_BIAS_PREPARE' has done everything */
+ 		break;
+ 	case SND_SOC_BIAS_PREPARE:
+-		/* set vmid to 500k and unmute dac, this results the longest start-up time
+-		   and least pop and click noise */
+-		wm8987_write(codec, WM8987_PWR1, pwr_reg | 0x0140);
++		cancel_delayed_work(&wm8987_bias_standby_work);
++		if(wm8987_bias_on == 0) {
++		    /* set vmid to 500k and unmute dac, this results the longest start-up time
++		     * and least pop and click noise */
++		    wm8987_write(codec, WM8987_PWR1, pwr_reg | 0x0140);
++		    wm8987_bias_on = 1;
++		}
+ 		break;
+ 	case SND_SOC_BIAS_STANDBY:
+-		/* mute dac and disable VREF, this results the minimum power consumption */
+-		wm8987_write(codec, WM8987_PWR1, 0x0001);
++		schedule_delayed_work(&wm8987_bias_standby_work, msecs_to_jiffies(30000));
+ 		break;
+ 	case SND_SOC_BIAS_OFF:
+ 		wm8987_write(codec, WM8987_PWR1, 0x0001);
+@@ -888,6 +904,7 @@ static int wm8987_init(struct snd_soc_device *socdev)
+ 	}
+ 	p_codec = codec;
+ 	INIT_DELAYED_WORK(&wm8987_unmute_work, wm8987_delayed_unmute);
++	INIT_DELAYED_WORK(&wm8987_bias_standby_work, wm8987_delayed_bias_standby);
+ 
+ 	return ret;
+ 
+-- 
+1.6.3.3
+

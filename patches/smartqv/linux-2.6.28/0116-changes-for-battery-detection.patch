@@ -1,0 +1,739 @@
+From 0aded7c311ed1330f2cabda6447017c7735bb13a Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Thu, 10 Dec 2009 15:22:07 +0800
+Subject: [PATCH]  changes for battery detection
+
+---
+ drivers/char/hhtech_gpio.c |  472 +++++++++++++++++++++-----------------------
+ 1 files changed, 228 insertions(+), 244 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 78f0fe3..533623b 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -245,11 +245,10 @@ static int read_battery(void)
+ 	   old_reference_value = reference_value;
+ 
+ #ifdef CONFIG_LCD_4
+-	battery_life = (battery_life * 24684) / (reference_value * 42);
++	battery_life = (battery_life * 25000) / (reference_value * 42);
+ #else
+ 	battery_life = (battery_life * 24000) / (reference_value * 42);
+ #endif
+-
+ 	return battery_life;
+ }
+ 
+@@ -278,10 +277,10 @@ static void shutdown_unused_devices(struct work_struct* work)
+ 	//disable the uart 1-5
+ 	for(i = 1; i < 6; i++)
+ 	{
+-	    reg_val = *(volatile unsigned long *)(0xf0532008 + 0x100 * i);
+-	    *(volatile unsigned long *)(0xf0532008 + 0x100 * i) = reg_val & ~1;
+-	    reg_val = *(volatile unsigned long *)(0xf0532024 + 0x100 * i);
+-	    *(volatile unsigned long *)(0xf0532024 + 0x100 * i) = reg_val & ~3;
++		reg_val = *(volatile unsigned long *)(0xf0532008 + 0x100 * i);
++		*(volatile unsigned long *)(0xf0532008 + 0x100 * i) = reg_val & ~1;
++		reg_val = *(volatile unsigned long *)(0xf0532024 + 0x100 * i);
++		*(volatile unsigned long *)(0xf0532024 + 0x100 * i) = reg_val & ~3;
+ 	}
+ 
+ 	*(volatile unsigned long *)0xF053B004 = 0x0;//tsif off
+@@ -293,20 +292,20 @@ static void shutdown_unused_devices(struct work_struct* work)
+ 	//below is stop the peri clock
+ 	for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++)
+ 	{
+-	    if((i == 0)||(i == 1)||(i == 3)||(i == 4)||(i == 7)||(i == 8)||(i == 11)||(i == 23)||(i == 24)||(i == 25)||(i == 26)||(i == 27)||(i == 31))
+-		continue;
+-	    tca_ckc_setiobus(i,0);
++		if((i == 0)||(i == 1)||(i == 3)||(i == 4)||(i == 7)||(i == 8)||(i == 11)||(i == 23)||(i == 24)||(i == 25)||(i == 26)||(i == 27)||(i == 31))
++			continue;
++		tca_ckc_setiobus(i,0);
+ 	}
+ 
+ 	//set the unused devices's source clock to null,start with
+ 	//LCD0(0x8c),Base Address = 0xF0400000
+ 	for(i = 0;i < 35; i++)
+ 	{
+-	    addr = 0x8c + i * 4;
+-	    if((addr == 0x90)||(addr == 0x94)||(addr == 0xa8)||(addr == 0xac)||(addr == 0xb0)||(addr == 0xb8)||(addr == 0xbc)||(addr == 0xf0)||(addr == 0xfc)||(addr == 0xec)||(addr == 0x104)||(addr == 0x108)||(addr == 0x10c)||(addr == 0x110))
+-		continue;
+-	    *(volatile unsigned long *)(0xf040008c + i*4) &= ~(0x0f000000);
+-	    *(volatile unsigned long *)(0xf040008c + i*4) |= 0x0e000000;
++		addr = 0x8c + i * 4;
++		if((addr == 0x90)||(addr == 0x94)||(addr == 0xa8)||(addr == 0xac)||(addr == 0xb0)||(addr == 0xb8)||(addr == 0xbc)||(addr == 0xf0)||(addr == 0xfc)||(addr == 0xec)||(addr == 0x104)||(addr == 0x108)||(addr == 0x10c)||(addr == 0x110))
++			continue;
++		*(volatile unsigned long *)(0xf040008c + i*4) &= ~(0x0f000000);
++		*(volatile unsigned long *)(0xf040008c + i*4) |= 0x0e000000;
+ 	}
+ }
+ 
+@@ -317,20 +316,17 @@ static void battery_update_work(struct work_struct* work)
+ 	dc_status = gpio_get_value(GPIO_DC_DETE) ? 0 : 1;
+ 
+ 	if(dc_status == 1) {
+-	    charge_s = (gpio_get_value(GPIO_CHARG_S1)<<1) + gpio_get_value(GPIO_CHARG_S2);
+-	    if(charge_s == 2)
+-		current_battery = 1000;
+-	    else
++		charge_s = (gpio_get_value(GPIO_CHARG_S1)<<1) + gpio_get_value(GPIO_CHARG_S2);
++		if(charge_s == 2)
++			current_battery = 1000;
++		else
++			current_battery = get_battery_life();
++	} else
+ 		current_battery = get_battery_life();
+-	} else {
+-	    current_battery = get_battery_life();
+-	    if (current_battery < 785)
+-		set_sys_power(0);
+-	}
+ 	/* Add the current_battery with 40, because the current_battery value of some buggy batteries can't reach 1000 when fullly charged */
+ 	current_battery += 40;
+ 	if(current_battery > 1000)
+-	    current_battery = 1000;
++		current_battery = 1000;
+ 	schedule_delayed_work(&battery_work, 30 * HZ);
+ }
+ 
+@@ -392,24 +388,24 @@ extern void memchange(unsigned int freq);
+ static unsigned long now_memfreq = 3300000;
+ static ssize_t hhtech_sysfs_show_memfreq(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    return snprintf(buf, PAGE_SIZE, "%ld\n", now_memfreq);
++	return snprintf(buf, PAGE_SIZE, "%ld\n", now_memfreq);
+ }
+ 
+ static ssize_t hhtech_sysfs_store_memfreq(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    unsigned long value;
++	unsigned long value;
+ 
+-    if(len < 1)
+-	return -EINVAL;
++	if(len < 1)
++		return -EINVAL;
+ 
+-    if(PMU_PWROFF & 0x80)
+-	return len;
++	if(PMU_PWROFF & 0x80)
++		return len;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
+-    now_memfreq = value;
+-    memchange(value);
++	value = simple_strtoul(buf, NULL, 10);
++	now_memfreq = value;
++	memchange(value);
+ 
+-    return len;
++	return len;
+ }
+ 
+ static void __iomem *rtc_base;
+@@ -419,49 +415,49 @@ EXPORT_SYMBOL(wakeup_time);
+ extern VOLATILE void tca_alarm_setpmwkup(unsigned int rtcbaseaddresss,unsigned int vicbaseaddresss);
+ static ssize_t hhtech_sysfs_show_rtc_wakeup(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    volatile rtctime lpTime;
+-    tca_rtc_gettime(rtc_base, (rtctime *)&lpTime);
+-    printk(KERN_EMERG"!!!dcs: %d-%d-%d-%d-%d-%d-%d\n",lpTime.wYear,lpTime.wMonth,lpTime.wDayOfWeek,lpTime.wDay,lpTime.wHour,lpTime.wMinute,lpTime.wSecond);
+-    return 0;
++	volatile rtctime lpTime;
++	tca_rtc_gettime(rtc_base, (rtctime *)&lpTime);
++	printk(KERN_EMERG"!!!dcs: %d-%d-%d-%d-%d-%d-%d\n",lpTime.wYear,lpTime.wMonth,lpTime.wDayOfWeek,lpTime.wDay,lpTime.wHour,lpTime.wMinute,lpTime.wSecond);
++	return 0;
+ }
+ static ssize_t hhtech_sysfs_store_rtc_wakeup(struct device *dev, struct device_attribute *attr, 
+ 					     const char *buf, size_t len)
+ { 
+-    memcpy(wakeup_time,buf,strlen(buf));
+-    tca_alarm_setpmwkup((unsigned int)rtc_base,(unsigned int)vic_base); 
+-    return 0;
++	memcpy(wakeup_time,buf,strlen(buf));
++	tca_alarm_setpmwkup((unsigned int)rtc_base,(unsigned int)vic_base);
++	return 0;
+ }
+ 
+ //vbus pm ops 
+ static int vb_st;
+ static ssize_t hhtech_sysfs_show_vb(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    vb_st = !!(PMU_PWROFF & 0x40);
+-    return snprintf(buf, PAGE_SIZE, "%d\n", vb_st);
++	vb_st = !!(PMU_PWROFF & 0x40);
++	return snprintf(buf, PAGE_SIZE, "%d\n", vb_st);
+ }
+ static ssize_t hhtech_sysfs_store_vb(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    int reg_val, value;
+-    if(len < 1)
+-	return -EINVAL;
++	int reg_val, value;
++	if(len < 1)
++		return -EINVAL;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
++	value = simple_strtoul(buf, NULL, 10);
+ 
+-    vb_st = !!(PMU_PWROFF & 0x40);
++	vb_st = !!(PMU_PWROFF & 0x40);
+ 
+-    if((value) && (!vb_st))
+-    {
+-	vb_st = value;
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val | 0x40);
+-    }else if((!value) && (vb_st))
+-    {
+-	vb_st = value;
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val & (~0x40));
+-    }
++	if((value) && (!vb_st))
++	{
++		vb_st = value;
++		reg_val = PMU_PWROFF;
++		PMU_PWROFF = (reg_val | 0x40);
++	} else if((!value) && (vb_st))
++	{
++		vb_st = value;
++		reg_val = PMU_PWROFF;
++		PMU_PWROFF = (reg_val & (~0x40));
++	}
+ 
+-    return len;
++	return len;
+ }
+ 
+ //dbus pm ops
+@@ -469,45 +465,43 @@ char lcd_buff[0x124];
+ static int db_st;
+ static ssize_t hhtech_sysfs_show_db(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    db_st = !!(PMU_PWROFF & 0x80);
+-    return snprintf(buf, PAGE_SIZE, "%d\n", db_st);
++	db_st = !!(PMU_PWROFF & 0x80);
++	return snprintf(buf, PAGE_SIZE, "%d\n", db_st);
+ }
+ static ssize_t hhtech_sysfs_store_db(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    int value, reg_val;
++	int value, reg_val;
+ 
+-    if(len < 1)
+-	return -EINVAL;
++	if(len < 1)
++		return -EINVAL;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
++	value = simple_strtoul(buf, NULL, 10);
+ 
+-    db_st = !!(PMU_PWROFF & 0x80);
++	db_st = !!(PMU_PWROFF & 0x80);
+ 
+-    if((value) && (!db_st))
+-    {
+-	db_st = value;
++	if((value) && (!db_st)) {
++		db_st = value;
+ 
+-	memcpy(lcd_buff,(char *)0xF0204000,0x124);
+-//	gpio_direction_output(GPIO_LCD_PWR_EN, 0);
+-//	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 0);
++		memcpy(lcd_buff,(char *)0xF0204000,0x124);
++//		gpio_direction_output(GPIO_LCD_PWR_EN, 0);
++//		gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 0);
+ 
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val | 0x80);
++		reg_val = PMU_PWROFF;
++		PMU_PWROFF = (reg_val | 0x80);
+ 
+-    }else if((!value) && (db_st))
+-    {
+-	db_st = value;
++	} else if((!value) && (db_st)) {
++		db_st = value;
+ 
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val & (~0x80));
++		reg_val = PMU_PWROFF;
++		PMU_PWROFF = (reg_val & (~0x80));
+ 
+-    	memcpy((char *)0xF0204000,lcd_buff,0x124);
+-//	gpio_direction_output(GPIO_LCD_PWR_EN, 1);
+-//	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 1);
++		memcpy((char *)0xF0204000,lcd_buff,0x124);
++//		gpio_direction_output(GPIO_LCD_PWR_EN, 1);
++//		gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 1);
+ 
+-    }
++	}
+ 
+-    return len;
++	return len;
+ }
+ 
+ //gbus pm ops
+@@ -515,34 +509,31 @@ static int gb_st = 0;
+ static unsigned long gbpd;
+ static ssize_t hhtech_sysfs_show_gb(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    return snprintf(buf, PAGE_SIZE, "%d\n", gb_st);
++	return snprintf(buf, PAGE_SIZE, "%d\n", gb_st);
+ }
+ static ssize_t hhtech_sysfs_store_gb(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    int value, reg_val;
+-
+-    if(len < 1)
+-	return -EINVAL;
++	int value, reg_val;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
++	if(len < 1)
++		return -EINVAL;
+ 
+-    if((value) && (!gb_st))
+-    {
+-	gb_st = value;
+-	gbpd = *(volatile unsigned long *)0xF0004000; 
+-	*(volatile unsigned long *)0xF0004000 = 0x3;//Graphic Bus Power Down Register
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val | 0x100);
+-    }else if((!value) && (gb_st))
+-    {
+-	gb_st = value;
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val & (~0x100));
+-	*(volatile unsigned long *)0xF0004000 = gbpd;//Graphic Bus Power Down Register
++	value = simple_strtoul(buf, NULL, 10);
+ 
+-    }
++	if((value) && (!gb_st)) {
++		gb_st = value;
++		gbpd = *(volatile unsigned long *)0xF0004000; 
++		*(volatile unsigned long *)0xF0004000 = 0x3;//Graphic Bus Power Down Register
++		reg_val = PMU_PWROFF;
++		PMU_PWROFF = (reg_val | 0x100);
++	} else if((!value) && (gb_st)) {
++		gb_st = value;
++		reg_val = PMU_PWROFF;
++		PMU_PWROFF = (reg_val & (~0x100));
++		*(volatile unsigned long *)0xF0004000 = gbpd;//Graphic Bus Power Down Register
++	}
+ 
+-    return len;
++	return len;
+ }
+ 
+ //hdmi ops
+@@ -553,70 +544,64 @@ static ssize_t hhtech_sysfs_show_hd(struct device *dev, struct device_attribute
+ }
+ static ssize_t hhtech_sysfs_store_hd(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    int value, reg_val;
++	int value, reg_val;
+ 
+-    if(len < 1)
+-	return -EINVAL;
++	if(len < 1)
++		return -EINVAL;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
++	value = simple_strtoul(buf, NULL, 10);
+ 
+-    if((value) && (!hd_st))
+-    {
+-	hd_st = value;
+-	*(volatile unsigned long *)0xF0255000 |= 0x2;// HDMI POWER DOWN
+-	*(volatile unsigned long *)0xF0255000 &= ~(0x1);
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val | 0x2);
+-    }else if((!value) && (hd_st))
+-    {
+-	hd_st = value;
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val & (~0x2));
+-	*(volatile unsigned long *)0xF0255000 &= ~(0x2);//HDMI POWER ON
+-	*(volatile unsigned long *)0xF0255000 |= 0x1;//HDMI ENABLE
+-    }
++	if((value) && (!hd_st)) {
++		hd_st = value;
++		*(volatile unsigned long *)0xF0255000 |= 0x2;// HDMI POWER DOWN
++		*(volatile unsigned long *)0xF0255000 &= ~(0x1);
++		reg_val = PMU_PWROFF;
++		PMU_PWROFF = (reg_val | 0x2);
++	} else if((!value) && (hd_st)) {
++		hd_st = value;
++		reg_val = PMU_PWROFF;
++		PMU_PWROFF = (reg_val & (~0x2));
++		*(volatile unsigned long *)0xF0255000 &= ~(0x2);//HDMI POWER ON
++		*(volatile unsigned long *)0xF0255000 |= 0x1;//HDMI ENABLE
++	}
+ 
+-    return len;
++	return len;
+ }
+ 
+ //iobus pm ops
+ static int io_st = 0;
+ static ssize_t hhtech_sysfs_show_io(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    return snprintf(buf, PAGE_SIZE, "%d\n", io_st);
++	return snprintf(buf, PAGE_SIZE, "%d\n", io_st);
+ }
+ static ssize_t hhtech_sysfs_store_io(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    int value, reg_val;
++	int value, reg_val;
+ 
+-    if(len < 1)
+-	return -EINVAL;
++	if(len < 1)
++		return -EINVAL;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
++	value = simple_strtoul(buf, NULL, 10);
+ 
+-    if(value == 40)
+-    {
+-	*(volatile unsigned long *)0xF0400010 = 0x2000b2;//change io bus to 40M
+-	return len;
+-    }else if(value == 156)
+-    {
+-	*(volatile unsigned long *)0xF0400010 = 0x200022;//change io bus to 156M
+-	return len;
+-    }
++	if(value == 40) {
++		*(volatile unsigned long *)0xF0400010 = 0x2000b2;//change io bus to 40M
++		return len;
++	} else if(value == 156) {
++		*(volatile unsigned long *)0xF0400010 = 0x200022;//change io bus to 156M
++		return len;
++	}
+ 
+-    if((value) && (!io_st))
+-    {
+-	io_st = value;
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val | 0x200);
+-    }else if((!value) && (io_st))
+-    {
+-	io_st = value;
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val & (~0x200));
+-    }
++	if((value) && (!io_st)) {
++		io_st = value;
++		reg_val = PMU_PWROFF;
++		PMU_PWROFF = (reg_val | 0x200);
++	} else if((!value) && (io_st)) {
++		io_st = value;
++		reg_val = PMU_PWROFF;
++		PMU_PWROFF = (reg_val & (~0x200));
++	}
+ 
+-    return len;
++	return len;
+ }
+ 
+ static unsigned int vpu_bus_clock_addr = 0xF0702000;
+@@ -624,113 +609,110 @@ static unsigned int vpu_core_clock_addr = 0xF0400018;
+ static int vpu_on_st;
+ static ssize_t hhtech_sysfs_show_vpu_on(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    if(!!(PMU_PWROFF & 0x40))
+-	return snprintf(buf, PAGE_SIZE, "%d\n", 0);
++	if(!!(PMU_PWROFF & 0x40))
++		return snprintf(buf, PAGE_SIZE, "%d\n", 0);
+ 
+-    vpu_on_st = !(*(volatile unsigned long *)vpu_bus_clock_addr & 0x4);
+-    return snprintf(buf, PAGE_SIZE, "%d\n", vpu_on_st);
++	vpu_on_st = !(*(volatile unsigned long *)vpu_bus_clock_addr & 0x4);
++	return snprintf(buf, PAGE_SIZE, "%d\n", vpu_on_st);
+ }
+ 
+ static ssize_t hhtech_sysfs_store_vpu_on(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    unsigned long reg_write_value, reg_read_value;
+-    int value;
++	unsigned long reg_write_value, reg_read_value;
++	int value;
+ 
+-    if(len < 1)
+-	return -EINVAL;
++	if(len < 1)
++		return -EINVAL;
+ 
+-    if(!!(PMU_PWROFF & 0x40))
+-	return len;
++	if(!!(PMU_PWROFF & 0x40))
++		return len;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
+-    vpu_on_st = !(*(volatile unsigned long *)vpu_bus_clock_addr & 0x4);
+-
+-    if(value && !vpu_on_st)
+-    {
+-	reg_read_value = *(volatile unsigned int *)vpu_bus_clock_addr;
+-	reg_write_value = reg_read_value & 0xFFFFFFFB;
+-	*((volatile unsigned int *) vpu_bus_clock_addr) = (unsigned int)reg_write_value;
+-	reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
+-	reg_write_value = reg_read_value | ((unsigned int)(1 << 21));
+-	*((volatile unsigned int *) vpu_core_clock_addr) = (unsigned int)reg_write_value;
+-    }else if(!value && vpu_on_st)
+-    {
+-	reg_read_value = *(volatile unsigned int *)vpu_bus_clock_addr;
+-	reg_write_value = reg_read_value | (1 << 2);
+-	*((volatile unsigned int *) vpu_bus_clock_addr) = (unsigned int)reg_write_value;
+-	reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
+-	reg_write_value = reg_read_value & 0xFFDFFFFF;
+-	*((volatile unsigned int *) vpu_core_clock_addr) = (unsigned int)reg_write_value;
+-    }
+-
+-    return len;
++	value = simple_strtoul(buf, NULL, 10);
++	vpu_on_st = !(*(volatile unsigned long *)vpu_bus_clock_addr & 0x4);
++
++	if(value && !vpu_on_st) {
++		reg_read_value = *(volatile unsigned int *)vpu_bus_clock_addr;
++		reg_write_value = reg_read_value & 0xFFFFFFFB;
++		*((volatile unsigned int *) vpu_bus_clock_addr) = (unsigned int)reg_write_value;
++		reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
++		reg_write_value = reg_read_value | ((unsigned int)(1 << 21));
++		*((volatile unsigned int *) vpu_core_clock_addr) = (unsigned int)reg_write_value;
++	} else if(!value && vpu_on_st) {
++		reg_read_value = *(volatile unsigned int *)vpu_bus_clock_addr;
++		reg_write_value = reg_read_value | (1 << 2);
++		*((volatile unsigned int *) vpu_bus_clock_addr) = (unsigned int)reg_write_value;
++		reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
++		reg_write_value = reg_read_value & 0xFFDFFFFF;
++		*((volatile unsigned int *) vpu_core_clock_addr) = (unsigned int)reg_write_value;
++	}
++
++	return len;
+ }
+ 
+ //lcd pm ops
+ static ssize_t hhtech_sysfs_show_lcd(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_LCD_PWR_EN));
++	return snprintf(buf, PAGE_SIZE, "%d\n", gpio_get_value(GPIO_LCD_PWR_EN));
+ }
+ static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    int value;
++	int value;
+ 
+-    if(len < 1)
+-	return -EINVAL;
++	if(len < 1)
++		return -EINVAL;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
++	value = simple_strtoul(buf, NULL, 10);
+ 
+-    value = !!value;
++	value = !!value;
+ 
+-    gpio_direction_output(GPIO_LCD_PWR_EN, value);
++	gpio_direction_output(GPIO_LCD_PWR_EN, value);
+ 
+-    return len;
++	return len;
+ }
+ 
+ int video_on = 0;
+ EXPORT_SYMBOL(video_on);
+ static ssize_t hhtech_sysfs_show_play_video(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    return snprintf(buf, PAGE_SIZE, "%d\n", video_on);    
++	return snprintf(buf, PAGE_SIZE, "%d\n", video_on);
+ }
+ static ssize_t hhtech_sysfs_store_play_video(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    unsigned long reg_read_value, reg_write_value;
+-    int value;
++	unsigned long reg_read_value, reg_write_value;
++	int value;
+ 
+-    if(len < 1)
+-	return -EINVAL;
++	if(len < 1)
++		return -EINVAL;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
++	value = simple_strtoul(buf, NULL, 10);
+ 
+-    if(value)
+-    {
+-	video_on = 1;
+-    } else {
+-	mdelay(10);
++	if(value) {
++		video_on = 1;
++	} else {
++		mdelay(10);
+ 
+-	video_on = 0;
++		video_on = 0;
+ 
+-	if(PMU_PWROFF & 0x40)
+-	    return len;
++		if(PMU_PWROFF & 0x40)
++			return len;
+ 
+-	if(*(volatile unsigned long *)vpu_bus_clock_addr & 0x4)
+-	    return len;
++		if(*(volatile unsigned long *)vpu_bus_clock_addr & 0x4)
++			return len;
+ 
+-	//turn off video codec power and clock
+-	reg_read_value = *(volatile unsigned int *)vpu_bus_clock_addr;
+-	reg_write_value = reg_read_value | (1 << 2);
+-	*((volatile unsigned int *) vpu_bus_clock_addr) = (unsigned int)reg_write_value;
+-	reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
+-	reg_write_value = reg_read_value & 0xFFDFFFFF;
+-	*((volatile unsigned int *) vpu_core_clock_addr) = (unsigned int)reg_write_value;
++		//turn off video codec power and clock
++		reg_read_value = *(volatile unsigned int *)vpu_bus_clock_addr;
++		reg_write_value = reg_read_value | (1 << 2);
++		*((volatile unsigned int *) vpu_bus_clock_addr) = (unsigned int)reg_write_value;
++		reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
++		reg_write_value = reg_read_value & 0xFFDFFFFF;
++		*((volatile unsigned int *) vpu_core_clock_addr) = (unsigned int)reg_write_value;
+ 
+-	//turn off video bus power
+-	PMU_PWROFF |= 0x40;    
+-    }
++		//turn off video bus power
++		PMU_PWROFF |= 0x40;
++	}
+ 
+     
+-    return len;
++	return len;
+ }
+ 
+ //config the wake up method,1 for button,2 for touchscreen,0 for both,set
+@@ -739,40 +721,40 @@ int sleep_type = 0;
+ EXPORT_SYMBOL(sleep_type);
+ static ssize_t hhtech_sysfs_show_sleep_type(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    return snprintf(buf, PAGE_SIZE, "%d\n", sleep_type);
++	return snprintf(buf, PAGE_SIZE, "%d\n", sleep_type);
+ }
+ static ssize_t hhtech_sysfs_store_sleep_type(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    int value;
++	int value;
+ 
+-    if(len < 1)
+-	return -EINVAL;
++	if(len < 1)
++		return -EINVAL;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
+-    if((value != 0)&&(value != 1)&&(value != 2))
+-	value = 0;
++	value = simple_strtoul(buf, NULL, 10);
++	if((value != 0)&&(value != 1)&&(value != 2))
++		value = 0;
+ 
+-    sleep_type = value;
++	sleep_type = value;
+ 
+-    return len;
++	return len;
+ }
+ 
+ static ssize_t hhtech_sysfs_show_otgmode(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-    return snprintf(buf, PAGE_SIZE, "%d\n", choosedevice);
++	return snprintf(buf, PAGE_SIZE, "%d\n", choosedevice);
+ }
+ 
+ static ssize_t hhtech_sysfs_store_otgmode(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+-    int value;
++	int value;
+ 
+-    if(len < 1)
+-	return -EINVAL;
++	if(len < 1)
++		return -EINVAL;
+ 
+-    value = simple_strtoul(buf, NULL, 10);
+-    choosedevice = value;
++	value = simple_strtoul(buf, NULL, 10);
++	choosedevice = value;
+ 
+-    return len;
++	return len;
+ }
+ 
+ static ssize_t hhtech_sysfs_show_charge(struct device *dev, struct device_attribute *attr, char *buf)
+@@ -1057,9 +1039,10 @@ static ssize_t hhtech_sysfs_store_color_brightness(struct device *dev,
+ 					      struct device_attribute *attr, const char *buf, size_t len)
+ {
+ 	unsigned long value = simple_strtoul(buf, NULL, 10);
++	char val;
++
+ 	value = value > 255 ? 255 : value;
+-	char val = value;
+-	val -= 128;
++	val = value - 128;
+ 
+ 	if (len < 1)
+ 		return -EINVAL;
+@@ -1087,9 +1070,9 @@ static ssize_t hhtech_sysfs_store_color_contrast(struct device *dev,
+ 					      struct device_attribute *attr, const char *buf, size_t len)
+ {
+ 	unsigned long value = simple_strtoul(buf, NULL, 10);
++	char val;
+ 	value = value > 255 ? 255 : value;
+-	char val = value;
+-	val -= 128;
++	val = value - 128;
+ 
+ 	if (len < 1)
+ 		return -EINVAL;
+@@ -1116,9 +1099,10 @@ static ssize_t hhtech_sysfs_store_image_brightness(struct device *dev,
+ 					      struct device_attribute *attr, const char *buf, size_t len)
+ {
+ 	unsigned long value = simple_strtoul(buf, NULL, 10);
+-	value = value > 255 ? 255 : value;
+ 	char val = value;
+-	val -= 128;
++
++	value = value > 255 ? 255 : value;
++	val = value - 128;
+ 
+ 	if (len < 1)
+ 		return -EINVAL;
+@@ -1146,9 +1130,10 @@ static ssize_t hhtech_sysfs_store_image_contrast(struct device *dev,
+ 					      struct device_attribute *attr, const char *buf, size_t len)
+ {
+ 	unsigned long value = simple_strtoul(buf, NULL, 10);
++	char val;
++
+ 	value = value > 255 ? 255 : value;
+-	char val = value;
+-	val -= 128;
++	val = value - 128;
+ 
+ 	if (len < 1)
+ 		return -EINVAL;
+@@ -1199,7 +1184,6 @@ static irqreturn_t headp_irq(int irq, void *dev_id)
+ static irqreturn_t dc_irq(int irq, void *dev_id)
+ {
+ 	volatile PPIC pPIC = (volatile PPIC)tcc_p2v(HwPIC_BASE);
+-	unsigned int headphone_s = gpio_get_value(GPIO_HEADPHONE_S);
+ 
+ 	disable_irq(IRQ_DC);
+ 	BITSET(pPIC->CLR0, 1<<IRQ_DC);
+-- 
+1.6.3.3
+
