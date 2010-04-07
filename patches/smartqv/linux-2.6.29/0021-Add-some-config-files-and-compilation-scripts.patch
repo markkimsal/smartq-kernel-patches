@@ -17,26 +17,23 @@ Subject: [PATCH] Add some config files and compilation scripts
  create mode 100644 arch/arm/configs/SmartV7_initramfs_deconfig
  create mode 100755 make_zImage_initramfs.sh
 
-diff --git a/Makefile b/Makefile
-index 9386e44..1f805ad 100644
---- a/Makefile
-+++ b/Makefile
-@@ -191,8 +191,8 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ \
+Index: linux-2.6.29/Makefile
+===================================================================
+--- linux-2.6.29.orig/Makefile	2010-04-07 17:12:04.000000000 -0400
++++ linux-2.6.29/Makefile	2010-04-07 17:13:19.000000000 -0400
+@@ -190,7 +190,7 @@
+ # Default value for CROSS_COMPILE is not to prefix executables
  # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
  export KBUILD_BUILDHOST := $(SUBARCH)
- ARCH		?= arm
--CROSS_COMPILE	?= /opt/arm-2009q1/bin/arm-none-linux-gnueabi-
--#CROSS_COMPILE	?= /opt/armv6/codesourcery/bin/arm-none-linux-gnueabi-
-+#CROSS_COMPILE	?= /opt/arm-2009q1/bin/arm-none-linux-gnueabi-
-+CROSS_COMPILE	?= /opt/armv6/codesourcery/bin/arm-none-linux-gnueabi-
- #CROSS_COMPILE	?= /opt/codesourcery/bin/arm-none-linux-gnueabi-
+-ARCH		?= arm
++ARCH           ?= arm
  
- # Architecture as present in compile.h
-diff --git a/arch/arm/configs/SmartV5_deconfig b/arch/arm/configs/SmartV5_deconfig
-new file mode 100644
-index 0000000..782a23f
---- /dev/null
-+++ b/arch/arm/configs/SmartV5_deconfig
+ CROSS_COMPILE  ?= /opt/armv6/codesourcery/bin/arm-none-linux-gnueabi-
+ #CROSS_COMPILE  ?= /opt/codesourcery/bin/arm-none-linux-gnueabi-
+Index: linux-2.6.29/arch/arm/configs/SmartV5_deconfig
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/arch/arm/configs/SmartV5_deconfig	2010-04-07 17:12:23.000000000 -0400
 @@ -0,0 +1,1467 @@
 +#
 +# Automatically generated make config: don't edit
@@ -1505,11 +1502,10 @@ index 0000000..782a23f
 +CONFIG_HAS_IOMEM=y
 +CONFIG_HAS_IOPORT=y
 +CONFIG_HAS_DMA=y
-diff --git a/arch/arm/configs/SmartV5_initramfs_deconfig b/arch/arm/configs/SmartV5_initramfs_deconfig
-new file mode 100644
-index 0000000..5a44041
---- /dev/null
-+++ b/arch/arm/configs/SmartV5_initramfs_deconfig
+Index: linux-2.6.29/arch/arm/configs/SmartV5_initramfs_deconfig
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/arch/arm/configs/SmartV5_initramfs_deconfig	2010-04-07 17:12:23.000000000 -0400
 @@ -0,0 +1,1471 @@
 +#
 +# Automatically generated make config: don't edit
@@ -2982,11 +2978,10 @@ index 0000000..5a44041
 +CONFIG_HAS_IOMEM=y
 +CONFIG_HAS_IOPORT=y
 +CONFIG_HAS_DMA=y
-diff --git a/arch/arm/configs/SmartV7_deconfig b/arch/arm/configs/SmartV7_deconfig
-new file mode 100644
-index 0000000..4435434
---- /dev/null
-+++ b/arch/arm/configs/SmartV7_deconfig
+Index: linux-2.6.29/arch/arm/configs/SmartV7_deconfig
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/arch/arm/configs/SmartV7_deconfig	2010-04-07 17:12:23.000000000 -0400
 @@ -0,0 +1,1467 @@
 +#
 +# Automatically generated make config: don't edit
@@ -4455,11 +4450,10 @@ index 0000000..4435434
 +CONFIG_HAS_IOMEM=y
 +CONFIG_HAS_IOPORT=y
 +CONFIG_HAS_DMA=y
-diff --git a/arch/arm/configs/SmartV7_initramfs_deconfig b/arch/arm/configs/SmartV7_initramfs_deconfig
-new file mode 100644
-index 0000000..512550e
---- /dev/null
-+++ b/arch/arm/configs/SmartV7_initramfs_deconfig
+Index: linux-2.6.29/arch/arm/configs/SmartV7_initramfs_deconfig
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/arch/arm/configs/SmartV7_initramfs_deconfig	2010-04-07 17:12:23.000000000 -0400
 @@ -0,0 +1,1471 @@
 +#
 +# Automatically generated make config: don't edit
@@ -5932,11 +5926,10 @@ index 0000000..512550e
 +CONFIG_HAS_IOMEM=y
 +CONFIG_HAS_IOPORT=y
 +CONFIG_HAS_DMA=y
-diff --git a/make_zImage_initramfs.sh b/make_zImage_initramfs.sh
-new file mode 100755
-index 0000000..5814cd2
---- /dev/null
-+++ b/make_zImage_initramfs.sh
+Index: linux-2.6.29/make_zImage_initramfs.sh
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/make_zImage_initramfs.sh	2010-04-07 17:12:23.000000000 -0400
 @@ -0,0 +1,25 @@
 +#!/bin/bash
 + ################################################################
@@ -5963,6 +5956,3 @@ index 0000000..5814cd2
 +
 + ################## End Of File: make_linux.sh ##################
 +# vim:sts=4:ts=8: 
--- 
-1.6.3.3
-
