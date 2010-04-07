@@ -5,10 +5,22 @@ Kernel Repository Guidelines
 Table Of Contents
 =================
 
+    About
     Getting Started
     Patch Headers
     Before You Commit -- Things To Check
     Config Option Changes
+
+
+About
+=====
+
+The basic outline of this project was taken from the MeeGo/Moblin 
+kernel patch maintenance project.  There are a lot of scripts/*
+files that are not used on this project and we don't use OBS.  The
+goal was to get a basic directory layout to support the quilt program.
+Quilt is a required program, see your distro documentation for 
+installation.
 
 Getting Started
 ===============
@@ -32,14 +44,41 @@ Set up some git hooks and helpers:
 
     $ ./scripts/install-git-hooks
 
+Install quilt:
+    $ sudo urpmi quilt
+or
+    $ sudo apt-get install quilt
+or
+    $ sudo yum something quilt
+
 To hack on the kernel sources:
 
-    $ ./scripts/sequence-patch.sh --quilt
-    $ cd tmp/linux-$version-$branch
-    $ quilt new fix-foo-and-bar.patch
-    $ quilt edit some/file.c
-    $ ./refresh_patch.sh
+    $ cd tmp
+    $ tar -jxvf ~/Downloads/linux-2.6.XX.tar.bz2
+    $ cd linux-2.6.xx
+    $ ln -s ../../patches/(smartqv|s3c)/linux-2.6.xx patches
+    $ ln -s ../../patches/(smartqv|s3c)/linux-2.6.xx/series series
+    $ quilt push -a (until a patch fails)
+    $ //hack on files to fix patch
+    $ //make sure kernel compiles
+    $ quilt refresh  //updates the patch
     $ quilt header -e # see next chapter
+
+To hack on a brand new kernel (eg: upgrade from 2.6.29 to 2.6.30):
+
+    $ cd patches/(smartqv|s3c)
+    $ cp -R linux-2.6.29 linux-2.6.30
+    $ cd ../../tmp
+    $ tar -jxvf ~/Downloads/linux-2.6.30.tar.bz2
+    $ cd linux-2.6.30
+    $ ln -s ../../patches/(smartqv|s3c)/linux-2.6.30 patches
+    $ ln -s ../../patches/(smartqv|s3c)/linux-2.6.30/series series
+    $ quilt push -a (until a patch fails)
+    $ //hack on files to fix patch
+    $ //make sure kernel compiles
+    $ quilt refresh  //updates the patch
+    $ quilt header -e # see next chapter
+
 
 Refer to quilt documentation for details. When you are done, add the
 new patch to an appropriate place in the series file, add change log

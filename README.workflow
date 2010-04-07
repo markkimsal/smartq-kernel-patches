@@ -6,25 +6,27 @@ An example workflow
 0. Prepare
     $ git config --global user.name "Your Name"
     $ git config --global user.email your@email
-    $ gpg --keyserver wwwkeys.pgp.net --recv-keys 0x517D0F0E
 
 1. Git clone from SmartQ kernel git repo;
 
-2. Cook the patch, using quilt:
-    $ ./scripts/install-git-hooks
-    $ ./scripts/sequence-patch.sh --quilt
-    $ cd tmp/linux-$version-$branch
-    $ quilt new fix-foo-and-bar.patch
-    $ quilt edit some/file.c
-    $ ./refresh_patch.sh
-    $ quilt header -e
+2. Hack on a brand new kernel (eg: upgrade from 2.6.29 to 2.6.30):
+
+    $ cd patches/(smartqv|s3c)
+    $ cp -R linux-2.6.29 linux-2.6.30
+    $ cd ../../tmp
+    $ tar -jxvf ~/Downloads/linux-2.6.30.tar.bz2
+    $ cd linux-2.6.30
+    $ ln -s ../../patches/(smartqv|s3c)/linux-2.6.30 patches
+    $ ln -s ../../patches/(smartqv|s3c)/linux-2.6.30/series series
+    $ quilt push -a (until a patch fails)
+    $ //hack on files to fix patch
+    $ //make sure kernel compiles
+    $ quilt refresh  //updates the patch
 
     (This is optional, since it will be forced when you attempt to git check in)
     $ ./scripts/check_patch fix-foo-and-bar.patch
 
 3. Now you have the patch fix-foo-and-bar.patch, please test-compile the
-   kernel or even test-build the kernel package through OBS. (Follow "Before
-   You Commit -- Things To Check" section in README to test-compile; use
-   script obs_build.sh to test-build kernel rpm package through OBS.)
-
+   kernel.  Just because a patch applies to the sources doesn't mean it
+   will produce a working kernel.
 
