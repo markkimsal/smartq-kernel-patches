@@ -145,11 +145,10 @@ Subject: [PATCH] Apply aufs patch
  create mode 100644 fs/aufs/xino.c
  create mode 100644 include/linux/aufs_type.h
 
-diff --git a/Documentation/ABI/testing/debugfs-aufs b/Documentation/ABI/testing/debugfs-aufs
-new file mode 100644
-index 0000000..4110b94
---- /dev/null
-+++ b/Documentation/ABI/testing/debugfs-aufs
+Index: linux-2.6.29/Documentation/ABI/testing/debugfs-aufs
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/Documentation/ABI/testing/debugfs-aufs	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,40 @@
 +What:		/debug/aufs/si_<id>/
 +Date:		March 2009
@@ -191,11 +190,10 @@ index 0000000..4110b94
 +		When the aufs mount option 'noxino' is specified, it
 +		will be empty. About XINO files, see
 +		Documentation/filesystems/aufs/aufs.5 in detail.
-diff --git a/Documentation/ABI/testing/sysfs-aufs b/Documentation/ABI/testing/sysfs-aufs
-new file mode 100644
-index 0000000..ca49330
---- /dev/null
-+++ b/Documentation/ABI/testing/sysfs-aufs
+Index: linux-2.6.29/Documentation/ABI/testing/sysfs-aufs
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/Documentation/ABI/testing/sysfs-aufs	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,25 @@
 +What:		/sys/fs/aufs/si_<id>/
 +Date:		March 2009
@@ -222,33 +220,30 @@ index 0000000..ca49330
 +		When the aufs mount option 'noxino' is specified, it
 +		will be empty. About XINO files, see
 +		Documentation/filesystems/aufs/aufs.5 in detail.
-diff --git a/fs/Kconfig b/fs/Kconfig
-index 522469a..6ef091b 100644
---- a/fs/Kconfig
-+++ b/fs/Kconfig
-@@ -1122,6 +1122,8 @@ config UFS_DEBUG
- 	  Y here.  This will result in _many_ additional debugging messages to be
- 	  written to the system log.
+Index: linux-2.6.29/fs/Kconfig
+===================================================================
+--- linux-2.6.29.orig/fs/Kconfig	2010-04-07 17:24:30.000000000 -0400
++++ linux-2.6.29/fs/Kconfig	2010-04-07 17:24:45.000000000 -0400
+@@ -285,4 +285,6 @@
+ source "fs/nls/Kconfig"
+ source "fs/dlm/Kconfig"
  
 +source "fs/aufs/Kconfig"
 +
  endmenu
- 
- menuconfig NETWORK_FILESYSTEMS
-diff --git a/fs/Makefile b/fs/Makefile
-index d9f8afe..1f206a2 100644
---- a/fs/Makefile
-+++ b/fs/Makefile
-@@ -122,3 +122,4 @@ obj-$(CONFIG_HPPFS)		+= hppfs/
- obj-$(CONFIG_DEBUG_FS)		+= debugfs/
+Index: linux-2.6.29/fs/Makefile
+===================================================================
+--- linux-2.6.29.orig/fs/Makefile	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/fs/Makefile	2010-04-07 17:24:45.000000000 -0400
+@@ -124,3 +124,4 @@
  obj-$(CONFIG_OCFS2_FS)		+= ocfs2/
+ obj-$(CONFIG_BTRFS_FS)		+= btrfs/
  obj-$(CONFIG_GFS2_FS)           += gfs2/
 +obj-$(CONFIG_AUFS_FS)           += aufs/
-diff --git a/fs/aufs/Kconfig b/fs/aufs/Kconfig
-new file mode 100644
-index 0000000..4edbc95
---- /dev/null
-+++ b/fs/aufs/Kconfig
+Index: linux-2.6.29/fs/aufs/Kconfig
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/Kconfig	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,125 @@
 +config AUFS_FS
 +	tristate "Aufs (Advanced multi layered unification filesystem) support"
@@ -375,11 +370,10 @@ index 0000000..4edbc95
 +	/* typedef unsigned long/int __kernel_ino_t */
 +	/* alpha and s390x are int */
 +endif
-diff --git a/fs/aufs/Makefile b/fs/aufs/Makefile
-new file mode 100644
-index 0000000..df6995a
---- /dev/null
-+++ b/fs/aufs/Makefile
+Index: linux-2.6.29/fs/aufs/Makefile
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/Makefile	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,23 @@
 +
 +include ${src}/magic.mk
@@ -404,11 +398,10 @@ index 0000000..df6995a
 +aufs-$(CONFIG_AUFS_RDU) += rdu.o
 +aufs-$(CONFIG_AUFS_DEBUG) += debug.o
 +aufs-$(CONFIG_AUFS_MAGIC_SYSRQ) += sysrq.o
-diff --git a/fs/aufs/aufs.h b/fs/aufs/aufs.h
-new file mode 100644
-index 0000000..96307bb
---- /dev/null
-+++ b/fs/aufs/aufs.h
+Index: linux-2.6.29/fs/aufs/aufs.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/aufs.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,51 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -461,11 +454,10 @@ index 0000000..96307bb
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_H__ */
-diff --git a/fs/aufs/branch.c b/fs/aufs/branch.c
-new file mode 100644
-index 0000000..aeedaf4
---- /dev/null
-+++ b/fs/aufs/branch.c
+Index: linux-2.6.29/fs/aufs/branch.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/branch.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,974 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -1441,11 +1433,10 @@ index 0000000..aeedaf4
 + out:
 +	return err;
 +}
-diff --git a/fs/aufs/branch.h b/fs/aufs/branch.h
-new file mode 100644
-index 0000000..1a7219c
---- /dev/null
-+++ b/fs/aufs/branch.h
+Index: linux-2.6.29/fs/aufs/branch.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/branch.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,219 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -1666,11 +1657,10 @@ index 0000000..1a7219c
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_BRANCH_H__ */
-diff --git a/fs/aufs/cpup.c b/fs/aufs/cpup.c
-new file mode 100644
-index 0000000..7f70e2f
---- /dev/null
-+++ b/fs/aufs/cpup.c
+Index: linux-2.6.29/fs/aufs/cpup.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/cpup.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,1048 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -2720,11 +2710,10 @@ index 0000000..7f70e2f
 +	dput(parent);
 +	return err;
 +}
-diff --git a/fs/aufs/cpup.h b/fs/aufs/cpup.h
-new file mode 100644
-index 0000000..29e2508
---- /dev/null
-+++ b/fs/aufs/cpup.h
+Index: linux-2.6.29/fs/aufs/cpup.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/cpup.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,81 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -2807,11 +2796,10 @@ index 0000000..29e2508
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_CPUP_H__ */
-diff --git a/fs/aufs/dbgaufs.c b/fs/aufs/dbgaufs.c
-new file mode 100644
-index 0000000..6b19d09
---- /dev/null
-+++ b/fs/aufs/dbgaufs.c
+Index: linux-2.6.29/fs/aufs/dbgaufs.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/dbgaufs.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,331 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -3144,11 +3132,10 @@ index 0000000..6b19d09
 +		err = 0;
 +	return err;
 +}
-diff --git a/fs/aufs/dbgaufs.h b/fs/aufs/dbgaufs.h
-new file mode 100644
-index 0000000..67a7964
---- /dev/null
-+++ b/fs/aufs/dbgaufs.h
+Index: linux-2.6.29/fs/aufs/dbgaufs.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/dbgaufs.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,79 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -3229,11 +3216,10 @@ index 0000000..67a7964
 +
 +#endif /* __KERNEL__ */
 +#endif /* __DBGAUFS_H__ */
-diff --git a/fs/aufs/dcsub.c b/fs/aufs/dcsub.c
-new file mode 100644
-index 0000000..43a8cb4
---- /dev/null
-+++ b/fs/aufs/dcsub.c
+Index: linux-2.6.29/fs/aufs/dcsub.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/dcsub.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,223 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -3458,11 +3444,10 @@ index 0000000..43a8cb4
 + out:
 +	return trap;
 +}
-diff --git a/fs/aufs/dcsub.h b/fs/aufs/dcsub.h
-new file mode 100644
-index 0000000..bb934b4
---- /dev/null
-+++ b/fs/aufs/dcsub.h
+Index: linux-2.6.29/fs/aufs/dcsub.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/dcsub.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,54 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -3518,11 +3503,10 @@ index 0000000..bb934b4
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_DCSUB_H__ */
-diff --git a/fs/aufs/debug.c b/fs/aufs/debug.c
-new file mode 100644
-index 0000000..32bdb72
---- /dev/null
-+++ b/fs/aufs/debug.c
+Index: linux-2.6.29/fs/aufs/debug.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/debug.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,431 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -3955,11 +3939,10 @@ index 0000000..32bdb72
 +
 +	return 0;
 +}
-diff --git a/fs/aufs/debug.h b/fs/aufs/debug.h
-new file mode 100644
-index 0000000..dab15f7
---- /dev/null
-+++ b/fs/aufs/debug.h
+Index: linux-2.6.29/fs/aufs/debug.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/debug.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,260 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -4221,11 +4204,10 @@ index 0000000..dab15f7
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_DEBUG_H__ */
-diff --git a/fs/aufs/dentry.c b/fs/aufs/dentry.c
-new file mode 100644
-index 0000000..a428d9c
---- /dev/null
-+++ b/fs/aufs/dentry.c
+Index: linux-2.6.29/fs/aufs/dentry.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/dentry.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,880 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -5107,11 +5089,10 @@ index 0000000..a428d9c
 +	.d_revalidate	= aufs_d_revalidate,
 +	.d_release	= aufs_d_release
 +};
-diff --git a/fs/aufs/dentry.h b/fs/aufs/dentry.h
-new file mode 100644
-index 0000000..b1f9a6e
---- /dev/null
-+++ b/fs/aufs/dentry.h
+Index: linux-2.6.29/fs/aufs/dentry.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/dentry.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,231 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -5344,11 +5325,10 @@ index 0000000..b1f9a6e
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_DENTRY_H__ */
-diff --git a/fs/aufs/dinfo.c b/fs/aufs/dinfo.c
-new file mode 100644
-index 0000000..0010c99
---- /dev/null
-+++ b/fs/aufs/dinfo.c
+Index: linux-2.6.29/fs/aufs/dinfo.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/dinfo.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,367 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -5717,11 +5697,10 @@ index 0000000..0010c99
 +			return bindex;
 +	return -1;
 +}
-diff --git a/fs/aufs/dir.c b/fs/aufs/dir.c
-new file mode 100644
-index 0000000..2d12c78
---- /dev/null
-+++ b/fs/aufs/dir.c
+Index: linux-2.6.29/fs/aufs/dir.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/dir.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,591 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -6314,11 +6293,10 @@ index 0000000..2d12c78
 +	.flush		= aufs_flush,
 +	.fsync		= aufs_fsync_dir
 +};
-diff --git a/fs/aufs/dir.h b/fs/aufs/dir.h
-new file mode 100644
-index 0000000..dc40539
---- /dev/null
-+++ b/fs/aufs/dir.h
+Index: linux-2.6.29/fs/aufs/dir.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/dir.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,127 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -6447,11 +6425,10 @@ index 0000000..dc40539
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_DIR_H__ */
-diff --git a/fs/aufs/export.c b/fs/aufs/export.c
-new file mode 100644
-index 0000000..13bef9a
---- /dev/null
-+++ b/fs/aufs/export.c
+Index: linux-2.6.29/fs/aufs/export.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/export.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,745 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -7198,11 +7175,10 @@ index 0000000..13bef9a
 +	BUILD_BUG_ON(sizeof(u) != sizeof(int));
 +	atomic_set(&sbinfo->si_xigen_next, u);
 +}
-diff --git a/fs/aufs/f_op.c b/fs/aufs/f_op.c
-new file mode 100644
-index 0000000..fc196e4
---- /dev/null
-+++ b/fs/aufs/f_op.c
+Index: linux-2.6.29/fs/aufs/f_op.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/f_op.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,799 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -8003,11 +7979,10 @@ index 0000000..fc196e4
 +	.aio_splice_read  = aufs_aio_splice_read
 +#endif
 +};
-diff --git a/fs/aufs/file.c b/fs/aufs/file.c
-new file mode 100644
-index 0000000..0cf5ef1
---- /dev/null
-+++ b/fs/aufs/file.c
+Index: linux-2.6.29/fs/aufs/file.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/file.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,577 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -8586,11 +8561,10 @@ index 0000000..0cf5ef1
 +	.direct_IO	= aufs_direct_IO,
 +#endif /* CONFIG_AUFS_DEBUG */
 +};
-diff --git a/fs/aufs/file.h b/fs/aufs/file.h
-new file mode 100644
-index 0000000..7697af7
---- /dev/null
-+++ b/fs/aufs/file.h
+Index: linux-2.6.29/fs/aufs/file.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/file.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,169 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -8761,11 +8735,10 @@ index 0000000..7697af7
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_FILE_H__ */
-diff --git a/fs/aufs/finfo.c b/fs/aufs/finfo.c
-new file mode 100644
-index 0000000..16e5c67
---- /dev/null
-+++ b/fs/aufs/finfo.c
+Index: linux-2.6.29/fs/aufs/finfo.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/finfo.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,133 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -8900,11 +8873,10 @@ index 0000000..16e5c67
 +
 +	return err;
 +}
-diff --git a/fs/aufs/fstype.h b/fs/aufs/fstype.h
-new file mode 100644
-index 0000000..d8a6456
---- /dev/null
-+++ b/fs/aufs/fstype.h
+Index: linux-2.6.29/fs/aufs/fstype.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/fstype.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,444 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -9350,11 +9322,10 @@ index 0000000..d8a6456
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_FSTYPE_H__ */
-diff --git a/fs/aufs/hinotify.c b/fs/aufs/hinotify.c
-new file mode 100644
-index 0000000..66b761f
---- /dev/null
-+++ b/fs/aufs/hinotify.c
+Index: linux-2.6.29/fs/aufs/hinotify.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/hinotify.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,755 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -10111,11 +10082,10 @@ index 0000000..66b761f
 +	if (au_cachep[AuCache_HINOTIFY])
 +		au_hin_destroy_cache();
 +}
-diff --git a/fs/aufs/i_op.c b/fs/aufs/i_op.c
-new file mode 100644
-index 0000000..23ad23d
---- /dev/null
-+++ b/fs/aufs/i_op.c
+Index: linux-2.6.29/fs/aufs/i_op.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/i_op.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,885 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -11002,11 +10972,10 @@ index 0000000..23ad23d
 +	.getattr	= aufs_getattr,
 +	.truncate_range	= aufs_truncate_range
 +};
-diff --git a/fs/aufs/i_op_add.c b/fs/aufs/i_op_add.c
-new file mode 100644
-index 0000000..39b7a48
---- /dev/null
-+++ b/fs/aufs/i_op_add.c
+Index: linux-2.6.29/fs/aufs/i_op_add.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/i_op_add.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,649 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -11657,11 +11626,10 @@ index 0000000..39b7a48
 + out:
 +	return err;
 +}
-diff --git a/fs/aufs/i_op_del.c b/fs/aufs/i_op_del.c
-new file mode 100644
-index 0000000..c0ee77d
---- /dev/null
-+++ b/fs/aufs/i_op_del.c
+Index: linux-2.6.29/fs/aufs/i_op_del.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/i_op_del.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,468 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -12131,11 +12099,10 @@ index 0000000..c0ee77d
 + out:
 +	return err;
 +}
-diff --git a/fs/aufs/i_op_ren.c b/fs/aufs/i_op_ren.c
-new file mode 100644
-index 0000000..006148e
---- /dev/null
-+++ b/fs/aufs/i_op_ren.c
+Index: linux-2.6.29/fs/aufs/i_op_ren.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/i_op_ren.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,957 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -13094,11 +13061,10 @@ index 0000000..006148e
 + out:
 +	return err;
 +}
-diff --git a/fs/aufs/iinfo.c b/fs/aufs/iinfo.c
-new file mode 100644
-index 0000000..072ddfc
---- /dev/null
-+++ b/fs/aufs/iinfo.c
+Index: linux-2.6.29/fs/aufs/iinfo.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/iinfo.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,283 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -13383,11 +13349,10 @@ index 0000000..072ddfc
 +	kfree(iinfo->ii_hinode);
 +	AuRwDestroy(&iinfo->ii_rwsem);
 +}
-diff --git a/fs/aufs/inode.c b/fs/aufs/inode.c
-new file mode 100644
-index 0000000..ae9c64a
---- /dev/null
-+++ b/fs/aufs/inode.c
+Index: linux-2.6.29/fs/aufs/inode.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/inode.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,413 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -13802,11 +13767,10 @@ index 0000000..ae9c64a
 +		mask |= MAY_READ; /* force permission check */
 +	return au_test_h_perm(h_inode, mask);
 +}
-diff --git a/fs/aufs/inode.h b/fs/aufs/inode.h
-new file mode 100644
-index 0000000..1c5559b
---- /dev/null
-+++ b/fs/aufs/inode.h
+Index: linux-2.6.29/fs/aufs/inode.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/inode.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,497 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -14305,11 +14269,10 @@ index 0000000..1c5559b
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_INODE_H__ */
-diff --git a/fs/aufs/ioctl.c b/fs/aufs/ioctl.c
-new file mode 100644
-index 0000000..012361a
---- /dev/null
-+++ b/fs/aufs/ioctl.c
+Index: linux-2.6.29/fs/aufs/ioctl.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/ioctl.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,47 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -14358,11 +14321,10 @@ index 0000000..012361a
 +	AuTraceErr(err);
 +	return err;
 +}
-diff --git a/fs/aufs/loop.c b/fs/aufs/loop.c
-new file mode 100644
-index 0000000..277011f
---- /dev/null
-+++ b/fs/aufs/loop.c
+Index: linux-2.6.29/fs/aufs/loop.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/loop.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,55 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -14419,11 +14381,10 @@ index 0000000..277011f
 +	       && '0' <= c && c <= '9'
 +	       && strncmp(current->comm, "loop", 4) == 0;
 +}
-diff --git a/fs/aufs/loop.h b/fs/aufs/loop.h
-new file mode 100644
-index 0000000..5a0fd87
---- /dev/null
-+++ b/fs/aufs/loop.h
+Index: linux-2.6.29/fs/aufs/loop.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/loop.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,51 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -14476,11 +14437,10 @@ index 0000000..5a0fd87
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_LOOP_H__ */
-diff --git a/fs/aufs/magic.mk b/fs/aufs/magic.mk
-new file mode 100644
-index 0000000..83d613c
---- /dev/null
-+++ b/fs/aufs/magic.mk
+Index: linux-2.6.29/fs/aufs/magic.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/magic.mk	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,52 @@
 +
 +# defined in ${srctree}/fs/fuse/inode.c
@@ -14534,11 +14494,10 @@ index 0000000..83d613c
 +ifdef CONFIG_UBIFS_FS
 +ccflags-y += -DUBIFS_SUPER_MAGIC=0x24051905
 +endif
-diff --git a/fs/aufs/module.c b/fs/aufs/module.c
-new file mode 100644
-index 0000000..dbfb2c4
---- /dev/null
-+++ b/fs/aufs/module.c
+Index: linux-2.6.29/fs/aufs/module.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/module.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,173 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -14713,11 +14672,10 @@ index 0000000..dbfb2c4
 +
 +module_init(aufs_init);
 +module_exit(aufs_exit);
-diff --git a/fs/aufs/module.h b/fs/aufs/module.h
-new file mode 100644
-index 0000000..cea7bc7
---- /dev/null
-+++ b/fs/aufs/module.h
+Index: linux-2.6.29/fs/aufs/module.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/module.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,78 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -14797,11 +14755,10 @@ index 0000000..cea7bc7
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_MODULE_H__ */
-diff --git a/fs/aufs/opts.c b/fs/aufs/opts.c
-new file mode 100644
-index 0000000..70f8be9
---- /dev/null
-+++ b/fs/aufs/opts.c
+Index: linux-2.6.29/fs/aufs/opts.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/opts.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,1543 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -16346,11 +16303,10 @@ index 0000000..70f8be9
 +{
 +	return au_mntflags(sb) & AuOptMask_UDBA;
 +}
-diff --git a/fs/aufs/opts.h b/fs/aufs/opts.h
-new file mode 100644
-index 0000000..27439b1
---- /dev/null
-+++ b/fs/aufs/opts.h
+Index: linux-2.6.29/fs/aufs/opts.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/opts.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,196 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -16548,11 +16504,10 @@ index 0000000..27439b1
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_OPTS_H__ */
-diff --git a/fs/aufs/plink.c b/fs/aufs/plink.c
-new file mode 100644
-index 0000000..31fc923
---- /dev/null
-+++ b/fs/aufs/plink.c
+Index: linux-2.6.29/fs/aufs/plink.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/plink.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,396 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -16950,11 +16905,10 @@ index 0000000..31fc923
 + out:
 +	return err;
 +}
-diff --git a/fs/aufs/rdu.c b/fs/aufs/rdu.c
-new file mode 100644
-index 0000000..3a14040
---- /dev/null
-+++ b/fs/aufs/rdu.c
+Index: linux-2.6.29/fs/aufs/rdu.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/rdu.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,328 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -17284,11 +17238,10 @@ index 0000000..3a14040
 +	AuTraceErr(err);
 +	return err;
 +}
-diff --git a/fs/aufs/rwsem.h b/fs/aufs/rwsem.h
-new file mode 100644
-index 0000000..dfd2c68
---- /dev/null
-+++ b/fs/aufs/rwsem.h
+Index: linux-2.6.29/fs/aufs/rwsem.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/rwsem.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,186 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -17476,11 +17429,10 @@ index 0000000..dfd2c68
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_RWSEM_H__ */
-diff --git a/fs/aufs/sbinfo.c b/fs/aufs/sbinfo.c
-new file mode 100644
-index 0000000..f0650e5
---- /dev/null
-+++ b/fs/aufs/sbinfo.c
+Index: linux-2.6.29/fs/aufs/sbinfo.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/sbinfo.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,208 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -17690,11 +17642,10 @@ index 0000000..f0650e5
 +	di_write_unlock2(d1, d2);
 +	si_read_unlock(d1->d_sb);
 +}
-diff --git a/fs/aufs/spl.h b/fs/aufs/spl.h
-new file mode 100644
-index 0000000..bcbbd9a
---- /dev/null
-+++ b/fs/aufs/spl.h
+Index: linux-2.6.29/fs/aufs/spl.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/spl.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,57 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -17753,11 +17704,10 @@ index 0000000..bcbbd9a
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_SPL_H__ */
-diff --git a/fs/aufs/super.c b/fs/aufs/super.c
-new file mode 100644
-index 0000000..f5ee1fc
---- /dev/null
-+++ b/fs/aufs/super.c
+Index: linux-2.6.29/fs/aufs/super.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/super.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,874 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -18633,11 +18583,10 @@ index 0000000..f5ee1fc
 +	/* no need to __module_get() and module_put(). */
 +	.owner		= THIS_MODULE,
 +};
-diff --git a/fs/aufs/super.h b/fs/aufs/super.h
-new file mode 100644
-index 0000000..850cddb
---- /dev/null
-+++ b/fs/aufs/super.h
+Index: linux-2.6.29/fs/aufs/super.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/super.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,384 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -19023,11 +18972,10 @@ index 0000000..850cddb
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_SUPER_H__ */
-diff --git a/fs/aufs/sysaufs.c b/fs/aufs/sysaufs.c
-new file mode 100644
-index 0000000..b796330
---- /dev/null
-+++ b/fs/aufs/sysaufs.c
+Index: linux-2.6.29/fs/aufs/sysaufs.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/sysaufs.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,104 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -19133,11 +19081,10 @@ index 0000000..b796330
 + out:
 +	return err;
 +}
-diff --git a/fs/aufs/sysaufs.h b/fs/aufs/sysaufs.h
-new file mode 100644
-index 0000000..379033a
---- /dev/null
-+++ b/fs/aufs/sysaufs.h
+Index: linux-2.6.29/fs/aufs/sysaufs.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/sysaufs.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,120 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -19259,11 +19206,10 @@ index 0000000..379033a
 +
 +#endif /* __KERNEL__ */
 +#endif /* __SYSAUFS_H__ */
-diff --git a/fs/aufs/sysfs.c b/fs/aufs/sysfs.c
-new file mode 100644
-index 0000000..55602fa
---- /dev/null
-+++ b/fs/aufs/sysfs.c
+Index: linux-2.6.29/fs/aufs/sysfs.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/sysfs.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,210 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -19475,11 +19421,10 @@ index 0000000..55602fa
 +			AuWarn("failed %s under sysfs(%d)\n", br->br_name, err);
 +	}
 +}
-diff --git a/fs/aufs/sysrq.c b/fs/aufs/sysrq.c
-new file mode 100644
-index 0000000..2e7fbef
---- /dev/null
-+++ b/fs/aufs/sysrq.c
+Index: linux-2.6.29/fs/aufs/sysrq.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/sysrq.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,115 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -19596,11 +19541,10 @@ index 0000000..2e7fbef
 +	if (unlikely(err))
 +		AuErr("err %d (ignored)\n", err);
 +}
-diff --git a/fs/aufs/vdir.c b/fs/aufs/vdir.c
-new file mode 100644
-index 0000000..47a0d12
---- /dev/null
-+++ b/fs/aufs/vdir.c
+Index: linux-2.6.29/fs/aufs/vdir.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/vdir.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,879 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -20481,11 +20425,10 @@ index 0000000..47a0d12
 +	/* smp_mb(); */
 +	return 0;
 +}
-diff --git a/fs/aufs/vfsub.c b/fs/aufs/vfsub.c
-new file mode 100644
-index 0000000..ecc8f80
---- /dev/null
-+++ b/fs/aufs/vfsub.c
+Index: linux-2.6.29/fs/aufs/vfsub.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/vfsub.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,658 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -21145,11 +21088,10 @@ index 0000000..ecc8f80
 +
 +	return err;
 +}
-diff --git a/fs/aufs/vfsub.h b/fs/aufs/vfsub.h
-new file mode 100644
-index 0000000..00e7e62
---- /dev/null
-+++ b/fs/aufs/vfsub.h
+Index: linux-2.6.29/fs/aufs/vfsub.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/vfsub.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,172 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -21323,11 +21265,10 @@ index 0000000..00e7e62
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_VFSUB_H__ */
-diff --git a/fs/aufs/wbr_policy.c b/fs/aufs/wbr_policy.c
-new file mode 100644
-index 0000000..05a8c1e
---- /dev/null
-+++ b/fs/aufs/wbr_policy.c
+Index: linux-2.6.29/fs/aufs/wbr_policy.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/wbr_policy.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,641 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -21970,11 +21911,10 @@ index 0000000..05a8c1e
 +		.fin	= au_wbr_create_fin_mfs
 +	}
 +};
-diff --git a/fs/aufs/whout.c b/fs/aufs/whout.c
-new file mode 100644
-index 0000000..2b910bd
---- /dev/null
-+++ b/fs/aufs/whout.c
+Index: linux-2.6.29/fs/aufs/whout.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/whout.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,1052 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -23028,11 +22968,10 @@ index 0000000..2b910bd
 +		au_whtmp_rmdir_free(args);
 +	}
 +}
-diff --git a/fs/aufs/whout.h b/fs/aufs/whout.h
-new file mode 100644
-index 0000000..40c6926
---- /dev/null
-+++ b/fs/aufs/whout.h
+Index: linux-2.6.29/fs/aufs/whout.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/whout.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,87 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -23121,11 +23060,10 @@ index 0000000..40c6926
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_WHOUT_H__ */
-diff --git a/fs/aufs/wkq.c b/fs/aufs/wkq.c
-new file mode 100644
-index 0000000..89656e9
---- /dev/null
-+++ b/fs/aufs/wkq.c
+Index: linux-2.6.29/fs/aufs/wkq.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/wkq.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,259 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -23386,11 +23324,10 @@ index 0000000..89656e9
 + out:
 +	return err;
 +}
-diff --git a/fs/aufs/wkq.h b/fs/aufs/wkq.h
-new file mode 100644
-index 0000000..b5b6a61
---- /dev/null
-+++ b/fs/aufs/wkq.h
+Index: linux-2.6.29/fs/aufs/wkq.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/wkq.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,82 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -23474,11 +23411,10 @@ index 0000000..b5b6a61
 +
 +#endif /* __KERNEL__ */
 +#endif /* __AUFS_WKQ_H__ */
-diff --git a/fs/aufs/xino.c b/fs/aufs/xino.c
-new file mode 100644
-index 0000000..25826ef
---- /dev/null
-+++ b/fs/aufs/xino.c
+Index: linux-2.6.29/fs/aufs/xino.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/fs/aufs/xino.c	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,1199 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -24679,11 +24615,11 @@ index 0000000..25826ef
 + out:
 +	return err;
 +}
-diff --git a/fs/namei.c b/fs/namei.c
-index d34e0f9..2779304 100644
---- a/fs/namei.c
-+++ b/fs/namei.c
-@@ -341,6 +341,7 @@ int deny_write_access(struct file * file)
+Index: linux-2.6.29/fs/namei.c
+===================================================================
+--- linux-2.6.29.orig/fs/namei.c	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/fs/namei.c	2010-04-07 17:24:45.000000000 -0400
+@@ -335,6 +335,7 @@
  
  	return 0;
  }
@@ -24691,7 +24627,7 @@ index d34e0f9..2779304 100644
  
  /**
   * path_get - get a reference to a path
-@@ -1212,7 +1213,7 @@ out:
+@@ -1196,7 +1197,7 @@
   * needs parent already locked. Doesn't follow mounts.
   * SMP-safe.
   */
@@ -24700,7 +24636,7 @@ index d34e0f9..2779304 100644
  {
  	int err;
  
-@@ -1221,8 +1222,9 @@ static struct dentry *lookup_hash(struct nameidata *nd)
+@@ -1205,8 +1206,9 @@
  		return ERR_PTR(err);
  	return __lookup_hash(&nd->last, nd->path.dentry, nd);
  }
@@ -24711,7 +24647,7 @@ index d34e0f9..2779304 100644
  		struct dentry *base, int len)
  {
  	unsigned long hash;
-@@ -1243,6 +1245,7 @@ static int __lookup_one_len(const char *name, struct qstr *this,
+@@ -1227,6 +1229,7 @@
  	this->hash = end_name_hash(hash);
  	return 0;
  }
@@ -24719,10 +24655,10 @@ index d34e0f9..2779304 100644
  
  /**
   * lookup_one_len - filesystem helper to lookup single pathname component
-diff --git a/fs/namespace.c b/fs/namespace.c
-index 65b3dc8..39fbbac 100644
---- a/fs/namespace.c
-+++ b/fs/namespace.c
+Index: linux-2.6.29/fs/namespace.c
+===================================================================
+--- linux-2.6.29.orig/fs/namespace.c	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/fs/namespace.c	2010-04-07 17:24:45.000000000 -0400
 @@ -37,6 +37,7 @@
  
  /* spinlock for vfsmount related operations, inplace of dcache_lock */
@@ -24731,11 +24667,11 @@ index 65b3dc8..39fbbac 100644
  
  static int event;
  static DEFINE_IDA(mnt_id_ida);
-diff --git a/fs/open.c b/fs/open.c
-index 83cdb9d..bb43dab 100644
---- a/fs/open.c
-+++ b/fs/open.c
-@@ -222,6 +222,7 @@ int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
+Index: linux-2.6.29/fs/open.c
+===================================================================
+--- linux-2.6.29.orig/fs/open.c	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/fs/open.c	2010-04-07 17:24:45.000000000 -0400
+@@ -220,6 +220,7 @@
  	mutex_unlock(&dentry->d_inode->i_mutex);
  	return err;
  }
@@ -24743,11 +24679,11 @@ index 83cdb9d..bb43dab 100644
  
  static long do_sys_truncate(const char __user *pathname, loff_t length)
  {
-diff --git a/fs/splice.c b/fs/splice.c
-index 1abab5c..7b7d65e 100644
---- a/fs/splice.c
-+++ b/fs/splice.c
-@@ -887,8 +887,8 @@ EXPORT_SYMBOL(generic_splice_sendpage);
+Index: linux-2.6.29/fs/splice.c
+===================================================================
+--- linux-2.6.29.orig/fs/splice.c	2010-04-07 17:24:30.000000000 -0400
++++ linux-2.6.29/fs/splice.c	2010-04-07 17:24:45.000000000 -0400
+@@ -888,8 +888,8 @@
  /*
   * Attempt to initiate a splice from pipe to file.
   */
@@ -24758,7 +24694,7 @@ index 1abab5c..7b7d65e 100644
  {
  	int ret;
  
-@@ -907,13 +907,14 @@ static long do_splice_from(struct pipe_inode_info *pipe, struct file *out,
+@@ -908,13 +908,14 @@
  
  	return out->f_op->splice_write(pipe, out, ppos, len, flags);
  }
@@ -24776,7 +24712,7 @@ index 1abab5c..7b7d65e 100644
  {
  	int ret;
  
-@@ -929,6 +930,7 @@ static long do_splice_to(struct file *in, loff_t *ppos,
+@@ -930,6 +931,7 @@
  
  	return in->f_op->splice_read(in, ppos, pipe, len, flags);
  }
@@ -24784,11 +24720,11 @@ index 1abab5c..7b7d65e 100644
  
  /**
   * splice_direct_to_actor - splices data directly between two non-pipes
-diff --git a/fs/super.c b/fs/super.c
-index 400a760..a1df361 100644
---- a/fs/super.c
-+++ b/fs/super.c
-@@ -270,6 +270,7 @@ int fsync_super(struct super_block *sb)
+Index: linux-2.6.29/fs/super.c
+===================================================================
+--- linux-2.6.29.orig/fs/super.c	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/fs/super.c	2010-04-07 17:24:45.000000000 -0400
+@@ -287,6 +287,7 @@
  	__fsync_super(sb);
  	return sync_blockdev(sb->s_bdev);
  }
@@ -24796,23 +24732,23 @@ index 400a760..a1df361 100644
  
  /**
   *	generic_shutdown_super	-	common helper for ->kill_sb()
-diff --git a/fs/sync.c b/fs/sync.c
-index 2967562..34040d6 100644
---- a/fs/sync.c
-+++ b/fs/sync.c
-@@ -104,6 +104,7 @@ long do_fsync(struct file *file, int datasync)
- out:
+Index: linux-2.6.29/fs/sync.c
+===================================================================
+--- linux-2.6.29.orig/fs/sync.c	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/fs/sync.c	2010-04-07 17:25:10.000000000 -0400
+@@ -143,6 +143,7 @@
+ 	}
  	return ret;
  }
 +EXPORT_SYMBOL(do_fsync);
  
- static long __do_fsync(unsigned int fd, int datasync)
+ SYSCALL_DEFINE1(fsync, unsigned int, fd)
  {
-diff --git a/include/linux/Kbuild b/include/linux/Kbuild
-index e531783..14ecb7c 100644
---- a/include/linux/Kbuild
-+++ b/include/linux/Kbuild
-@@ -34,6 +34,7 @@ header-y += atmppp.h
+Index: linux-2.6.29/include/linux/Kbuild
+===================================================================
+--- linux-2.6.29.orig/include/linux/Kbuild	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/include/linux/Kbuild	2010-04-07 17:24:45.000000000 -0400
+@@ -34,6 +34,7 @@
  header-y += atmsap.h
  header-y += atmsvc.h
  header-y += atm_zatm.h
@@ -24820,11 +24756,10 @@ index e531783..14ecb7c 100644
  header-y += auto_fs4.h
  header-y += ax25.h
  header-y += b1lli.h
-diff --git a/include/linux/aufs_type.h b/include/linux/aufs_type.h
-new file mode 100644
-index 0000000..aae5225
---- /dev/null
-+++ b/include/linux/aufs_type.h
+Index: linux-2.6.29/include/linux/aufs_type.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/include/linux/aufs_type.h	2010-04-07 17:24:45.000000000 -0400
 @@ -0,0 +1,184 @@
 +/*
 + * Copyright (C) 2005-2009 Junjiro R. Okajima
@@ -25010,11 +24945,11 @@ index 0000000..aae5225
 +#define AUFS_CTL_RDU_INO	_IOWR(AuCtlType, AuCtl_RDU_INO, struct aufs_rdu)
 +
 +#endif /* __AUFS_TYPE_H__ */
-diff --git a/include/linux/namei.h b/include/linux/namei.h
-index 99eb803..f6cdf1c 100644
---- a/include/linux/namei.h
-+++ b/include/linux/namei.h
-@@ -75,6 +75,9 @@ extern struct file *lookup_instantiate_filp(struct nameidata *nd, struct dentry
+Index: linux-2.6.29/include/linux/namei.h
+===================================================================
+--- linux-2.6.29.orig/include/linux/namei.h	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/include/linux/namei.h	2010-04-07 17:24:45.000000000 -0400
+@@ -75,6 +75,9 @@
  extern struct file *nameidata_to_filp(struct nameidata *nd, int flags);
  extern void release_open_intent(struct nameidata *);
  
@@ -25024,11 +24959,11 @@ index 99eb803..f6cdf1c 100644
  extern struct dentry *lookup_one_len(const char *, struct dentry *, int);
  extern struct dentry *lookup_one_noperm(const char *, struct dentry *);
  
-diff --git a/include/linux/splice.h b/include/linux/splice.h
-index 528dcb9..5123bc6 100644
---- a/include/linux/splice.h
-+++ b/include/linux/splice.h
-@@ -71,4 +71,10 @@ extern ssize_t splice_to_pipe(struct pipe_inode_info *,
+Index: linux-2.6.29/include/linux/splice.h
+===================================================================
+--- linux-2.6.29.orig/include/linux/splice.h	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/include/linux/splice.h	2010-04-07 17:24:45.000000000 -0400
+@@ -71,4 +71,10 @@
  extern ssize_t splice_direct_to_actor(struct file *, struct splice_desc *,
  				      splice_direct_actor *);
  
@@ -25039,11 +24974,11 @@ index 528dcb9..5123bc6 100644
 +			 unsigned int flags);
 +
  #endif
-diff --git a/security/device_cgroup.c b/security/device_cgroup.c
-index 5ba7870..8f880c2 100644
---- a/security/device_cgroup.c
-+++ b/security/device_cgroup.c
-@@ -507,6 +507,7 @@ acc_check:
+Index: linux-2.6.29/security/device_cgroup.c
+===================================================================
+--- linux-2.6.29.orig/security/device_cgroup.c	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/security/device_cgroup.c	2010-04-07 17:24:45.000000000 -0400
+@@ -507,6 +507,7 @@
  
  	return -EPERM;
  }
@@ -25051,11 +24986,11 @@ index 5ba7870..8f880c2 100644
  
  int devcgroup_inode_mknod(int mode, dev_t dev)
  {
-diff --git a/security/security.c b/security/security.c
-index c0acfa7..812ebf4 100644
---- a/security/security.c
-+++ b/security/security.c
-@@ -434,6 +434,7 @@ int security_inode_readlink(struct dentry *dentry)
+Index: linux-2.6.29/security/security.c
+===================================================================
+--- linux-2.6.29.orig/security/security.c	2010-04-07 17:24:29.000000000 -0400
++++ linux-2.6.29/security/security.c	2010-04-07 17:24:45.000000000 -0400
+@@ -506,6 +506,7 @@
  		return 0;
  	return security_ops->inode_readlink(dentry);
  }
@@ -25063,7 +24998,7 @@ index c0acfa7..812ebf4 100644
  
  int security_inode_follow_link(struct dentry *dentry, struct nameidata *nd)
  {
-@@ -448,6 +449,7 @@ int security_inode_permission(struct inode *inode, int mask)
+@@ -520,6 +521,7 @@
  		return 0;
  	return security_ops->inode_permission(inode, mask);
  }
@@ -25071,7 +25006,7 @@ index c0acfa7..812ebf4 100644
  
  int security_inode_setattr(struct dentry *dentry, struct iattr *attr)
  {
-@@ -548,6 +550,7 @@ int security_file_permission(struct file *file, int mask)
+@@ -620,6 +622,7 @@
  {
  	return security_ops->file_permission(file, mask);
  }
@@ -25079,6 +25014,3 @@ index c0acfa7..812ebf4 100644
  
  int security_file_alloc(struct file *file)
  {
--- 
-1.6.3.3
-
