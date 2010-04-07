@@ -1,0 +1,25 @@
+From 54dc269218feee182bbd808a5f154cd3305bfc90 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Tue, 22 Sep 2009 17:38:51 +0800
+Subject: [PATCH] Make sure that vlc can be executed not only by root
+
+---
+ drivers/char/mem.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/char/mem.c b/drivers/char/mem.c
+index 6431f69..f5c9be1 100644
+--- a/drivers/char/mem.c
++++ b/drivers/char/mem.c
+@@ -791,7 +791,7 @@ static loff_t memory_lseek(struct file * file, loff_t offset, int orig)
+ 
+ static int open_port(struct inode * inode, struct file * filp)
+ {
+-	return capable(CAP_SYS_RAWIO) ? 0 : -EPERM;
++	return 0;
+ }
+ 
+ #define zero_lseek	null_lseek
+-- 
+1.6.3.3
+

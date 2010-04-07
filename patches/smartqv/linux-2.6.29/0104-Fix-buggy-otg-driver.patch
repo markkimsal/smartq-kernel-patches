@@ -1,0 +1,81 @@
+From b1f7cc8c00030b60a553a5a4e0f7e4ac4308981b Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Thu, 26 Nov 2009 17:45:17 +0800
+Subject: [PATCH] Fix buggy otg driver
+
+---
+ drivers/usb/dwc_otg/dwc_otg_pcd.c      |   12 ++++++------
+ drivers/usb/dwc_otg/dwc_otg_pcd_intr.c |    8 ++++----
+ 2 files changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/usb/dwc_otg/dwc_otg_pcd.c b/drivers/usb/dwc_otg/dwc_otg_pcd.c
+index 2a9ba10..0e8fbc3 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_pcd.c
++++ b/drivers/usb/dwc_otg/dwc_otg_pcd.c
+@@ -130,9 +130,9 @@ void request_done(dwc_otg_pcd_ep_t *_ep, dwc_otg_pcd_request_t *_req,
+ 
+ 	/* don't modify queue heads during completion callback */
+ 	_ep->stopped = 1;
+-	SPIN_UNLOCK(&_ep->pcd->lock);
+-	_req->req.complete(&_ep->ep, &_req->req);
+ 	SPIN_LOCK(&_ep->pcd->lock);
++	_req->req.complete(&_ep->ep, &_req->req);
++	SPIN_UNLOCK(&_ep->pcd->lock);
+ 
+ 	if (_ep->pcd->request_pending > 0)
+ 	{
+@@ -965,9 +965,9 @@ static int32_t dwc_otg_pcd_suspend_cb( void *_p )
+ 
+ 	if (pcd->driver && pcd->driver->suspend)
+ 	{
+-		SPIN_UNLOCK(&pcd->lock);
+-		pcd->driver->suspend(&pcd->gadget);
+ 		SPIN_LOCK(&pcd->lock);
++		pcd->driver->suspend(&pcd->gadget);
++		SPIN_UNLOCK(&pcd->lock);
+ 	}
+ 
+ 	return 1;
+@@ -986,9 +986,9 @@ static int32_t dwc_otg_pcd_resume_cb( void *_p )
+ 
+ 	if (pcd->driver && pcd->driver->resume)
+ 	{
+-		SPIN_UNLOCK(&pcd->lock);
+-		pcd->driver->resume(&pcd->gadget);
+ 		SPIN_LOCK(&pcd->lock);
++		pcd->driver->resume(&pcd->gadget);
++		SPIN_UNLOCK(&pcd->lock);
+ 	}
+ 
+ 	/* Stop the SRP timeout timer. */
+diff --git a/drivers/usb/dwc_otg/dwc_otg_pcd_intr.c b/drivers/usb/dwc_otg/dwc_otg_pcd_intr.c
+index 7cf7e68..37e8916 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_pcd_intr.c
++++ b/drivers/usb/dwc_otg/dwc_otg_pcd_intr.c
+@@ -626,9 +626,9 @@ void dwc_otg_pcd_stop(dwc_otg_pcd_t *_pcd)
+ 	/* report disconnect; the driver is already quiesced */
+ 	if (_pcd->driver && _pcd->driver->disconnect)
+ 	{
+-		SPIN_UNLOCK(&_pcd->lock);
+-		_pcd->driver->disconnect(&_pcd->gadget);
+ 		SPIN_LOCK(&_pcd->lock);
++		_pcd->driver->disconnect(&_pcd->gadget);
++		SPIN_UNLOCK(&_pcd->lock);
+ 	}
+ }
+ 
+@@ -1071,9 +1071,9 @@ static inline void do_gadget_setup( dwc_otg_pcd_t *_pcd,
+ 	int ret = 0;
+ 	if (_pcd->driver && _pcd->driver->setup)
+ 	{
+-		SPIN_UNLOCK(&_pcd->lock);
+-		ret = _pcd->driver->setup(&_pcd->gadget, _ctrl);
+ 		SPIN_LOCK(&_pcd->lock);
++		ret = _pcd->driver->setup(&_pcd->gadget, _ctrl);
++		SPIN_UNLOCK(&_pcd->lock);
+ 		if (ret < 0)
+ 		{
+ 			ep0_do_stall( _pcd, ret );
+-- 
+1.6.3.3
+

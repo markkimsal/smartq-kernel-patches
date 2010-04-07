@@ -1,0 +1,683 @@
+From 5bd715ba4d0c1827640201ff289f15093b244321 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Thu, 22 Oct 2009 14:01:35 +0800
+Subject: [PATCH] advanced power control for ddi bus and video codec,and also improve the touchscreen ops when turn on backlight,and also the RTC wakeup test code
+
+---
+ drivers/char/hhtech_gpio.c         |  179 ++++++++++++++++++------------------
+ drivers/char/tcc_backlight.c       |   28 ++++++
+ drivers/char/tcc_pwrkey.c          |   24 ++---
+ drivers/input/input.c              |    5 +
+ drivers/input/keyboard/gpio_keys.c |    4 +
+ drivers/input/touchscreen/tcc_ts.c |   13 +++
+ drivers/rtc/rtc-tcc.c              |   10 ++-
+ drivers/rtc/tcc8900/tca_alarm.c    |   12 +--
+ drivers/video/tccfb.c              |    4 +-
+ 9 files changed, 164 insertions(+), 115 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index e3eaeca..1dde1a0 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -264,6 +264,9 @@ static int get_battery_life(void)
+ 	return battery_life;
+ }
+ 
++int work_yet = 0;
++//add this to avoid ddi off by turning off the backlight when shutdown_unused_devices still not be executed
++EXPORT_SYMBOL(work_yet);
+ static void shutdown_unused_devices(void)
+ {
+ 	unsigned int i,reg_val,addr;
+@@ -280,7 +283,7 @@ static void shutdown_unused_devices(void)
+ 	*(volatile unsigned long *)0xF053B004 = 0x0;//tsif off
+ 	*(volatile unsigned long *)0xF0510000 = 0x0;//mpefec off
+ 	*(volatile unsigned long *)0xF0240004 |= 0x80;//shut down clk of TV-OUT
+-
++	*(volatile unsigned long *)0xF0200000 &= ~(0x1);//disable LCD0
+ 	*(volatile unsigned long *)0xF0251030 = 0x47;//shut down power of CIF,VIQE,LCDC0,MSCL1
+ 
+ 	//below is stop the peri clock
+@@ -301,7 +304,7 @@ static void shutdown_unused_devices(void)
+ 	    *(volatile unsigned long *)(0xf040008c + i*4) &= ~(0x0f000000);
+ 	    *(volatile unsigned long *)(0xf040008c + i*4) |= 0x0e000000;
+ 	}
+-
++	work_yet = 1;//ok, then ddi bus can be turnd off
+ }
+ 
+ static void battery_update_work(struct work_struct* work)
+@@ -382,8 +385,10 @@ static ssize_t hhtech_sysfs_store_memfreq(struct device *dev, struct device_attr
+     if(len < 1)
+ 	return -EINVAL;
+ 
++    if(PMU_PWROFF & 0x80)
++	return len;
++
+     unsigned long value = simple_strtoul(buf, NULL, 10);
+-    printk("the mem freq will be change to %lu\n",value);
+     now_memfreq = value;
+     memchange(value);
+ 
+@@ -391,9 +396,10 @@ static ssize_t hhtech_sysfs_store_memfreq(struct device *dev, struct device_attr
+ }
+ 
+ //vbus pm ops 
+-static int vb_st = 1;
++static int vb_st;
+ static int hhtech_sysfs_show_vb(struct device *dev, struct device_attribute *attr, char*buf)
+ {
++    vb_st = !!(PMU_PWROFF & 0x40);
+     return snprintf(buf, PAGE_SIZE, "%d\n", vb_st);
+ }
+ static ssize_t hhtech_sysfs_store_vb(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+@@ -404,6 +410,8 @@ static ssize_t hhtech_sysfs_store_vb(struct device *dev, struct device_attribute
+     int value = simple_strtoul(buf, NULL, 10);
+     int reg_val;
+ 
++    vb_st = !!(PMU_PWROFF & 0x40);
++
+     if((value) && (!vb_st))
+     {
+ 	vb_st = value;
+@@ -420,12 +428,11 @@ static ssize_t hhtech_sysfs_store_vb(struct device *dev, struct device_attribute
+ }
+ 
+ //dbus pm ops
+-static int db_st = 0;
+-static char lcd_buff[0x124];
+-//static unsigned long pwdnsave = 0;
+-//static unsigned long hdclsave;
++char lcd_buff[0x124];
++static int db_st;
+ static int hhtech_sysfs_show_db(struct device *dev, struct device_attribute *attr, char*buf)
+ {
++    db_st = !!(PMU_PWROFF & 0x80);
+     return snprintf(buf, PAGE_SIZE, "%d\n", db_st);
+ }
+ static ssize_t hhtech_sysfs_store_db(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+@@ -436,19 +443,15 @@ static ssize_t hhtech_sysfs_store_db(struct device *dev, struct device_attribute
+     int value = simple_strtoul(buf, NULL, 10);
+     int reg_val;
+ 
++    db_st = !!(PMU_PWROFF & 0x80);
++
+     if((value) && (!db_st))
+     {
+ 	db_st = value;
+ 
+ 	memcpy(lcd_buff,(char *)0xF0204000,0x124);
+-	gpio_direction_output(GPIO_LCD_PWR_EN, 0);
+-	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 0);
+-
+-//	hdclsave = *(volatile unsigned long *)0xF025102C;
+-//	*(volatile unsigned long *)0xF025102C &= ~(0x4000);
+-
+-//  	pwdnsave = *(volatile unsigned long *)0xF0251030;
+-//	*(volatile unsigned long *)0xF0251030 = 0x1ff;
++//	gpio_direction_output(GPIO_LCD_PWR_EN, 0);
++//	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 0);
+ 
+ 	reg_val = PMU_PWROFF;
+ 	PMU_PWROFF = (reg_val | 0x80);
+@@ -460,12 +463,9 @@ static ssize_t hhtech_sysfs_store_db(struct device *dev, struct device_attribute
+ 	reg_val = PMU_PWROFF;
+ 	PMU_PWROFF = (reg_val & (~0x80));
+ 
+-//	*(volatile unsigned long *)0xF025102C = hdclsave;
+-//	*(volatile unsigned long *)0xF0251030 = pwdnsave;
+-
+-	gpio_direction_output(GPIO_LCD_PWR_EN, 1);
+-	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 1);
+-	memcpy((char *)0xF0204000,lcd_buff,0x124);
++    	memcpy((char *)0xF0204000,lcd_buff,0x124);
++//	gpio_direction_output(GPIO_LCD_PWR_EN, 1);
++//	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 1);
+ 
+     }
+ 
+@@ -556,12 +556,11 @@ static ssize_t hhtech_sysfs_store_io(struct device *dev, struct device_attribute
+     if(value == 40)
+     {
+ 	*(volatile unsigned long *)0xF0400010 = 0x2000b2;//change io bus to 40M
+-	printk(KERN_EMERG"!!!dcs: now change io freq to 39M\n");
+ 	return len;
+     }else if(value == 156)
+     {
+ 	*(volatile unsigned long *)0xF0400010 = 0x200022;//change io bus to 156M
+-	printk(KERN_EMERG"!!!dcs: now change io freq to 156M\n");
++	return len;
+     }
+ 
+     if((value) && (!io_st))
+@@ -579,30 +578,47 @@ static ssize_t hhtech_sysfs_store_io(struct device *dev, struct device_attribute
+     return len;
+ }
+ 
+-//memory ops
+-static int mb_st = 0;
+-static int hhtech_sysfs_show_mb(struct device *dev, struct device_attribute *attr, char*buf)
++static unsigned int vpu_bus_clock_addr = 0xF0702000;
++static unsigned int vpu_core_clock_addr = 0xF0400018;
++static int vpu_on_st;
++static int hhtech_sysfs_show_vpu_on(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+-    return snprintf(buf, PAGE_SIZE, "%d\n", mb_st);
++    if(!!(PMU_PWROFF & 0x40))
++	return snprintf(buf, PAGE_SIZE, "%d\n", 0);
++
++    vpu_on_st = !(*(volatile unsigned long *)vpu_bus_clock_addr & 0x4);
++    return snprintf(buf, PAGE_SIZE, "%d\n", vpu_on_st);
+ }
+-static ssize_t hhtech_sysfs_store_mb(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++
++static ssize_t hhtech_sysfs_store_vpu_on(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
+     if(len < 1)
+ 	return -EINVAL;
++    unsigned long reg_read_value;
++    unsigned long reg_write_value;
++
++    if(!!(PMU_PWROFF & 0x40))
++	return len;
+ 
+     int value = simple_strtoul(buf, NULL, 10);
+-    int reg_val;
++    vpu_on_st = !(*(volatile unsigned long *)vpu_bus_clock_addr & 0x4);
+ 
+-    if((value) && (!mb_st))
++    if(value && !vpu_on_st)
+     {
+-	mb_st = value;
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val | 0x20);
+-    }else if((!value) && (mb_st))
++	reg_read_value = *(volatile unsigned int *)vpu_bus_clock_addr;
++	reg_write_value = reg_read_value & 0xFFFFFFFB;
++	*((volatile unsigned int *) vpu_bus_clock_addr) = (unsigned int)reg_write_value;
++	reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
++	reg_write_value = reg_read_value | ((unsigned int)(1 << 21));
++	*((volatile unsigned int *) vpu_core_clock_addr) = (unsigned int)reg_write_value;
++    }else if(!value && vpu_on_st)
+     {
+-	mb_st = value;
+-	reg_val = PMU_PWROFF;
+-	PMU_PWROFF = (reg_val & (~0x20));
++	reg_read_value = *(volatile unsigned int *)vpu_bus_clock_addr;
++	reg_write_value = reg_read_value | (1 << 2);
++	*((volatile unsigned int *) vpu_bus_clock_addr) = (unsigned int)reg_write_value;
++	reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
++	reg_write_value = reg_read_value & 0xFFDFFFFF;
++	*((volatile unsigned int *) vpu_core_clock_addr) = (unsigned int)reg_write_value;
+     }
+ 
+     return len;
+@@ -625,67 +641,52 @@ static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribut
+     lcd_on = value;
+ 
+     gpio_direction_output(GPIO_LCD_PWR_EN, value);
+-#if 0 	/* comment by csduan */
+-    if(!value)
+-	*(volatile unsigned long *)0xF0204000 &= ~(0x1); 
+-    else
+-	*(volatile unsigned long *)0xF0204000 |= 0x1;
+-#endif	/* comment by csduan */
+ 
+     return len;
+ }
+ 
+-extern int tca_ckc_setiobus(unsigned int sel, unsigned int mode);
+-static ssize_t hhtech_sysfs_store_peri_on(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++int video_on = 0;
++EXPORT_SYMBOL(video_on);
++static int hhtech_sysfs_show_play_video(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+-    if(len < 1)
+-	return -EINVAL;
+-
+-    int value = simple_strtoul(buf, NULL, 10);
+-
+-    if((value >= RB_USB11H)&&(value < RB_ALLPERIPERALS))
+-    {
+-	tca_ckc_setiobus(value,1);
+-	return len;
+-    }
+-
+-    return len;
++    return snprintf(buf, PAGE_SIZE, "%d\n", video_on);    
+ }
+-
+-static ssize_t hhtech_sysfs_store_peri_off(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++static ssize_t hhtech_sysfs_store_play_video(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+ {
++    unsigned long reg_read_value;
++    unsigned long reg_write_value;
++
+     if(len < 1)
+ 	return -EINVAL;
+ 
+     int value = simple_strtoul(buf, NULL, 10);
+ 
+-    if((value >= RB_USB11H)&&(value < RB_ALLPERIPERALS))
++    if(value)
+     {
+-	tca_ckc_setiobus(value,0);
+-	return len;
+-    }
+-
+-    return len;
+-}
++	video_on = 1;
++    }else
++    {
++	mdelay(10);
+ 
+-extern void ckc_etcblock(unsigned int lMask);
+-static unsigned long etcmask = 0;
++	video_on = 0;
+ 
+-static int hhtech_sysfs_show_etcblock(struct device *dev, struct device_attribute *attr, char*buf)
+-{     
+-    return snprintf(buf, PAGE_SIZE, "%x\n", etcmask);
+-}
+-
+-static ssize_t hhtech_sysfs_store_etcblock(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
+-{
+-    if(len < 1)
+-	return -EINVAL;
++	if(PMU_PWROFF & 0x40)
++	    return len;
+ 
+-    int value = simple_strtoul(buf, NULL, 16);
++	if(*(volatile unsigned long *)vpu_bus_clock_addr & 0x4)
++	    return len;
+ 
+-    etcmask = value;
++	//turn off video codec power and clock
++	reg_read_value = *(volatile unsigned int *)vpu_bus_clock_addr;
++	reg_write_value = reg_read_value | (1 << 2);
++	*((volatile unsigned int *) vpu_bus_clock_addr) = (unsigned int)reg_write_value;
++	reg_read_value = *(volatile unsigned int *)vpu_core_clock_addr;
++	reg_write_value = reg_read_value & 0xFFDFFFFF;
++	*((volatile unsigned int *) vpu_core_clock_addr) = (unsigned int)reg_write_value;
+ 
+-    ckc_etcblock(value);
++	//turn off video bus power
++	PMU_PWROFF |= 0x40;    
++    }
+ 
+     
+     return len;
+@@ -776,8 +777,8 @@ static ssize_t hhtech_sysfs_store_blight(struct device *dev,
+ 	    if(curblight)
+ 		bl_control(0);
+ 	    curblight = 0;
+-
+-	} else {
++	
++	}else {
+ 	    if(!curblight)
+ 		bl_control(1);
+ 	    vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
+@@ -1044,11 +1045,9 @@ static DEVICE_ATTR(db_pwoff, 0666, hhtech_sysfs_show_db, hhtech_sysfs_store_db);
+ static DEVICE_ATTR(gb_pwoff, 0666, hhtech_sysfs_show_gb, hhtech_sysfs_store_gb);
+ static DEVICE_ATTR(hd_pwoff, 0666, hhtech_sysfs_show_hd, hhtech_sysfs_store_hd);
+ static DEVICE_ATTR(io_pwoff, 0666, hhtech_sysfs_show_io, hhtech_sysfs_store_io);
+-static DEVICE_ATTR(mb_pwoff, 0666, hhtech_sysfs_show_mb, hhtech_sysfs_store_mb);
++static DEVICE_ATTR(vpu_on, 0666, hhtech_sysfs_show_vpu_on, hhtech_sysfs_store_vpu_on);
+ static DEVICE_ATTR(lcd_on, 0666, hhtech_sysfs_show_lcd, hhtech_sysfs_store_lcd);
+-static DEVICE_ATTR(peri_on, 0666, NULL , hhtech_sysfs_store_peri_on);
+-static DEVICE_ATTR(peri_off, 0666, NULL , hhtech_sysfs_store_peri_off);
+-static DEVICE_ATTR(etcblock, 0666, hhtech_sysfs_show_etcblock , hhtech_sysfs_store_etcblock);
++static DEVICE_ATTR(play_video, 0666, hhtech_sysfs_show_play_video , hhtech_sysfs_store_play_video);
+ static DEVICE_ATTR(sleep_tp, 0666, hhtech_sysfs_show_sleep_type , hhtech_sysfs_store_sleep_type);
+ static DEVICE_ATTR(otg_mode, 0666, hhtech_sysfs_show_otgmode, hhtech_sysfs_store_otgmode);
+ static DEVICE_ATTR(charge_en, 0666, hhtech_sysfs_show_charge, hhtech_sysfs_store_charge);
+@@ -1079,11 +1078,9 @@ static struct attribute *attrs[] = {
+ 	&dev_attr_gb_pwoff.attr,
+ 	&dev_attr_hd_pwoff.attr,
+ 	&dev_attr_io_pwoff.attr,
+-	&dev_attr_mb_pwoff.attr,
++	&dev_attr_vpu_on.attr,
+ 	&dev_attr_lcd_on.attr,
+-	&dev_attr_peri_on.attr,
+-	&dev_attr_peri_off.attr,
+-	&dev_attr_etcblock.attr,
++	&dev_attr_play_video.attr,
+ 	&dev_attr_sleep_tp.attr,
+ #if defined(CONFIG_LCD_7)
+ 	&dev_attr_otg_mode.attr,
+diff --git a/drivers/char/tcc_backlight.c b/drivers/char/tcc_backlight.c
+index 5958795..171aa60 100644
+--- a/drivers/char/tcc_backlight.c
++++ b/drivers/char/tcc_backlight.c
+@@ -28,6 +28,12 @@
+ #include <linux/fs.h>
+ #include <linux/errno.h>
+ #include <asm/uaccess.h>
++#include <asm/io.h>
++#include <hhtech_gpio.h>
++#include <mach/TCC89x_Structures.h>
++#include <mach/globals.h>
++#include <mach/gpio.h>
++
+ 
+ #if CONFIG_MACH_TCC8900
+ #include <bsp.h>
+@@ -183,17 +189,39 @@ static void bl_init(void)
+ 	gBKLPwrInfo.status = PWR_STATUS_ON;
+ }
+ 
++extern int video_on;
++extern int work_yet;
++extern int noneed_respond;
++static int ddi_off_mode = 0;
++static int bl_count = 3;//not use turn-off ddi_bus way until finish the init
+ void bl_control(bool flag)
+ {
+ 	PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
+ 	PGPIO vGpioAddr = (PGPIO)((unsigned int)&HwGPIO_BASE);
+ 
++	if(bl_count)
++	    bl_count--;
++
+ 	if (flag) {
++		if(ddi_off_mode)
++		    *(volatile unsigned long *)0xF0204000 |= 0x1;
++
++		noneed_respond = 0;
++		ddi_off_mode = 0;
+ 		tca_bkl_powerup((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
+ 		gBKLPwrInfo.status = PWR_STATUS_ON;
++		gpio_direction_output(GPIO_LCD_PWR_EN, 1);
+ 	} else {
++		noneed_respond = 1;
+ 		tca_bkl_powerdown((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
+ 		gBKLPwrInfo.status = PWR_STATUS_OFF;
++		gpio_direction_output(GPIO_LCD_PWR_EN, 0);
++
++		if((!bl_count)&&(!video_on)&&(work_yet)&&(!gpio_get_value(GPIO_HDMI_EN))&&(!gpio_get_value(GPIO_TVOUT_EN)))
++		{
++		    ddi_off_mode = 1;
++		    *(volatile unsigned long *)0xF0204000 &= ~(0x1);
++		}
+ 	}
+ }
+ EXPORT_SYMBOL(bl_control);
+diff --git a/drivers/char/tcc_pwrkey.c b/drivers/char/tcc_pwrkey.c
+index a448c3a..b1972f8 100644
+--- a/drivers/char/tcc_pwrkey.c
++++ b/drivers/char/tcc_pwrkey.c
+@@ -80,6 +80,7 @@ volatile static void tca_off_sleep(int type)
+         lmem_source = tmpread & 0xf;
+         tmpread &= 0xf0;
+ 
++
+         while(tmpread){
+             tmpread -= 16;
+             lmem_div++;
+@@ -371,8 +372,6 @@ volatile static void tca_off_sleep(int type)
+ typedef void (*lpfunc)(int);
+ static  lpfunc sleep;
+ extern int noneed_respond;
+-//static char lcd_buff[0x124];
+-
+ volatile static void tca_off_copysram(int type)
+ {
+     // Setup Pointer
+@@ -381,6 +380,8 @@ volatile static void tca_off_copysram(int type)
+     int                     i;
+     unsigned int lstack = 0;
+ 
++    PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
++    PGPIO vGpioAddr = (PGPIO)((unsigned int)&HwGPIO_BASE);
+ 
+     // Copy Function Contents to SRAM
+     fptr = (volatile unsigned int*)tca_off_sleep;
+@@ -399,20 +400,17 @@ volatile static void tca_off_copysram(int type)
+     while(--i);
+ 
+     // Jump to Function Start Point
+-//    memcpy(lcd_buff,(char *)0xF0204000,0x124);
+   
+-    if(type != 1)
+-	noneed_respond = 1;
++    noneed_respond = 1;// ignore first touch when wakeup
+ 
+-    *(volatile unsigned long *)0xF0102024 &= ~(0xff0000);
+-    *(volatile unsigned long *)0xF0102004 |= 0x30;
+-    *(volatile unsigned long *)0xF0102000 &= ~(0x30);
++    *(volatile unsigned long *)0xF0102024 &= ~(0xff0000);// set gpio func
++    *(volatile unsigned long *)0xF0102004 |= 0x30;// set GPIOA4 and GPIOA5 as output
++    *(volatile unsigned long *)0xF0102000 &= ~(0x30);//turn off lcd power and backlight
+ 
+     sleep(type);
+-//    memcpy((char *)0xF0204000,lcd_buff,0x124);
+     
+-    *(volatile unsigned long *)0xF0102000 |= 0x30;
+-
++    *(volatile unsigned long *)0xF0102000 |= 0x10;//turn on a4 
++    tca_bkl_powerup((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);//turn on backlight
+ }
+ extern int sleep_type;
+ void selfrefresh_test(void)
+@@ -423,7 +421,7 @@ void selfrefresh_test(void)
+     volatile PLCDC	pLCDC_BASE1 = (volatile PLCDC)tcc_p2v(HwLCDC1_BASE);
+     volatile PTIMER	pTIMER	= (volatile PTIMER)tcc_p2v(HwTMR_BASE);
+ 
+-    // Off LCD
++   // Off LCD
+     pLCDC_BASE1->LCTRL &= ~Hw0;
+     pLCDC_BASE0->LCTRL &= ~Hw0;
+ 
+@@ -443,7 +441,7 @@ void selfrefresh_test(void)
+     int_restore();
+ 
+     //	LCDC Power Up
+-    pLCDC_BASE0->LCTRL |= Hw0;
++//    pLCDC_BASE0->LCTRL |= Hw0;
+     pLCDC_BASE1->LCTRL |= Hw0;
+ }
+ 
+diff --git a/drivers/input/input.c b/drivers/input/input.c
+index c13ced3..350fb9c 100644
+--- a/drivers/input/input.c
++++ b/drivers/input/input.c
+@@ -252,6 +252,11 @@ static void input_handle_event(struct input_dev *dev,
+ 		input_pass_event(dev, type, code, value);
+ }
+ 
++void press_button(struct input_dev *dev,unsigned int type, unsigned int code, int value)
++{
++	input_pass_event(dev, type, code, value);
++}
++EXPORT_SYMBOL(press_button);
+ /**
+  * input_event() - report new input event
+  * @dev: device that generated the event
+diff --git a/drivers/input/keyboard/gpio_keys.c b/drivers/input/keyboard/gpio_keys.c
+index 4cbae68..cb455b0 100644
+--- a/drivers/input/keyboard/gpio_keys.c
++++ b/drivers/input/keyboard/gpio_keys.c
+@@ -70,6 +70,9 @@ static irqreturn_t gpio_keys_isr(int irq, void *dev_id)
+ 	return IRQ_HANDLED;
+ }
+ 
++struct input_dev *touchdev;
++EXPORT_SYMBOL(touchdev);
++
+ static int __devinit gpio_keys_probe(struct platform_device *pdev)
+ {
+ 	struct gpio_keys_platform_data *pdata = pdev->dev.platform_data;
+@@ -111,6 +114,7 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
+ 		setup_timer(&bdata->timer,
+ 			    gpio_check_button, (unsigned long)bdata);
+ 
++		touchdev = bdata->input;
+ 		error = gpio_request(button->gpio, button->desc ?: "gpio_keys");
+ 		if (error < 0) {
+ 			pr_err("gpio-keys: failed to request GPIO %d,"
+diff --git a/drivers/input/touchscreen/tcc_ts.c b/drivers/input/touchscreen/tcc_ts.c
+index 858296a..b3a9968 100644
+--- a/drivers/input/touchscreen/tcc_ts.c
++++ b/drivers/input/touchscreen/tcc_ts.c
+@@ -381,6 +381,16 @@ static inline void tcc_pen_pressure(struct tcc_ts* ts_data, struct input_dev *de
+     /* wake_up_interruptible(&ts->wait_q); */
+ }
+ 
++extern void press_button(struct input_dev *dev,unsigned int type, unsigned int code, int value);
++extern struct input_dev *touchdev;
++static inline void tcc_pen_backlighton(void)   //send a right ctrl event to turn on the backlight
++{
++    press_button(touchdev,1,97,1);
++    press_button(touchdev,0,0,0);
++    
++    press_button(touchdev,1,97,0);
++    press_button(touchdev,0,0,0);
++}
+ #define ADCDAT0_XPDATA_MASK	(0x03FF)
+ #define ADCDAT1_YPDATA_MASK	(0x03FF)
+ 
+@@ -419,6 +429,9 @@ static void ts_fetch_thread(struct work_struct *work)
+         add_timer(&ts_timer);
+ 
+ #else
++	if(noneed_respond)
++	    tcc_pen_backlighton();
++
+ 	noneed_respond = 0;
+         tcc_pen_release(ts_data, dev);
+         ts_data->running = 0;
+diff --git a/drivers/rtc/rtc-tcc.c b/drivers/rtc/rtc-tcc.c
+index 312d3aa..7fbc0f9 100644
+--- a/drivers/rtc/rtc-tcc.c
++++ b/drivers/rtc/rtc-tcc.c
+@@ -41,7 +41,7 @@
+ #include <asm/irq.h>
+ #include <asm/delay.h>
+ #include <asm/mach/time.h>
+-
++#include <mach/TCC89x_Physical.h>
+ #include <bsp.h>
+ #include "tcc/tca_alarm.h"
+ 
+@@ -68,6 +68,7 @@
+ #define BCDYEAR     0x40
+ #define RTCIM       0x44
+ #define RTCPEND     0x48
++#define RTCSTR      0x4c
+ 
+ #if 0
+ #pragma pack(push, 4)
+@@ -83,6 +84,7 @@ volatile struct tcc_rtc_regs *rtc_regs;
+ #endif
+ 
+ static void __iomem *rtc_base;
++static void __iomem *vic_base;
+ static int tcc_rtc_alarmno = NO_IRQ;
+ 
+ 
+@@ -289,6 +291,7 @@ static int tcc_rtc_ioctl(struct device *dev,
+     case RTC_UIE_ON:
+         break;
+     case RTC_UIE_OFF:
++	    tca_alarm_setpmwkup((unsigned int)rtc_base,(unsigned int)vic_base);
+         break;
+         ret = -EINVAL;
+     }
+@@ -339,11 +342,11 @@ static int tcc_rtc_probe(struct platform_device *pdev)
+     volatile PIOBUSCFG pIOBUSCFG = (volatile PIOBUSCFG)tcc_p2v(HwIOBUSCFG_BASE);
+     int valid_time = 1;
+ 
+-
+     // BUS Enable
+     pIOBUSCFG->HCLKEN0 |= Hw26;
+ 
+ 	rtc_base = (void __iomem *)tcc_p2v(HwRTC_BASE);
++	vic_base = (void __iomem *)tcc_p2v(HwVIC_BASE);
+ 
+ 	if (rtc_base == NULL) {
+         printk("failed ioremap()\n"); 
+@@ -368,7 +371,8 @@ static int tcc_rtc_probe(struct platform_device *pdev)
+ 
+         tcc_writel( tcc_readl(rtc_base + RTCCON) & ~Hw0, rtc_base + RTCCON);
+         tcc_writel( tcc_readl(rtc_base + RTCIM) & ~(Hw3 | Hw0), rtc_base + RTCIM);
+-        tcc_writel( tcc_readl(rtc_base + RTCIM) | Hw2, rtc_base + RTCIM);
++//        tcc_writel( tcc_readl(rtc_base + RTCIM) | Hw2, rtc_base + RTCIM);
++	tcc_writel( tcc_readl(rtc_base + RTCIM) & ~Hw2, rtc_base + RTCIM);
+ 
+         tcc_writel( tcc_readl(rtc_base + RTCALM) & ~(Hw7 - Hw0), rtc_base + RTCALM);
+         tcc_writel( tcc_readl(rtc_base + INTCON) & ~Hw0, rtc_base + INTCON);
+diff --git a/drivers/rtc/tcc8900/tca_alarm.c b/drivers/rtc/tcc8900/tca_alarm.c
+index 8bb3b98..6844aec 100644
+--- a/drivers/rtc/tcc8900/tca_alarm.c
++++ b/drivers/rtc/tcc8900/tca_alarm.c
+@@ -248,22 +248,21 @@ VOLATILE void tca_alarm_setpmwkup(unsigned int rtcbaseaddresss,unsigned int vicb
+ 	//Set Alarm
+     tca_rtc_gettime(rtcbaseaddresss, (rtctime *)&lpTime);
+ 	
+-
+ #if defined(WINCE_ONLY)
+ 	
+-	if(lpTime.wSecond < 57){
+-		lpTime.wSecond += 3;
++	if(lpTime.wSecond < 50){
++		lpTime.wSecond += 10;
+ 	}
+ 	else{
+ 		if(lpTime.wMinute < 59){
+ 			lpTime.wMinute += 1;
+-			lpTime.wSecond = 0;
++			lpTime.wSecond = 10;
+ 		}
+ 		else{
+ 			if(lpTime.wHour < 23){
+ 				lpTime.wHour += 1;
+ 				lpTime.wMinute = 0;
+-				lpTime.wSecond = 0;
++				lpTime.wSecond = 10;
+ 			}
+ 	else{
+ 				lpTime.wHour = 0;
+@@ -272,7 +271,6 @@ VOLATILE void tca_alarm_setpmwkup(unsigned int rtcbaseaddresss,unsigned int vicb
+ 	}
+ 		}
+ 	}
+-	
+ #else
+ 	if(lpTime.wSecond < 55)
+ 		lpTime.wSecond += 5;
+@@ -287,7 +285,7 @@ VOLATILE void tca_alarm_setpmwkup(unsigned int rtcbaseaddresss,unsigned int vicb
+ 	BITSET(pRTC->RTCCON, Hw1);// Enable RTCEN
+ 	BITSET(pRTC->INTCON, Hw0);// Enable INTWREN
+ 	BITCLR(pRTC->RTCIM, 0xf);
+-	BITSET(pRTC->RTCIM, Hw0|Hw2|Hw3);	 // Enable ALMINT_EDGE_EN, Enable PMWKUP_ACTIVE_HIGH, Enable PWDN_POWERDOWN_MODE
++	BITSET(pRTC->RTCIM, Hw0|Hw3);	 // Enable ALMINT_EDGE_EN, Enable PMWKUP_ACTIVE_HIGH, Enable PWDN_POWERDOWN_MODE
+ 	BITSET(pRTC->RTCCON, Hw1 | Hw7);
+ 	
+ 	//PMWKUP Disable Start
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index 87b5210..92184c7 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -2455,7 +2455,7 @@ static int tccfb_setcolreg(unsigned regno,
+  */
+ static int tccfb_blank(int blank_mode, struct fb_info *info)
+ {
+-	dprintk("blank(mode=%d, info=%p)\n", blank_mode, info);
++//	printk(KERN_EMERG"blank(mode=%d, info=%p)\n", blank_mode, info);
+ 	switch (blank_mode) {
+ 		case VESA_NO_BLANKING:  /* lcd on, backlight on */
+ 			tcc_lcd_on();
+@@ -2956,6 +2956,8 @@ static int tccfb_suspend(struct platform_device *dev, pm_message_t state)
+ 	PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
+ 	PGPIO vGpioAddr = (PGPIO)((unsigned int)&HwGPIO_BASE);
+ 
++	*(volatile unsigned long *)0xF0204000 |= 0x1;// enable LCD0 before suspend
++
+ 	tca_bkl_powerdown((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
+ 
+ 	//@tvo
+-- 
+1.6.3.3
+

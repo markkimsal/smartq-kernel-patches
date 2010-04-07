@@ -1,0 +1,54 @@
+From 3cf434bd1c9c9b621355bfa69cb5f5014bdd9db2 Mon Sep 17 00:00:00 2001
+From: matrix <matrix@matrix-desktop.(none)>
+Date: Wed, 30 Sep 2009 08:56:21 +0800
+Subject: [PATCH] support tvout status
+
+---
+ drivers/video/fbsysfs.c |    8 ++++++++
+ drivers/video/tccfb.c   |    4 ++++
+ 2 files changed, 12 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/video/fbsysfs.c b/drivers/video/fbsysfs.c
+index d4a2c11..d400a12 100644
+--- a/drivers/video/fbsysfs.c
++++ b/drivers/video/fbsysfs.c
+@@ -379,6 +379,13 @@ static ssize_t show_pan(struct device *device,
+ 			fb_info->var.yoffset);
+ }
+ 
++extern unsigned int tvo_status(void);
++static ssize_t show_tvostatus(struct device *device,
++			 struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", tvo_status());
++}
++
+ static ssize_t show_name(struct device *device,
+ 			 struct device_attribute *attr, char *buf)
+ {
+@@ -496,6 +503,7 @@ static struct device_attribute device_attrs[] = {
+ 	__ATTR(modes, S_IRUGO|S_IWUSR, show_modes, store_modes),
+ 	__ATTR(pan, S_IRUGO|S_IWUSR, show_pan, store_pan),
+ 	__ATTR(virtual_size, S_IRUGO|S_IWUSR, show_virtual, store_virtual),
++	__ATTR(tvo_status, S_IRUGO, show_tvostatus, NULL),
+ 	__ATTR(name, S_IRUGO, show_name, NULL),
+ 	__ATTR(stride, S_IRUGO, show_stride, NULL),
+ 	__ATTR(rotate, S_IRUGO|S_IWUSR, show_rotate, store_rotate),
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index ea95055..87b5210 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -1220,6 +1220,10 @@ unsigned int tvo_cleanup(void)
+ 	remove_pwm_node(DEVICE_TVOUT);
+ 	return 0;
+ }
++unsigned int tvo_status(void)
++{
++	return gTvoStatus;
++}
+ void tvo_powerup(void)
+ {
+ 	if(gTvoStatus)
+-- 
+1.6.3.3
+

@@ -1,0 +1,45 @@
+From 5c76d0f4770dc66775118adf5eea3faa50a86d0c Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Thu, 7 Jan 2010 14:36:54 +0800
+Subject: [PATCH] Remove one pop and click noise when playing at the first time
+
+---
+ drivers/i2c/i2c-core.c |   21 ++++++++++++++-------
+ 1 files changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/i2c/i2c-core.c b/drivers/i2c/i2c-core.c
+index 00d45dd..c365057 100644
+--- a/drivers/i2c/i2c-core.c
++++ b/drivers/i2c/i2c-core.c
+@@ -1086,14 +1086,21 @@ int i2c_master_send(struct i2c_client *client,const char *buf ,int count)
+ 	msg.flags |= (client->flags & I2C_M_DIBCOM_MODE);
+ 	msg.flags |= (client->flags & I2C_M_DIBCOM_WR_RD);
+ 
+-	ret = i2c_transfer(adap, &msg, 1);
+-
+-	/* delay 200ms after enable LOUT2 and ROUT2 Output Buffer of WM8987 (bit4 and bit3 of R26),
+-	   to avoid pop and click noise */
++	/* don't enable DAC Left, DAC Right, LOUT2 Output Buffer and ROUT2 Output Buffer of
++	   WM8987 (bit8, bit7, bit4 and bit3 of R26) separately, and delay 1000ms after enable
++	   them together, this can minimum the pop and click noise */
+ 	if(msg.addr == 0x1a) {
+-		if(buf[0] == 0x35 && (buf[1] & 0x18))
+-		    mdelay(200);
+-	}
++		if(buf[0] == 0x35 && (buf[1] & 0x1f8)) {
++			if(buf[1] != 0xf8)   // don't enable them separately
++				return count;
++			else {	// enable them together
++				ret = i2c_transfer(adap, &msg, 1);
++				mdelay(1000);
++			}
++		} else
++			ret = i2c_transfer(adap, &msg, 1);
++	} else
++		ret = i2c_transfer(adap, &msg, 1);
+ 
+ 	/* If everything went ok (i.e. 1 msg transmitted), return #bytes
+ 	   transmitted, else error code. */
+-- 
+1.6.3.3
+

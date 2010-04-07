@@ -1,0 +1,25 @@
+From 27010190501857f5c200b792c7e1a9f01d3ef8c8 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Fri, 14 Aug 2009 14:54:53 +0800
+Subject: [PATCH] solve the collision of TV-OUT and the audio interface
+
+---
+ sound/soc/tcc/tcc8900/tca_tcchwcontrol.c |    2 --
+ 1 files changed, 0 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c b/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c
+index 638b13f..b7b83b9 100644
+--- a/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c
++++ b/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c
+@@ -97,8 +97,6 @@ unsigned int tca_tcc_initport(void *pGPIOBaseAddr)
+ 		| Hw16	//DAI0(1)
+ 		;
+ 	pStrGPIOBaseReg->GPDFN1 |= 0
+-		| Hw4	//DAO3(1)
+-		| Hw8	//DAI3(1)
+ #if defined(SPDIF_2CH_ONLY)	
+ 		| Hw12	//SPD_TX(1)
+ #endif		
+-- 
+1.6.3.3
+

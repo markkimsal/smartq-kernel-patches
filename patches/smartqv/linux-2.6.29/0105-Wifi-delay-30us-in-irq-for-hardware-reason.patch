@@ -1,0 +1,38 @@
+From 7f2766a858c622e6fdb58ed2d6f62084063a64eb Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Fri, 27 Nov 2009 09:50:14 +0800
+Subject: [PATCH] Wifi delay 30us in irq for hardware? reason
+
+---
+ drivers/mmc/host/tcc_sdhc.c |   11 +++++------
+ 1 files changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/mmc/host/tcc_sdhc.c b/drivers/mmc/host/tcc_sdhc.c
+index 08d1bf0..1dde09b 100644
+--- a/drivers/mmc/host/tcc_sdhc.c
++++ b/drivers/mmc/host/tcc_sdhc.c
+@@ -823,16 +823,15 @@ static irqreturn_t tcc_mmc_interrupt_handler(int irq, void *dev_id)
+ //out:
+ 	spin_unlock(&host->lock);    
+ 
++	if (host->id == 1) {
++		unsigned int tcc_stat = tcc_readl(host->iobase+TCCSDHC_INT_ENABLE);
++		udelay(30); //XXX: SDIO lost response when WIFI in deepsleep
++	}
++
+ 	if (cardint) {
+ 		mmc_signal_sdio_irq(host->mmc);
+ 	}        
+ 
+-	if (host->id == 1) {
+-		unsigned int tcc_stat = tcc_readl(host->iobase+TCCSDHC_INT_ENABLE);
+-		if (!(tcc_stat & HwSDINT_EN_CDINT)) { //SDIO INT STOPPED
+-			udelay(10); //XXX: SDIO lost response when WIFI in deepsleep
+-		}
+-	}
+ 	return result;
+ }
+ 
+-- 
+1.6.3.3
+

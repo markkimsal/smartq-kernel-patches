@@ -1,0 +1,484 @@
+From a9d0c7194383c86f20dd32644d98b0d8c6bd0d49 Mon Sep 17 00:00:00 2001
+From: MeiHui FAN <mhfan@hhcn.com>
+Date: Thu, 6 Aug 2009 20:18:42 +0800
+Subject: [PATCH] fix for compilation or modulization
+
+---
+ Makefile                                           |    9 +-
+ arch/arm/mach-tcc8900/include/mach/ddr.h           |   95 +++++++++++++++
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.h    |    2 +-
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_200to290.h    |    2 +-
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.h    |    2 +-
+ .../mach-tcc8900/tcc8900/tcc_ckcmddr_100to160.h    |    2 +-
+ arch/arm/mach-tcc8900/tcc8900/tcc_ckcmddr_20to90.h |    2 +-
+ drivers/usb/gadget/gadget_chips.h                  |    3 +-
+ drivers/video/tcc-lcd.h                            |  123 ++++++++++++++++++++
+ drivers/video/tccfb.c                              |    2 +-
+ include/linux/tcc_pwm.h                            |   80 +++++++++++++-
+ initrd_tcc_mkrd.sh                                 |    2 +-
+ sound/soc/tcc/tcc8900/tca_tcchwcontrol.c           |    2 +
+ tcc_mkrd.sh                                        |    2 +-
+ 14 files changed, 314 insertions(+), 14 deletions(-)
+ create mode 100644 arch/arm/mach-tcc8900/include/mach/ddr.h
+ create mode 100644 drivers/video/tcc-lcd.h
+ mode change 120000 => 100644 include/linux/tcc_pwm.h
+ mode change 100644 => 100755 initrd_tcc_mkrd.sh
+
+Index: linux-2.6.29/Makefile
+===================================================================
+--- linux-2.6.29.orig/Makefile	2010-04-07 11:14:10.000000000 -0400
++++ linux-2.6.29/Makefile	2010-04-07 11:17:54.000000000 -0400
+@@ -1,7 +1,7 @@
+ VERSION = 2
+ PATCHLEVEL = 6
+ SUBLEVEL = 29
+-EXTRAVERSION =
++#EXTRAVERSION = .10
+ NAME = Temporary Tasmanian Devil
+ 
+ # *DOCUMENTATION*
+Index: linux-2.6.29/arch/arm/mach-tcc8900/include/mach/ddr.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/arch/arm/mach-tcc8900/include/mach/ddr.h	2010-04-07 11:17:54.000000000 -0400
+@@ -0,0 +1,95 @@
++/***************************************************************************************
++*	FileName    : ddr2.h
++*	Description : TCBOOT DDR Configuration File
++****************************************************************************************
++*
++*	TCC Board Support Package
++*	Copyright (c) Telechips, Inc.
++*	ALL RIGHTS RESERVED
++*
++****************************************************************************************/
++
++
++#ifndef __DDR_CONFIG_H__
++#define __DDR_CONFIG_H__
++
++/***********************************************************
++*  DRAM config
++*              CS  BANK   CAS_Latency  CAS/RAS            Size                 MaxClock    PartNumber                       Vendor
++*  [DDR2]
++*  DRAM_TYPE1 : 1,    2,      5,         10/13      (16bit x 64  x 2) 128MB,     330Mhz     K4T51163QG-HCE6(EVB 0.1)         SAMSUNG
++*  DRAM_TYPE2 : 1,    2,      6,         10/13      (16bit x 64  x 4) 128MB,     400Mhz     H5PS5162FPR S2C- 415A (EVB 1.0), HYNIX
++*                                                                                           H5PS5162FFR S6C-915A             HYNIX
++*  DRAM_TYPE3 : 1,    3,      5,         10/13      (16bit x 128 x 2) 256MB,     400Mhz     K4T1G164QE-HCE7                  SAMSUNG
++*                                                                                330Mhz     K4T1G164QQ-HCE6                  SAMSUNG
++*  DRAM_TYPE4 : 1,    3,      6,         10/13      (16bit x 128 x 2) 256MB,     400Mhz     K4T1G1643QG-HCF7                 SAMSUNG
++*
++*  [TEST Only]
++*  DRAM_TYPE5 : 1,    2,      5,         10/14      (8bit  x 64  x 4) 256MB,     330Mhz     E5108AG-6E-E                     ELPIDA
++*  DRAM_TYPE6 : 2,    2,      6,         10/13      (16bit x 64  x 4) 256MB,     400Mhz     H5PS5162FFR S6C-915A             HYNIX
++*  [MDDR]
++*  DRAM_TYPE7 : 1,    2,      3,         10/13      (16bit x 64  x 2) 128MB,     166Mhz     H5MS516DFR J3M-919A              HYNIX
++*  DRAM_TYPE8 : 1,    2,      3,         10/14      (16bit x 128 x 2) 256MB,     166Mhz     H5MS1G62MFP J3M-902A             HYNIX
++************************************************************/
++/*--------------*
++ * DDR Type     *
++ *--------------*/
++//#define DRAM_TYPE1
++//#define DRAM_TYPE2
++#define DRAM_TYPE3
++//#define DRAM_TYPE4
++//#define DRAM_TYPE5
++//#define DRAM_TYPE6
++//#define DRAM_TYPE7
++//#define DRAM_TYPE8
++
++#if defined(DRAM_TYPE1)
++#   define DRAM_DDR2
++#   define DRAM_BANK2
++#   define DRAM_CAS5
++#endif
++
++#if defined(DRAM_TYPE2)
++#   define DRAM_DDR2
++#   define DRAM_BANK2
++#   define DRAM_CAS6
++#endif
++
++#if defined(DRAM_TYPE3)
++#   define DRAM_DDR2
++#   define DRAM_BANK3
++#   define DRAM_CAS5
++#endif
++
++#if defined(DRAM_TYPE4)
++#   define DRAM_DDR2
++#   define DRAM_BANK3
++#   define DRAM_CAS6
++#endif
++
++#if defined(DRAM_TYPE5)
++#   define DRAM_DDR2
++#   define DRAM_BANK2
++#   define DRAM_CAS5
++#endif
++
++#if defined(DRAM_TYPE6)
++#   define DRAM_DDR2
++#   define DRAM_BANK2
++#   define DRAM_CAS6
++#endif
++
++#if defined(DRAM_TYPE7)
++#   define DRAM_MDDR
++#   define DRAM_BANK2
++#   define DRAM_CAS3
++#endif
++
++#if defined(DRAM_TYPE8)
++#   define DRAM_MDDR
++#   define DRAM_BANK2
++#   define DRAM_CAS3
++#endif
++
++#endif	/* __DDR_CONFIG_H__ */
++/************* end of file *************************************************************/
+Index: linux-2.6.29/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.h
+===================================================================
+--- linux-2.6.29.orig/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.h	2010-04-07 11:14:10.000000000 -0400
++++ linux-2.6.29/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.h	2010-04-07 11:17:54.000000000 -0400
+@@ -1,5 +1,5 @@
+ #if defined(_LINUX_)
+-    #include "../../../../../../bootloader/tcboot/include/ddr.h"
++    #include <mach/ddr.h>
+ #else
+     #include "windows.h"
+ 
+Index: linux-2.6.29/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_200to290.h
+===================================================================
+--- linux-2.6.29.orig/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_200to290.h	2010-04-07 11:14:10.000000000 -0400
++++ linux-2.6.29/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_200to290.h	2010-04-07 11:17:54.000000000 -0400
+@@ -1,6 +1,6 @@
+ #if defined(_LINUX_)
+     #include <bsp.h>
+-    #include "../../../../../../bootloader/tcboot/include/ddr.h"
++    #include <mach/ddr.h>
+ #else
+     #include "windows.h"
+     
+Index: linux-2.6.29/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.h
+===================================================================
+--- linux-2.6.29.orig/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.h	2010-04-07 11:14:10.000000000 -0400
++++ linux-2.6.29/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.h	2010-04-07 11:17:54.000000000 -0400
+@@ -1,6 +1,6 @@
+ #if defined(_LINUX_)
+     #include <bsp.h>
+-    #include "../../../../../../bootloader/tcboot/include/ddr.h"
++    #include <mach/ddr.h>
+ #else
+     #include "windows.h"
+     
+Index: linux-2.6.29/arch/arm/mach-tcc8900/tcc8900/tcc_ckcmddr_100to160.h
+===================================================================
+--- linux-2.6.29.orig/arch/arm/mach-tcc8900/tcc8900/tcc_ckcmddr_100to160.h	2010-04-07 11:14:10.000000000 -0400
++++ linux-2.6.29/arch/arm/mach-tcc8900/tcc8900/tcc_ckcmddr_100to160.h	2010-04-07 11:17:54.000000000 -0400
+@@ -1,6 +1,6 @@
+ #if defined(_LINUX_)
+     #include <bsp.h>
+-    #include "../../../../../../bootloader/tcboot/include/ddr.h"
++    #include <mach/ddr.h>
+ #else
+ #include "windows.h"
+ 
+Index: linux-2.6.29/arch/arm/mach-tcc8900/tcc8900/tcc_ckcmddr_20to90.h
+===================================================================
+--- linux-2.6.29.orig/arch/arm/mach-tcc8900/tcc8900/tcc_ckcmddr_20to90.h	2010-04-07 11:14:10.000000000 -0400
++++ linux-2.6.29/arch/arm/mach-tcc8900/tcc8900/tcc_ckcmddr_20to90.h	2010-04-07 11:17:54.000000000 -0400
+@@ -1,7 +1,7 @@
+ 
+ #if defined(_LINUX_)
+     #include <bsp.h>
+-    #include "../../../../../../bootloader/tcboot/include/ddr.h"
++    #include <mach/ddr.h>
+ #else
+ #include "windows.h"
+ 
+Index: linux-2.6.29/drivers/usb/gadget/gadget_chips.h
+===================================================================
+--- linux-2.6.29.orig/drivers/usb/gadget/gadget_chips.h	2010-04-07 11:14:10.000000000 -0400
++++ linux-2.6.29/drivers/usb/gadget/gadget_chips.h	2010-04-07 11:17:54.000000000 -0400
+@@ -169,7 +169,8 @@
+ 
+ #if defined(CONFIG_USB_GADGET_TCC_OTG_STANDALONE)
+ #define gadget_is_tcc(g) !strcmp("tcc-udc", (g)->name)
+-#elif defined(CONFIG_TCC_DWC_OTG_DEVICE)
++#elif defined(CONFIG_TCC_DWC_OTG_DEVICE_ONLY) || \
++      defined(CONFIG_TCC_DWC_OTG_DUAL_ROLE)
+ #define gadget_is_tcc(g) !strcmp("dwc_otg_pcd", (g)->name)
+ #else
+ #define gadget_is_tcc(g) 0
+Index: linux-2.6.29/drivers/video/tcc-lcd.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/drivers/video/tcc-lcd.h	2010-04-07 11:17:54.000000000 -0400
+@@ -0,0 +1,123 @@
++/***************************************************************************************
++*	FileName    : lcd.h
++*	Description : lcd Functions
++****************************************************************************************
++*
++*	TCC Board Support Package
++*	Copyright (c) Telechips, Inc.
++*	ALL RIGHTS RESERVED
++*
++****************************************************************************************/
++#ifndef __LCD_H__
++#define __LCD_H__
++
++
++//	#define DEMO_LOADSHOW_LVDS				// LCDC1: fb0-LVDS, fb1-LVDS, fb2-LVDS
++//	#define DEMO_LOADSHOW_LCD_LVDS			// LCDC1: fb0-LVDS, fb1-LVDS / LCDC0: fb2-LCD 
++//	#define DEMO_LOADSHOW_LCD_HDMI			// LCDC1: fb0-HDMI, fb1-HDMI / LCDC0: fb2-LCD 
++//	#define DEMO_LOADSHOW_LCD_LVDSHDMI		// LCDC0: fb0-LVDS|HDMI		 / LCDC1: fb1-LCD,  fb2-LCD
++
++
++#if defined(DEMO_LOADSHOW_LVDS) || defined(DEMO_LOADSHOW_LCD_LVDS) || defined(DEMO_LOADSHOW_LCD_LVDSHDMI)
++
++//	#define USE_LVDS_1024_768	// disable - HT121WX2-103 12"1 Color TFT LCD (LVDS)
++								// enable  - CLAA104XA01CW 10"4 Color TFT LCD (LVDS)
++
++
++	#define USE_LVDS
++#endif
++
++#if !defined(DEMO_LOADSHOW_LVDS)
++	#define USE_LCD
++#endif
++
++
++typedef struct {
++	unsigned int res_width;
++	unsigned int res_height;
++
++	unsigned int devide;
++
++	unsigned int vpw;
++	unsigned int vbp;
++	unsigned int vfp;
++
++	unsigned int hpw;
++	unsigned int hbp;
++	unsigned int hfp;
++
++	unsigned int pwdx;	// 0xC : 24Bit(888)
++						// 0x5 : 18Bit(565)
++
++} lcd_cfg_t;
++
++
++static lcd_cfg_t	lcd_cfg[3] = 
++{
++//////	W		H		DIV		VPW		VBP		VFP		HPW		HBP		HFP		PWDX	//
++
++//	[TCCXXXX_LCD_4.8WVGA&24B_SV0.1]
++	{	800,	480,	3,		3,		5,		5,		3,		13,		8,		0xC		},	
++
++//	[CLAA104XA01CW 10"4 Color TFT LCD (LVDS)]
++	{	1024,	768,	1,		1,		1,		36,		1,		1,		318,	0xC		},
++
++//	[HT121WX2-103 12"1 Color TFT LCD (LVDS)]
++	{	1280,	800,	1,		1,		3,		20,		1,		10,		150,	0xC		},
++};
++
++
++#if !defined(USED_IN_KERNEL)
++
++/*	Boot-logo Color depth	*/
++#if (0)
++#define DISP_SRC_32BPP		// Enable : RGB888 (32bpp)
++							// Disable: RGB565 (16bpp)
++#endif
++
++#if defined(DEMO_LOADSHOW_LVDS)
++#define DISP_WIDTH	1280
++#define DISP_HEIGHT	800
++#else
++#define DISP_WIDTH	800
++#define DISP_HEIGHT	480
++#endif
++
++
++#if defined(DEMO_LOADSHOW_LVDS) && defined(USE_LVDS_1024_768)
++#undef DISP_WIDTH
++#undef DISP_HEIGHT
++#define DISP_WIDTH	1024
++#define DISP_HEIGHT	768
++#endif
++
++									
++#define DISP_MEM_SIZE		0x300000	// 3MB
++
++#define STACK_SIZE_MAX		0x300000
++#define DISP_MEM_PHYBASE	((BSS_OFFSET - STACK_SIZE_MAX) - DISP_MEM_SIZE)
++
++
++#if defined(DISP_SRC_32BPP)
++#define DISP_BYTESPERPIXEL	4
++#else
++#define DISP_BYTESPERPIXEL	2
++#endif
++
++
++#define DISP_BOOTIMG0_BASE_ADDR	(DISP_MEM_PHYBASE)
++#define DISP_BOOTIMG0_SIZE_MAX	(0x180000)	// 1.5MB
++
++#define DISP_BOOTIMG1_BASE_ADDR	(DISP_BOOTIMG0_BASE_ADDR + DISP_BOOTIMG0_SIZE_MAX)
++#define DISP_BOOTIMG1_SIZE_MAX	(0x180000)	// 1.5MB
++
++//
++#define IMAGE1_START		(DISP_MEM_PHYBASE)
++
++
++void disp_init(void);
++
++#endif //#if !defined(USED_IN_KERNEL)
++
++#endif	/*__LCD_H__*/
++
+Index: linux-2.6.29/drivers/video/tccfb.c
+===================================================================
+--- linux-2.6.29.orig/drivers/video/tccfb.c	2010-04-07 11:14:10.000000000 -0400
++++ linux-2.6.29/drivers/video/tccfb.c	2010-04-07 11:17:54.000000000 -0400
+@@ -64,7 +64,7 @@
+ //#include "tcboot_lcd.h"
+ 
+ #define USED_IN_KERNEL
+-#include "../../../../bootloader/tcboot/include/lcd.h"
++#include "tcc-lcd.h"
+ 
+ 
+ #define TV_OUT_INCLUDE
+Index: linux-2.6.29/include/linux/tcc_pwm.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.29/include/linux/tcc_pwm.h	2010-04-07 11:17:54.000000000 -0400
+@@ -0,0 +1,79 @@
++/****************************************************************************
++ *	 FileName	 : ioctl_pwrstr.h
++ *	 Description : 
++ ****************************************************************************
++*
++ *	 TCC Version 1.0
++ *	 Copyright (c) Telechips, Inc.
++ *	 ALL RIGHTS RESERVED
++*
++ ****************************************************************************/
++
++
++/************************************************************************************************
++*									 Revision History											*
++*																								*
++* Version : 1.0    : 2009, 8, 19																*
++************************************************************************************************/
++
++#ifndef __IOCTL_PWRSTR_H__
++#define __IOCTL_PWRSTR_H__
++
++
++typedef enum {
++	DEVICE_LCD = 0,		// display device (LCD, ...)
++	DEVICE_BACKLIGHT,	// backlight only.
++	DEVICE_ADC,
++	DEVICE_CAMERA,
++	DEVICE_GPSB,
++	DEVICE_HDMI,
++	DEVICE_KEYPAD,
++	DEVICE_POWERBUTTON,
++	DEVICE_SDHC,
++	DEVICE_UART,
++	DEVICE_TOUCH,
++	DEVICE_TVOUT,
++	DEVICE_OTG,			// usb
++	DEVICE_OHCI,		// usb
++	DEVICE_USERINTR,	// Linux Uesr Interrupt
++	DEVICE_SATA,
++	DEVICE_GPIOEXP,
++//	DEIVCE_XXXX,
++//	...
++
++	DEVICE_MAX
++} PWR_DEVICE_ID_TYPE;
++
++typedef enum {
++	PWR_CMD_OFF = 0,
++	PWR_CMD_ON,
++	PWR_CMD_GETSTATUS,
++	PWR_CMD_MAX
++} PWR_CMD_TYPE;
++
++typedef enum {
++	PWR_STATUS_OFF = 0,
++	PWR_STATUS_ON,
++	PWR_STATUS_UNKNOWN,
++	PWR_STATUS_MAX
++} PWR_STATUS_TYPE;
++
++// for input
++typedef struct _stpwrioctl{
++	unsigned int deviceid;	// refer to 'PWR_DEVICE_ID_TYPE'
++	unsigned int cmd;		// refer to 'PWR_CMD_TYPE'
++}stpwrioctl;
++
++// for ouput
++typedef struct _stpwrinfo{
++	unsigned int status;	// refer to 'PWR_STATUS_TYPE'
++}stpwrinfo;
++
++
++typedef struct pwr_ioctl_param {
++    stpwrioctl in;
++    stpwrinfo out;    // refer to 'PWR_STATUS_TYPE'
++} pwr_ioctl_param_t;
++
++#endif /* __IOCTL_STR_H__ */
++
+Index: linux-2.6.29/initrd_tcc_mkrd.sh
+===================================================================
+--- linux-2.6.29.orig/initrd_tcc_mkrd.sh	2010-04-07 11:14:10.000000000 -0400
++++ linux-2.6.29/initrd_tcc_mkrd.sh	2010-04-07 11:17:54.000000000 -0400
+@@ -21,7 +21,7 @@
+ dd if=arch/arm/boot/Image of=Img bs=$K_SIZE conv=sync
+ cat Img ../ramdisk/initrd_1.5M.rom > linux.img
+ 
+-../../util/tcc_crc/tcc_crc -o linux.rom -v 1700 linux.img
++./tcc_crc -o linux.rom -v 1700 linux.img
+ 
+ rm -f Img
+ rm -f linux.img
+Index: linux-2.6.29/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c
+===================================================================
+--- linux-2.6.29.orig/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c	2010-04-07 11:14:09.000000000 -0400
++++ linux-2.6.29/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c	2010-04-07 11:17:54.000000000 -0400
+@@ -14,6 +14,7 @@
+ * includes
+ *
+ ******************************************************************************/
++#include <linux/module.h>
+ #include <bsp.h>
+ #include "tca_tcchwcontrol.h"
+ #if defined(SPDIF_2CH_ONLY)	
+@@ -108,6 +109,7 @@
+ 		;
+ 	return 0/*SUCCESS*/;
+ }
++EXPORT_SYMBOL(tca_tcc_initport);
+ 
+ /*****************************************************************************
+ * Function Name : tca_dma_setsrcaddr()
+Index: linux-2.6.29/tcc_mkrd.sh
+===================================================================
+--- linux-2.6.29.orig/tcc_mkrd.sh	2010-04-07 11:14:10.000000000 -0400
++++ linux-2.6.29/tcc_mkrd.sh	2010-04-07 11:17:54.000000000 -0400
+@@ -31,7 +31,7 @@
+ # insert CRC & ramdisk.rom size
+ echo
+ echo -e "[\x1b[1;33mMARK\x1b[0m] CRC & ramdisk size \x1b[1;31m$RAMDISK_SIZE\x1b[0m Mbyte"
+-../../util/tcc_crc/tcc_crc -o linux.rom -v 1700 -r $RAMDISK_SIZE linux.img
++./tcc_crc -o linux.rom -v 1700 -r $RAMDISK_SIZE linux.img
+ 
+ 
+ # remove Img, linux.img

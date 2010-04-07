@@ -1,0 +1,39 @@
+From 12560d588bdea0ac25afbd448845b6ebab8b8862 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Fri, 8 Jan 2010 09:13:08 +0800
+Subject: [PATCH] get rid of ddi pwdn ops to avoid prob when resuming
+
+---
+ arch/arm/mach-tcc8900/pm.c |    6 ------
+ 1 files changed, 0 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/pm.c b/arch/arm/mach-tcc8900/pm.c
+index 709cde7..969ba94 100644
+--- a/arch/arm/mach-tcc8900/pm.c
++++ b/arch/arm/mach-tcc8900/pm.c
+@@ -831,7 +831,6 @@ static void copy_func_to_sram(int mode)
+ {
+ 	volatile unsigned int *fPtr, *p;
+ 	int i, hdmi_change = 0;
+-	unsigned int pwdn;
+ 
+ 	PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
+         PGPIO vGpioAddr = (PGPIO)((unsigned int)&HwGPIO_BASE);
+@@ -863,14 +862,9 @@ static void copy_func_to_sram(int mode)
+ 		*(volatile unsigned long *)0xF0102004 |= 0x30;// set GPIOA4 and GPIOA5 as output
+ 		*(volatile unsigned long *)0xF0102000 &= ~(0x30);//turn off lcd power and backlight
+ 
+-		pwdn = *(volatile unsigned long *)0xF0251030;
+-		*(volatile unsigned long *)0xF0251030 = 0x1ff;
+-
+ 		// Jump to SRAM excute self-refresh mode
+ 		lpSelfRefresh(sleep_type);
+ 
+-		*(volatile unsigned long *)0xF0251030 = pwdn;
+-
+ 		*(volatile unsigned long *)0xF0102000 |= 0x10;//turn on a4 
+ 		tca_bkl_powerup((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);//turn on backlight
+ 
+-- 
+1.6.3.3
+

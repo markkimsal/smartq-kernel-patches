@@ -1,0 +1,165 @@
+From 6538f6c8c4a0e8d923048f88eed0cdbd53500723 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Mon, 3 Aug 2009 14:01:55 +0800
+Subject: [PATCH] fix the bug of battery detection and provide the support of 7-inch lcd
+
+---
+ drivers/char/hhtech_gpio.c         |   13 +++++++++----
+ drivers/input/touchscreen/tcc_ts.c |   24 +++++++++++++++++-------
+ drivers/video/tccfb_a070vw04.c     |   16 ++++++++--------
+ 3 files changed, 34 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 22016d5..977327a 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -197,7 +197,7 @@ extern unsigned int tcc_adc_value(unsigned int tcc_adc_port);
+ static int read_battery(void)
+ {
+ 	int battery_life = 0, reference_value = 0;
+-	static int old_battery_life = 0, old_reference_value = 0;
++	static int old_battery_life = 1000, old_reference_value = 1000;
+ 
+ 	//ref voltage:2.4V,battery max :4.2V
+ 	if ((battery_life = tcc_adc_value(0)) == 0) {
+@@ -206,14 +206,18 @@ static int read_battery(void)
+ 			old_battery_life = battery_life;
+ 		} else
+ 			battery_life = old_battery_life;
+-	}
++	}else
++	    old_battery_life = battery_life;
++
+ 	if ((reference_value = tcc_adc_value(1)) == 0) {
+ 		if (old_reference_value == 0) {
+ 			while (!(reference_value = tcc_adc_value(1)));
+ 			old_reference_value = reference_value;
+ 		} else
+ 			reference_value	= old_reference_value;
+-	}
++	}else
++	    old_reference_value = reference_value;
++
+ 	battery_life = (battery_life * 24000) / (reference_value * 42);
+ 
+ 	return battery_life;
+@@ -709,7 +713,8 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 
+ 	//INIT_DELAYED_WORK(&headp_detect_work, headp_update_volume);	
+ 	INIT_DELAYED_WORK(&battery_work, battery_update_work);
+-	battery_update_work(NULL);
++//	battery_update_work(NULL);
++	schedule_delayed_work(&battery_work, 4 * HZ);
+ 	
+ 	return 0;
+ 
+diff --git a/drivers/input/touchscreen/tcc_ts.c b/drivers/input/touchscreen/tcc_ts.c
+index 9790006..6e844a5 100644
+--- a/drivers/input/touchscreen/tcc_ts.c
++++ b/drivers/input/touchscreen/tcc_ts.c
+@@ -119,7 +119,6 @@ static char *tcc_ts_name = "tcc-ts";
+ 
+ static struct timer_list ts_timer;
+ 
+-
+ /*
+  * Per-touchscreen data.
+  */
+@@ -169,10 +168,18 @@ unsigned int tcc_adc_value(unsigned int tcc_adc_port)
+     unsigned long data1;
+ 
+     if (ts_base == NULL)
+-        return 1000;
++        return 0;
++
++    if(ts->running)
++	return 0;
++
++    disable_irq(IRQ_NO);
++
++    if (timer_pending(&ts_timer) || ts->running)
++	goto out;
+ 
+     if(ADCTSC_WAIT_PENDOWN != readl(ts_base+ADCTSC))
+-        return 0;
++        goto out;
+ 
+     del_timer(&ts_timer);
+ 
+@@ -188,7 +195,7 @@ unsigned int tcc_adc_value(unsigned int tcc_adc_port)
+     do {
+         data0 = readl(ts_base+ADCCON);
+         writel(CLEAR_ADC_INT, ts_base + ADCCLRINT);
+-        writel(CLEAR_ADCWK_INT, ts_base + ADCCLRUPDN);
++	writel(CLEAR_ADCWK_INT, ts_base + ADCCLRUPDN);
+     } while(!(data0 & ADCCON_ECFLG));
+ 
+     data1 = readl(ts_base+ADCDAT0);
+@@ -197,7 +204,13 @@ unsigned int tcc_adc_value(unsigned int tcc_adc_port)
+ 
+     adc_return = D_XPDATA_MASK12(data1);
+ 
++    enable_irq(IRQ_NO);
++
+     return adc_return;
++
++out:
++    enable_irq(IRQ_NO);
++    return 0;
+ }
+ EXPORT_SYMBOL(tcc_adc_value);
+ 
+@@ -591,9 +604,6 @@ static int __devinit tcc_ts_probe(struct platform_device *pdev)
+     //PPIC        pPIC = (PIC *)&HwPIC_BASE;
+     volatile PGPIO pGPIO = (volatile PGPIO)tcc_p2v(HwGPIO_BASE);
+     volatile PPIC pPIC = (volatile PPIC)tcc_p2v(HwPIC_BASE);
+-
+-    
+-
+     dbg("%s: probe=%p\n", __func__, pdev);   
+ 
+     /* Enable ADC clock */
+diff --git a/drivers/video/tccfb_a070vw04.c b/drivers/video/tccfb_a070vw04.c
+index 30a13ae..dcab8fb 100644
+--- a/drivers/video/tccfb_a070vw04.c
++++ b/drivers/video/tccfb_a070vw04.c
+@@ -16,19 +16,19 @@ static void us_delay(unsigned int dly)
+ 
+ static void write_bit(unsigned char  val)
+ {
+-    gpio_set_value(S3C_GPM1, 0);	    // SCL = 0
+-    gpio_set_value(S3C_GPM2, val);	    // SDA = val
++    gpio_set_value(LCD_SCL, 0);	    // SCL = 0
++    gpio_set_value(LCD_SDA, val);	    // SDA = val
+     us_delay(1000);
+-    gpio_set_value(S3C_GPM1, 1);	    // SCL = 1
++    gpio_set_value(LCD_SCL, 1);	    // SCL = 1
+     us_delay(1000);
+ }
+ 
+ static unsigned int read_bit()
+ {
+-    gpio_set_value(S3C_GPM1, 0);	    // SCL = 0
+-    unsigned int data = tcc_gpio_getpin(S3C_GPM2);	// SDA
++    gpio_set_value(LCD_SCL, 0);	    // SCL = 0
++    unsigned int data = tcc_gpio_getpin(LCD_SDA);	// SDA
+     us_delay(1000);
+-    gpio_set_value(S3C_GPM1, 1);	    // SCL = 1
++    gpio_set_value(LCD_SCL, 1);	    // SCL = 1
+     us_delay(1000);
+     return data;
+ }
+@@ -87,8 +87,8 @@ static unsigned int read_reg(unsigned char addr)
+ void lcd_init_hw(void)
+ {
+     gpio_direction_output(LCD_SCEN, 1);	// GPM0 <---> CSB pin of LCD
+-    gpio_direction_output(S3C_GPM1, 1); // GPM1 <---> SCL pin of LCD
+-    gpio_direction_output(S3C_GPM2, 1);	// GPM2 <---> SDA pin of LCD
++    gpio_direction_output(LCD_SCL, 1); // GPM1 <---> SCL pin of LCD
++    gpio_direction_output(LCD_SDA, 1);	// GPM2 <---> SDA pin of LCD
+     write_reg(0x0, 0x2d3);
+     //write_reg(0x1, 0x181);
+     write_reg(0x4, 0x19f);
+-- 
+1.6.3.3
+

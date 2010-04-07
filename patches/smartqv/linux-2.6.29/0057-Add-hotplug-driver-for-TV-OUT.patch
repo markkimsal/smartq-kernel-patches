@@ -1,0 +1,154 @@
+From d162a5d19d29431d364b1919b8ba13e618ee30b9 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Wed, 30 Sep 2009 14:23:41 +0800
+Subject: [PATCH] Add hotplug driver for TV-OUT
+
+---
+ drivers/char/hhtech_gpio.c |   78 ++++++++++++++++++++++++++++++++++++++++++--
+ 1 files changed, 75 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index f748ebb..6149a6d 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -33,6 +33,9 @@
+ #include <linux/interrupt.h>
+ #include <linux/suspend.h>
+ #include <linux/reboot.h>
++#include <linux/miscdevice.h>
++#include <linux/wait.h>
++#include <linux/poll.h>
+ 
+ #include <asm/io.h>
+ #include <hhtech_gpio.h>
+@@ -44,6 +47,14 @@
+ #include <mach/globals.h>
+ 
+ #define IRQ_HEADPHONE INT_EI7
++#define HPD_MINOR       244 /* Major 10, Minor 244, /dev/tv_hpd */
++
++struct hpd_struct {
++    spinlock_t lock;
++    wait_queue_head_t waitq;
++    atomic_t state;
++};
++static struct hpd_struct hpd_struct;
+ 
+ #if defined(CONFIG_LCD_4)
+ static unsigned int system_flag = 2;
+@@ -991,11 +1002,13 @@ extern void headp_update_mixer(struct work_struct* work);
+ static irqreturn_t headp_irq(int irq, void *dev_id)
+ {
+ 	volatile PPIC pPIC = (volatile PPIC)tcc_p2v(HwPIC_BASE);
++	unsigned int headphone_s = gpio_get_value(GPIO_HEADPHONE_S);
+ 
+ 	disable_irq(IRQ_HEADPHONE);
+ 	BITSET(pPIC->CLR0, 1<<IRQ_HEADPHONE);
++
+ 	if (user_disable_speaker == 0) {
+-		if (gpio_get_value(GPIO_HEADPHONE_S))
++		if (headphone_s)
+ 			gpio_set_value(GPIO_SPEAKER_EN, 0);
+ 		else
+ 			gpio_set_value(GPIO_SPEAKER_EN, 1);
+@@ -1004,6 +1017,15 @@ static irqreturn_t headp_irq(int irq, void *dev_id)
+ 		schedule_delayed_work(&headp_detect_work, msecs_to_jiffies(80));
+ #endif
+ 	}
++
++	if (gpio_get_value(GPIO_TVOUT_EN)) {
++		if (headphone_s)
++			atomic_set(&hpd_struct.state, 1);
++		else
++			atomic_set(&hpd_struct.state, 0);
++		wake_up_interruptible(&hpd_struct.waitq);
++	}
++
+ 	enable_irq(IRQ_HEADPHONE);
+ 
+ 	return IRQ_HANDLED;
+@@ -1097,6 +1119,47 @@ static int hhtech_gpio_sysfs_register(struct device* dev)
+ }
+ #endif
+ 
++ssize_t hpd_read(struct file *file, char __user *buffer, size_t count, loff_t *ppos)
++{
++    ssize_t retval;
++
++    if (wait_event_interruptible(hpd_struct.waitq, atomic_read(&hpd_struct.state) != -1))
++        return -ERESTARTSYS;
++
++    spin_lock_irq(&hpd_struct.lock);
++    retval = put_user(atomic_read(&hpd_struct.state), (unsigned int __user *) buffer);
++    atomic_set(&hpd_struct.state, -1);
++    spin_unlock_irq(&hpd_struct.lock);
++
++    return retval;
++}
++
++unsigned int hpd_poll(struct file *file, poll_table *wait)
++{
++    poll_wait(file, &hpd_struct.waitq, wait);
++
++    if (atomic_read(&hpd_struct.state) != -1)
++        return POLLIN | POLLRDNORM;
++
++    return 0;
++}
++
++static const struct file_operations hpd_fops =
++{
++	.owner   = THIS_MODULE,
++	.open    = NULL,
++	.release = NULL,
++	.read    = hpd_read,
++	.poll    = hpd_poll,
++};
++
++static struct miscdevice hpd_misc_device =
++{
++	HPD_MINOR,
++	"tv_hpd",
++	&hpd_fops,
++};
++
+ static int hhtech_gpio_probe(struct platform_device *pdev)
+ {
+ 	int retval;
+@@ -1143,7 +1206,16 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 	    gpio_direction_output(GPIO_SPEAKER_EN, 0);	    // close speaker
+ 	else					    // headphone out
+ 	    gpio_direction_output(GPIO_SPEAKER_EN, 1);	    // open speaker
+-	
++
++	if (misc_register(&hpd_misc_device))
++	{
++		printk(KERN_WARNING "TV_HPD: Couldn't register device 10, %d.\n", HPD_MINOR);
++		return -EBUSY;
++	}
++	init_waitqueue_head(&hpd_struct.waitq);
++	spin_lock_init(&hpd_struct.lock);
++	atomic_set(&hpd_struct.state, -1);
++
+ 	retval = request_irq(IRQ_HEADPHONE, headp_irq,
+ 			     IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "Headphone detect", NULL);
+ 	if (retval) {
+@@ -1170,6 +1242,7 @@ error1:
+ 
+ static int hhtech_gpio_remove(struct platform_device *dev)
+ {
++	misc_deregister(&hpd_misc_device);
+ 	free_irq(IRQ_HEADPHONE, NULL);
+ 	return 0;
+ }
+@@ -1253,7 +1326,6 @@ static struct platform_driver hhtech_gpio = {
+ static int __init hhtech_gpio_init(void)
+ {
+ 	user_disable_speaker = 0;
+-	printk("hhtech_gpio_init\n");
+ 	return platform_driver_register(&hhtech_gpio);
+ }
+ 
+-- 
+1.6.3.3
+

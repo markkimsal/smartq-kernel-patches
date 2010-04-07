@@ -1,0 +1,276 @@
+From fd4750736c7f2c0dbf1cb1bf456cfe61b1cfa9df Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Fri, 5 Feb 2010 17:04:54 +0800
+Subject: [PATCH] Remove kernel modifications for different hardware version
+
+---
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.c    |   47 ++------------------
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.h    |    2 +-
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c    |   17 ++-----
+ .../mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.h    |    2 +-
+ arch/arm/mach-tcc8900/tcc_ckc_ctrl.c               |   11 ++---
+ drivers/char/hhtech_gpio.c                         |   15 +-----
+ 6 files changed, 16 insertions(+), 78 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.c b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.c
+index f055d35..7eb81d9 100644
+--- a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.c
++++ b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.c
+@@ -10,7 +10,7 @@
+ #define DRAM_AUTOPD_PERIOD 7<<7 // must larger than CAS latency
+ #define DRAM_SET_AUTOPD DRAM_AUTOPD_ENABLE|DRAM_AUTOPD_PERIOD
+ 
+-void init_clockchange125Mhz(int ver)
++void init_clockchange125Mhz(void)
+ {
+ 	unsigned int lpll1	=500;
+ 	unsigned int lmem_source =1; // 0 : PLL0 , 1 : PLL1 
+@@ -123,8 +123,7 @@ void init_clockchange125Mhz(int ver)
+ 						| (0 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+ 	#else
+-	if(ver == 1)
+-		*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
++	*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
+ 						| (0 << 16)	// PRD_CEN
+ 						| (7 << 13)	// DRV_STR
+ 						| (0 << 12)	// TERM_DIS
+@@ -134,18 +133,6 @@ void init_clockchange125Mhz(int ver)
+ 						| (0 << 2)	// ZQ
+ 						| (0 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+-	else
+-		*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
+-						| (0 << 16)	// PRD_CEN
+-						| (4 << 13)	// DRV_STR
+-						| (0 << 12)	// TERM_DIS
+-						| (2 << 9)	// ODT(PHY) value
+-						| (5 << 6)	// PULL UP
+-						| (2 << 3)	// PULL DOWN
+-						| (0 << 2)	// ZQ
+-						| (0 << 1)	// UPDATE
+-						| (1 << 0);	// CAL_START
+-
+ 	#endif
+ 	
+ 	while (!((*(volatile unsigned long *)0xF030442c) & (1)));	// Wait until Calibration completion without error
+@@ -171,9 +158,7 @@ void init_clockchange125Mhz(int ver)
+ 						| (0 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+ 	#else
+-	if(ver == 1)
+-	{
+-		*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
++	*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
+ 						| (0 << 16)	// PRD_CEN
+ 						| (7 << 13)	// DRV_STR
+ 						| (0 << 12)	// TERM_DIS
+@@ -183,7 +168,7 @@ void init_clockchange125Mhz(int ver)
+ 						| (0 << 2)	// ZQ
+ 						| (1 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+-		*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
++	*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
+ 						| (0 << 16)	// PRD_CEN
+ 						| (7 << 13)	// DRV_STR
+ 						| (0 << 12)	// TERM_DIS
+@@ -193,30 +178,6 @@ void init_clockchange125Mhz(int ver)
+ 						| (0 << 2)	// ZQ
+ 						| (0 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+-	}else
+-	{
+-		*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
+-						| (0 << 16)	// PRD_CEN
+-						| (4 << 13)	// DRV_STR
+-						| (0 << 12)	// TERM_DIS
+-						| (2 << 9)	// ODT(PHY) value
+-						| (5 << 6)	// PULL UP
+-						| (2 << 3)	// PULL DOWN
+-						| (0 << 2)	// ZQ
+-						| (1 << 1)	// UPDATE
+-						| (1 << 0);	// CAL_START
+-		*(volatile unsigned long *)0xF0304428 =  (3 << 17)	// PRD_CAL
+-						| (0 << 16)	// PRD_CEN
+-						| (4 << 13)	// DRV_STR
+-						| (0 << 12)	// TERM_DIS
+-						| (2 << 9)	// ODT(PHY) value
+-						| (5 << 6)	// PULL UP
+-						| (2 << 3)	// PULL DOWN
+-						| (0 << 2)	// ZQ
+-						| (0 << 1)	// UPDATE
+-						| (1 << 0);	// CAL_START
+-
+-	}
+ 	#endif
+ 	
+ 	//*(volatile unsigned long *) 0xF0304404 &= ~(0x00000003); // DLLCTRL - DLL OFF, Not Useing DLL 
+diff --git a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.h b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.h
+index d728a63..9c9a80a 100644
+--- a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.h
++++ b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_141to190.h
+@@ -9,7 +9,7 @@
+ 
+ 
+ #if !defined(DRAM_MDDR)
+-extern void init_clockchange125Mhz(int);
++extern void init_clockchange125Mhz(void);
+ extern void init_clockchange130Mhz(void);
+ extern void init_clockchange135Mhz(void);
+ extern void init_clockchange141Mhz(void);
+diff --git a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
+index 7870e28..a3569cd 100644
+--- a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
++++ b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.c
+@@ -690,7 +690,7 @@ void init_clockchange320Mhz(void)
+ }
+ 
+ //330Mhz
+-void init_clockchange330Mhz(int ver)
++void init_clockchange330Mhz(void)
+ {
+ 	unsigned int lpll1	=660;
+ 	unsigned int lmem_source =1; // 0 : PLL0 , 1 : PLL1 
+@@ -842,10 +842,7 @@ void init_clockchange330Mhz(int ver)
+ 						| (0 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+ 	#else
+-	if(ver == 1)
+-		*(volatile unsigned long *)0xF0304428 = 0x0006e551; 
+-	else 
+-		*(volatile unsigned long *)0xF0304428 = 0x00068551;
++	    *(volatile unsigned long *)0xF0304428 = 0x0006e551; 
+ 	#endif
+ 	
+ 	while (!((*(volatile unsigned long *)0xF030442c) & (1)));	// Wait until Calibration completion without error
+@@ -871,20 +868,14 @@ void init_clockchange330Mhz(int ver)
+ 						| (0 << 1)	// UPDATE
+ 						| (1 << 0);	// CAL_START
+ 	#else
+-	if(ver == 1)
+-		*(volatile unsigned long *)0xF0304428 = 0x0006e553; 		// ZQCTRL
+-	else
+-		*(volatile unsigned long *)0xF0304428 = 0x00068553;
++	*(volatile unsigned long *)0xF0304428 = 0x0006e553; 		// ZQCTRL
+ 	#endif
+ 
+ 	i = 3200;
+ 	while(i)
+ 		i--;
+ 
+-	if(ver == 1)
+-		*(volatile unsigned long *)0xF0304428 = 0x0006e551; 		// ZQCTRL
+-	else
+-		*(volatile unsigned long *)0xF0304428 = 0x00068551;
++	*(volatile unsigned long *)0xF0304428 = 0x0006e551; 		// ZQCTRL
+ 
+ 	i = 3200;
+ 	while(i)
+diff --git a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.h b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.h
+index 3a93e79..28d2e44 100644
+--- a/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.h
++++ b/arch/arm/mach-tcc8900/tcc8900/tcc_ckcddr2_300to330.h
+@@ -14,6 +14,6 @@
+ extern void init_clockchange300Mhz(void);
+ extern void init_clockchange312Mhz(void);
+ extern void init_clockchange320Mhz(void);
+-extern void init_clockchange330Mhz(int);
++extern void init_clockchange330Mhz(void);
+ #endif
+ 
+diff --git a/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c b/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c
+index 09a040b..37eea99 100644
+--- a/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c
++++ b/arch/arm/mach-tcc8900/tcc_ckc_ctrl.c
+@@ -56,7 +56,7 @@
+ #define FBUS_STEP_NUM 34
+ #define FCORE_STEP_NUM 60
+ 
+-typedef void (*lpfunc)(int);
++typedef void (*lpfunc)(void);
+ lpfunc lpSelfRefresh;
+ //#define SRAM_COPY_ADDR				0xF0800000
+ #define SRAM_COPY_ADDR				0xEFF00000
+@@ -215,16 +215,13 @@ void int_restore(void)
+ }
+ 
+ 
+-extern unsigned long SmartQV_VER;
++
+ static void init_copychangeclock(unsigned int lbusvalue)
+ {
+ 
+ 	volatile unsigned int	*fptr;
+ 	volatile unsigned int	*p;
+-	int 			i,ver = 1;
+-
+-	if((SmartQV_VER == 10802)||(SmartQV_VER == 10902))
+-		ver = 2;
++	int 					i;
+ 
+ #if defined(CONFIG_DRAM_DDR2)
+ 	if(lbusvalue == 1250000) 
+@@ -354,7 +351,7 @@ static void init_copychangeclock(unsigned int lbusvalue)
+ 	while(--i);
+ 	
+ 	// Jump to Function Start Point
+-	lpSelfRefresh(ver);
++	lpSelfRefresh();
+ }
+ 
+ void memchange(unsigned int freq)
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 306ea05..49de886 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -60,9 +60,6 @@ struct hpd_struct {
+ static struct hpd_struct hpd_struct;
+ static int bluetooth_on;
+ 
+-unsigned long SmartQV_VER;
+-EXPORT_SYMBOL(SmartQV_VER);
+-
+ #if defined(CONFIG_LCD_4)
+ static unsigned int system_flag = 2;
+ #else
+@@ -171,18 +168,12 @@ static void set_wifi_en(int sw)
+ 		gpio_direction_output(GPIO_WIFI_EN, 0);	    //close
+ }
+ 
+-static inline int ver_check(void)
+-{
+-	return ((SmartQV_VER == 10801) || (SmartQV_VER == 10901));
+-}
+-
+ // HHTECH set hdmi power
+ static void set_hdmipwr_en(int sw)
+ {
+ 	if (sw)
+ 	{
+-		if(!ver_check())
+-			gpio_direction_output(GPIO_HDMIPWR_EN, 0);  //hdmi pwr on
++		gpio_direction_output(GPIO_HDMIPWR_EN, 0);  //hdmi pwr on
+ 
+ //		*(volatile unsigned long *)0xF0404018 &= ~0x2;
+ 		*(volatile unsigned long *)0xF0255000 &= ~(0x2);
+@@ -195,8 +186,7 @@ static void set_hdmipwr_en(int sw)
+ 		*(volatile unsigned long *)0xF0255000 &= ~(0x1);
+ //	        *(volatile unsigned long *)0xF0404018 |= 0x2;
+ 
+-		if(!ver_check())
+-			gpio_direction_output(GPIO_HDMIPWR_EN, 1);  //hdmi pwr off
++		gpio_direction_output(GPIO_HDMIPWR_EN, 1);  //hdmi pwr off
+ 	}
+ }
+ 
+@@ -1695,7 +1685,6 @@ static struct platform_driver hhtech_gpio = {
+ static int __init hhtech_gpio_init(void)
+ {
+ 	user_disable_speaker = 0;
+-	SmartQV_VER = *(volatile unsigned long *)0xeff00000;
+ 	return platform_driver_register(&hhtech_gpio);
+ }
+ 
+-- 
+1.6.3.3
+

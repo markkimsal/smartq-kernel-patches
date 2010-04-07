@@ -1,0 +1,74 @@
+From 57f8faef4155e027079f9a648df77c9ff6966c8b Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Thu, 10 Sep 2009 19:11:00 +0800
+Subject: [PATCH] Fix the bug of tcc_lcd_on and tcc_lcd_off functions
+
+---
+ arch/arm/mach-tcc8900/include/hhtech_gpio.h |    5 ++++-
+ drivers/video/tccfb.c                       |   10 ++++++----
+ 2 files changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/include/hhtech_gpio.h b/arch/arm/mach-tcc8900/include/hhtech_gpio.h
+index f2921d6..f9916ee 100644
+--- a/arch/arm/mach-tcc8900/include/hhtech_gpio.h
++++ b/arch/arm/mach-tcc8900/include/hhtech_gpio.h
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 五, 04  9月 2009 15:16:01 +0800     by root #
++ * Last modified: 四, 10  9月 2009 15:32:03 +0800     by root #
+  ****************************************************************/
+ 
+ #ifndef __HHTECH_GPIO_H
+@@ -65,5 +65,8 @@
+ #define GPIO_LED1_EN				TCC_GPE6    /* Green LED, 0:on */
+ #define GPIO_LED2_EN				TCC_GPE7    /* Red LED, 0:on */
+ 
++//LCD
++#define GPIO_LCD_BACKLIGHT_EN			TCC_GPA5    /* LCD backlight control, 1:on */
++#define GPIO_LCD_PWR_EN				TCC_GPA4    /* LCD power control, 1:on */
+ #endif
+ 
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index 61192b3..db5a010 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -41,6 +41,8 @@
+ #include <linux/wait.h>
+ #include <linux/platform_device.h>
+ #include <linux/clk.h>
++#include <hhtech_gpio.h>
++#include <mach/gpio.h>
+ 
+ #include <asm/io.h>
+ #include <asm/uaccess.h>
+@@ -369,10 +371,10 @@ void tcc_lcd_on(void)
+ 
+ #else
+ //	LCD_DISP On
+-	BITSET(pGPIO->GPADAT, Hw4);
++	gpio_direction_output(GPIO_LCD_PWR_EN, 1);
+ 
+ //	LCD_BL_EN(Backlight) On
+-	BITSET(pGPIO->GPADAT, Hw5);
++	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 1);
+ #endif
+ }
+ 
+@@ -485,10 +487,10 @@ void tcc_lcd_off(void)
+ 	PGPIO	pGPIO 	= (GPIO *)&HwGPIO_BASE;
+ 
+ //	LCD_DISP Off
+-	BITCLR(pGPIO->GPADAT, Hw4);
++	gpio_direction_output(GPIO_LCD_PWR_EN, 0);
+ 
+ //	LCD_BL_EN(Backlight) Off
+-	BITCLR(pGPIO->GPADAT, Hw5);
++	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 0);
+ #endif
+ }
+ 
+-- 
+1.6.3.3
+

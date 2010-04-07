@@ -1,0 +1,25 @@
+From e4e9965975ee94220c2475c7581c48b086f3c55a Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Tue, 1 Dec 2009 09:30:57 +0800
+Subject: [PATCH] Solve the problem that HDMI will quit when user clicks touchscreen
+
+---
+ drivers/video/tccfb.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index c10c143..34c3571 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -2466,7 +2466,7 @@ static int tccfb_blank(int blank_mode, struct fb_info *info)
+ //	printk(KERN_EMERG"blank(mode=%d, info=%p)\n", blank_mode, info);
+ 	switch (blank_mode) {
+ 		case VESA_NO_BLANKING:  /* lcd on, backlight on */
+-			tcc_lcd_on();
++			bl_control(1);
+ 			break;
+ 		case VESA_VSYNC_SUSPEND: /* lcd on, backlight off */
+ 		case VESA_HSYNC_SUSPEND:
+-- 
+1.6.3.3
+

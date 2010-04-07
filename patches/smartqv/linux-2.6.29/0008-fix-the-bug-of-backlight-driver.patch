@@ -1,0 +1,33 @@
+From 38ee01277003c526bee7bd1da44dce3140b30555 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Tue, 28 Jul 2009 11:42:51 +0800
+Subject: [PATCH] fix the bug of backlight driver
+
+---
+ drivers/char/tcc_backlight.c |    3 ++-
+ 1 files changed, 2 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/char/tcc_backlight.c b/drivers/char/tcc_backlight.c
+index 9246414..5958795 100644
+--- a/drivers/char/tcc_backlight.c
++++ b/drivers/char/tcc_backlight.c
+@@ -183,7 +183,7 @@ static void bl_init(void)
+ 	gBKLPwrInfo.status = PWR_STATUS_ON;
+ }
+ 
+-static void bl_control(bool flag)
++void bl_control(bool flag)
+ {
+ 	PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
+ 	PGPIO vGpioAddr = (PGPIO)((unsigned int)&HwGPIO_BASE);
+@@ -196,6 +196,7 @@ static void bl_control(bool flag)
+ 		gBKLPwrInfo.status = PWR_STATUS_OFF;
+ 	}
+ }
++EXPORT_SYMBOL(bl_control);
+ 
+ static int tcc_bl_ioctl(struct inode *inode, struct file *filp, 
+ 							unsigned int cmd, unsigned long arg)
+-- 
+1.6.3.3
+

@@ -1,0 +1,46 @@
+From 7a66536b6ec5fef45088b5882c4a12460da9ae0e Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Wed, 12 Aug 2009 10:34:55 +0800
+Subject: [PATCH] fix the collision of audio interface and GPIO_SPEAKER_EN
+
+---
+ drivers/char/hhtech_gpio.c               |    4 ++--
+ sound/soc/tcc/tcc8900/tca_tcchwcontrol.c |    4 ----
+ 2 files changed, 2 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 6434c42..a2d5b5b 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -702,9 +702,9 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 	BITCLR(pPIC->MODE0, 1<<IRQ_HEADPHONE);	    // set interrupt as edge-triggered mode
+ 	BITSET(pPIC->MODEA0, 1<<IRQ_HEADPHONE);	    // set interrupt as both edge triggered mode
+ 	if (gpio_get_value(GPIO_HEADPHONE_S))	    // headphone inserted
+-	    gpio_set_value(GPIO_SPEAKER_EN, 0);	    // close speaker
++	    gpio_direction_output(GPIO_SPEAKER_EN, 0);	    // close speaker
+ 	else					    // headphone out
+-	    gpio_set_value(GPIO_SPEAKER_EN, 1);	    // open speaker
++	    gpio_direction_output(GPIO_SPEAKER_EN, 1);	    // open speaker
+ 	
+ 	retval = request_irq(IRQ_HEADPHONE, headp_irq,
+ 			     IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "Headphone detect", NULL);
+diff --git a/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c b/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c
+index 8cdc0c8..638b13f 100644
+--- a/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c
++++ b/sound/soc/tcc/tcc8900/tca_tcchwcontrol.c
+@@ -95,12 +95,8 @@ unsigned int tca_tcc_initport(void *pGPIOBaseAddr)
+ 		| Hw8	//MCLK(1)
+ 		| Hw12	//DAO0(1)
+ 		| Hw16	//DAI0(1)
+-		| Hw20	//DAO1(1)
+-		| Hw24	//DAI1(1)
+-		| Hw28	//DAO2(1)
+ 		;
+ 	pStrGPIOBaseReg->GPDFN1 |= 0
+-		| Hw0	//DAI2(1)
+ 		| Hw4	//DAO3(1)
+ 		| Hw8	//DAI3(1)
+ #if defined(SPDIF_2CH_ONLY)	
+-- 
+1.6.3.3
+

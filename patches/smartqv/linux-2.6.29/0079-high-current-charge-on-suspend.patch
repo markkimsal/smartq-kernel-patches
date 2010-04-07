@@ -1,0 +1,32 @@
+From 7d0ba34e78684785939b0985311cd17e91ae31a1 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Thu, 5 Nov 2009 17:43:36 +0800
+Subject: [PATCH] high current charge on suspend
+
+---
+ drivers/char/hhtech_gpio.c |    2 ++
+ 1 files changed, 2 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index f1f43ee..3b601a2 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -1310,6 +1310,7 @@ static int hhtech_gpio_suspend(struct platform_device *dev, pm_message_t state)
+ 	set_usb_hostpwr_en(0);
+ 	set_usb_otgdrv_en(0);
+ 	set_usb_syspwr_en(0);
++	set_charge_mode(1);
+ 	return 0;
+ }
+ extern void __iomem *tcc_rtc_base;
+@@ -1321,6 +1322,7 @@ static int hhtech_gpio_resume(struct platform_device *dev)
+ {
+ 	int dc_status;
+ 
++	set_charge_mode(0);
+ 	dc_status = gpio_get_value(GPIO_DC_DETE) ? 0 : 1;
+ 	wakeup_status = 0;
+ 
+-- 
+1.6.3.3
+

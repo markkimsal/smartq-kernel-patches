@@ -1,0 +1,42 @@
+From 9c61c41d7c4e3aca1fc828f94935f5ee21749536 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Mon, 7 Sep 2009 09:47:11 +0800
+Subject: [PATCH] Modify GPIO definitions for SmartV7_R2
+
+---
+ arch/arm/mach-tcc8900/include/hhtech_gpio.h |   10 ++++++++--
+ 1 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/include/hhtech_gpio.h b/arch/arm/mach-tcc8900/include/hhtech_gpio.h
+index c86e36a..f2921d6 100644
+--- a/arch/arm/mach-tcc8900/include/hhtech_gpio.h
++++ b/arch/arm/mach-tcc8900/include/hhtech_gpio.h
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 三, 19  8月 2009 11:28:12 +0800  by duanius #
++ * Last modified: 五, 04  9月 2009 15:16:01 +0800     by root #
+  ****************************************************************/
+ 
+ #ifndef __HHTECH_GPIO_H
+@@ -28,9 +28,15 @@
+ #define GPIO_SD_DETE				TCC_GPF13   /* SD insert detect, 0:inserted */
+ 
+ //USB
++#if defined(CONFIG_LCD_4)
+ #define GPIO_USB_EN			    	TCC_GPA12   /* USB Improving voltage Enable, 1:open 0:off */
+-#define GPIO_USB_HOSTPWR_EN			TCC_GPA15   /* USB Host drv Enable 1:open 0:off */
++#define GPIO_USB_HOSTPWR_EN			TCC_GPF25   /* USB Host drv Enable 1:open 0:off */
+ #define GPIO_USB_OTGDRV_EN			TCC_GPA15   /* USB otg drv Enable, 1:open 0:off */
++#else
++#define GPIO_USB_EN			    	TCC_GPA15   /* USB Improving voltage Enable, 1:open 0:off */
++#define GPIO_USB_HOSTPWR_EN			TCC_GPA2   /* USB Host drv Enable 1:open 0:off */
++#define GPIO_USB_OTGDRV_EN			TCC_GPA12   /* USB otg drv Enable, 1:open 0:off */
++#endif
+ 
+ //Headphone and Speaker
+ #define GPIO_HEADPHONE_S			TCC_GPD7    /* Headphone insert detect, 0:inserted */
+-- 
+1.6.3.3
+

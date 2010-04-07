@@ -1,0 +1,72 @@
+From 2e4e5b9b4b94a2de2d176030c50f4482354d11b6 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Wed, 20 Jan 2010 17:33:54 +0800
+Subject: [PATCH] Support lock lcd
+
+---
+ drivers/char/hhtech_gpio.c |   18 ++++++++++++++++++
+ drivers/video/tccfb.c      |    3 ++-
+ 2 files changed, 20 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 4f31a97..45f854d 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -749,6 +749,22 @@ static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribut
+ 	return len;
+ }
+ 
++int ts_en = 1;
++static ssize_t hhtech_sysfs_show_ts(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", ts_en);
++}
++
++static ssize_t hhtech_sysfs_store_ts(struct device *dev, struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++	ts_en = simple_strtoul(buf, NULL, 10);
++	if (ts_en == 1)
++		bl_control(1);
++	return len;
++}
++
+ int video_on = 0;
+ EXPORT_SYMBOL(video_on);
+ static ssize_t hhtech_sysfs_show_play_video(struct device *dev, struct device_attribute *attr, char *buf)
+@@ -1351,6 +1367,7 @@ static DEVICE_ATTR(hd_pwoff, 0666, hhtech_sysfs_show_hd, hhtech_sysfs_store_hd);
+ static DEVICE_ATTR(io_pwoff, 0666, hhtech_sysfs_show_io, hhtech_sysfs_store_io);
+ static DEVICE_ATTR(vpu_on, 0666, hhtech_sysfs_show_vpu_on, hhtech_sysfs_store_vpu_on);
+ static DEVICE_ATTR(lcd_on, 0666, hhtech_sysfs_show_lcd, hhtech_sysfs_store_lcd);
++static DEVICE_ATTR(ts_en, 0666, hhtech_sysfs_show_ts, hhtech_sysfs_store_ts);
+ static DEVICE_ATTR(play_video, 0666, hhtech_sysfs_show_play_video , hhtech_sysfs_store_play_video);
+ static DEVICE_ATTR(sleep_tp, 0666, hhtech_sysfs_show_sleep_type , hhtech_sysfs_store_sleep_type);
+ static DEVICE_ATTR(otg_mode, 0666, hhtech_sysfs_show_otgmode, hhtech_sysfs_store_otgmode);
+@@ -1390,6 +1407,7 @@ static struct attribute *attrs[] = {
+ 	&dev_attr_io_pwoff.attr,
+ 	&dev_attr_vpu_on.attr,
+ 	&dev_attr_lcd_on.attr,
++	&dev_attr_ts_en.attr,
+ 	&dev_attr_play_video.attr,
+ 	&dev_attr_sleep_tp.attr,
+ #if defined(CONFIG_LCD_7)
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index d4eb63f..6fb45a7 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -2466,9 +2466,10 @@ static int tccfb_setcolreg(unsigned regno,
+ static int tccfb_blank(int blank_mode, struct fb_info *info)
+ {
+ //	printk(KERN_EMERG"blank(mode=%d, info=%p)\n", blank_mode, info);
++	extern int ts_en;
+ 	switch (blank_mode) {
+ 		case VESA_NO_BLANKING:  /* lcd on, backlight on */
+-			if(0 == tvo_status())
++			if(0 == tvo_status() && ts_en == 1)
+ 			    bl_control(1);
+ 			break;
+ 		case VESA_VSYNC_SUSPEND: /* lcd on, backlight off */
+-- 
+1.6.3.3
+

@@ -1,0 +1,25 @@
+From ea2a48a4caf8c8c4ccc0714f852324e04429fb9f Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Mon, 19 Oct 2009 09:25:05 +0800
+Subject: [PATCH] Reduce i2c clock from 400->100
+
+---
+ arch/arm/mach-tcc8900/devices.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/devices.c b/arch/arm/mach-tcc8900/devices.c
+index 79c9032..04b7174 100644
+--- a/arch/arm/mach-tcc8900/devices.c
++++ b/arch/arm/mach-tcc8900/devices.c
+@@ -192,7 +192,7 @@ static struct resource tcc8900_i2c_resources[] = {
+     },
+ 	[1] = {
+ 		.start	= 100,					/* I2C ch0 100Kbps */
+-		.end	= 400,					/* I2C ch1 400Kbps */
++		.end	= 100,					/* I2C ch1 100Kbps */
+ 		.flags	= IORESOURCE_MEM,
+     },
+ //	[1] = {
+-- 
+1.6.3.3
+

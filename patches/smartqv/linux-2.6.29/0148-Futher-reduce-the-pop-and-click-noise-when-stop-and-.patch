@@ -1,0 +1,124 @@
+From ee32a5b234dcf559292f3d9d770b6c8e382082ae Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Thu, 28 Jan 2010 17:38:44 +0800
+Subject: [PATCH] Futher reduce the pop and click noise when stop and play again
+
+---
+ drivers/i2c/i2c-core.c    |   17 +----------------
+ sound/soc/codecs/wm8987.c |   39 ++++++++++++++++++++++++++++++++++++---
+ 2 files changed, 37 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/i2c/i2c-core.c b/drivers/i2c/i2c-core.c
+index c365057..5053947 100644
+--- a/drivers/i2c/i2c-core.c
++++ b/drivers/i2c/i2c-core.c
+@@ -35,7 +35,6 @@
+ #include <linux/hardirq.h>
+ #include <linux/irqflags.h>
+ #include <asm/uaccess.h>
+-#include <linux/delay.h>
+ 
+ #include "i2c-core.h"
+ 
+@@ -1086,21 +1085,7 @@ int i2c_master_send(struct i2c_client *client,const char *buf ,int count)
+ 	msg.flags |= (client->flags & I2C_M_DIBCOM_MODE);
+ 	msg.flags |= (client->flags & I2C_M_DIBCOM_WR_RD);
+ 
+-	/* don't enable DAC Left, DAC Right, LOUT2 Output Buffer and ROUT2 Output Buffer of
+-	   WM8987 (bit8, bit7, bit4 and bit3 of R26) separately, and delay 1000ms after enable
+-	   them together, this can minimum the pop and click noise */
+-	if(msg.addr == 0x1a) {
+-		if(buf[0] == 0x35 && (buf[1] & 0x1f8)) {
+-			if(buf[1] != 0xf8)   // don't enable them separately
+-				return count;
+-			else {	// enable them together
+-				ret = i2c_transfer(adap, &msg, 1);
+-				mdelay(1000);
+-			}
+-		} else
+-			ret = i2c_transfer(adap, &msg, 1);
+-	} else
+-		ret = i2c_transfer(adap, &msg, 1);
++	ret = i2c_transfer(adap, &msg, 1);
+ 
+ 	/* If everything went ok (i.e. 1 msg transmitted), return #bytes
+ 	   transmitted, else error code. */
+diff --git a/sound/soc/codecs/wm8987.c b/sound/soc/codecs/wm8987.c
+index ee4060a..77ebcf8 100755
+--- a/sound/soc/codecs/wm8987.c
++++ b/sound/soc/codecs/wm8987.c
+@@ -92,14 +92,39 @@ static int wm8987_write(struct snd_soc_codec *codec, unsigned int reg,
+ {
+ 	u8 data[2];
+ 
++	wm8987_write_reg_cache(codec, reg, value);
++
++	/* don't enable DAC Left, DAC Right, LOUT2 Output Buffer and ROUT2 Output Buffer of
++	   WM8987 (bit8, bit7, bit4 and bit3 of R26) separately, and don't disable DAC Left
++	   and DAC Right when wm8987 is bias on, this can minimum the pop and click noise */
++	if(reg == 0x1a) {
++		switch(value) {
++			case 0x000:
++			    /* when disable them all, if wm8987 is bias on, do nothing */
++			    if(wm8987_bias_on)
++				    return 0;
++			    else
++				    break;
++			case 0x1f8:
++			    /* if wm8987 is bias off, enable them together. or
++			     * do nothing */
++			    if(wm8987_bias_on)
++				    return 0;
++			    else
++				    break;
++			default:
++			    // don't enable them separately
++			    return 0;
++		}
++	}
++
+ 	/* data is
+-	 *   D15..D9 WM8753 register offset
++	 *   D15..D9 WM8987 register offset
+ 	 *   D8...D0 register data
+ 	 */
+ 	data[0] = (reg << 1) | ((value >> 8) & 0x0001);
+ 	data[1] = value & 0x00ff;
+ 
+-	wm8987_write_reg_cache(codec, reg, value);
+ 	if (codec->hw_write(codec->control_data, data, 2) == 2)
+ 		return 0;
+ 	else
+@@ -703,6 +728,9 @@ static void wm8987_delayed_bias_standby(struct work_struct* work)
+ 	if (p_codec == NULL)
+ 		return;
+ 	else {
++		/* disable DAC Left, DAC Right, LOUT2 Output Buffer and ROUT2 Output Buffer of
++		 * WM8987 (bit8, bit7, bit4 and bit3 of R26) together */
++		wm8987_write(p_codec, WM8987_PWR2, 0x0000);
+ 		/* mute dac and disable VREF, this results the minimum power consumption */
+ 		wm8987_write(p_codec, WM8987_PWR1, 0x0001);
+ 		wm8987_bias_on = 0;
+@@ -725,13 +753,18 @@ static int wm8987_set_bias_level(struct snd_soc_codec *codec,
+ 		    /* set vmid to 500k and unmute dac, this results the longest start-up time
+ 		     * and least pop and click noise */
+ 		    wm8987_write(codec, WM8987_PWR1, pwr_reg | 0x0140);
++		    mdelay(500);
++		    /* enable DAC Left, DAC Right, LOUT2 Output Buffer and ROUT2 Output Buffer of
++		     * WM8987 (bit8, bit7, bit4 and bit3 of R26) together */
++		    wm8987_write(codec, WM8987_PWR2, 0x01f8);
+ 		    wm8987_bias_on = 1;
+ 		}
+ 		break;
+ 	case SND_SOC_BIAS_STANDBY:
+-		schedule_delayed_work(&wm8987_bias_standby_work, msecs_to_jiffies(30000));
++		schedule_delayed_work(&wm8987_bias_standby_work, msecs_to_jiffies(300000)); // 5 minutes
+ 		break;
+ 	case SND_SOC_BIAS_OFF:
++		wm8987_bias_on = 0;
+ 		wm8987_write(codec, WM8987_PWR1, 0x0001);
+ 		break;
+ 	}
+-- 
+1.6.3.3
+

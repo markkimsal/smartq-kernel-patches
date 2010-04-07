@@ -1,0 +1,202 @@
+From 5fd4629c853738d5c9dd138816de979041f09dfe Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Tue, 1 Dec 2009 18:43:28 +0800
+Subject: [PATCH] Fix for wifi TODO: Still some pmachine fail to suspend
+
+---
+ drivers/mmc/host/tcc_sdhc.c |   58 ++++++++++++++++++++-----------------------
+ 1 files changed, 27 insertions(+), 31 deletions(-)
+
+diff --git a/drivers/mmc/host/tcc_sdhc.c b/drivers/mmc/host/tcc_sdhc.c
+index 1dde09b..5d2ebaa 100644
+--- a/drivers/mmc/host/tcc_sdhc.c
++++ b/drivers/mmc/host/tcc_sdhc.c
+@@ -299,7 +299,7 @@ static void tcc_mmc_finish_data(struct tcc_mmc_host *host)
+ 	} else {
+ 		tasklet_schedule(&host->finish_tasklet);
+ 	}
+-#endif	
++#endif
+ 	tasklet_schedule(&host->finish_tasklet);
+ }
+ 
+@@ -347,7 +347,7 @@ static void tcc_mmc_start_command(struct tcc_mmc_host *host, struct mmc_command
+ 		mdelay(1);
+ 	}
+ 
+-	mod_timer(&host->timer, jiffies + 10 * HZ);
++	mod_timer(&host->timer, jiffies + 2 * HZ);
+ 
+ 	host->cmd = cmd;    
+ 
+@@ -513,7 +513,7 @@ static void tcc_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
+ 	}
+ 
+ 	mmiowb();
+-	spin_unlock_irqrestore(&mmc->lock, flags);
++	spin_unlock_irqrestore(&host->lock, flags);
+ }
+ 
+ /* High speed mode threshold (Hz).
+@@ -528,11 +528,8 @@ static void tcc_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
+ static void tcc_hw_set_high_speed(struct mmc_host *mmc, int hs)
+ {
+ 	struct tcc_mmc_host *host = mmc_priv(mmc);
+-	unsigned long flags;
+ 	u8 host_ctrl = 0;
+ 
+-	spin_lock_irqsave(&mmc->lock, flags);
+-
+ 	host_ctrl= tcc_readw(host->iobase+TCCSDHC_HOST_CONTROL);
+ 	host_ctrl &= ~HwSD_POWER_HS;
+ 	
+@@ -541,8 +538,6 @@ static void tcc_hw_set_high_speed(struct mmc_host *mmc, int hs)
+ 	}
+ 	
+ 	tcc_writew(host_ctrl, host->iobase+TCCSDHC_HOST_CONTROL);
+-
+-	spin_unlock_irqrestore(&mmc->lock, flags);
+ }
+ 
+ static void tcc_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+@@ -588,9 +583,7 @@ static void tcc_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+ 	switch (ios->power_mode) {
+ 		case MMC_POWER_OFF:
+ 			//printk("-----------------------MMC_POWER_OFF\n");
+-			if (pwrinfo.status == PWR_STATUS_OFF) {
+-				deinit_mmc_host(host);
+-			}
++			deinit_mmc_host(host);
+ 			break;
+ 		case MMC_POWER_UP:
+ 			//printk("-----------------------MMC_POWER_UP\n");
+@@ -606,12 +599,12 @@ static void tcc_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+ 			//printk("\n/***********1 bit mode***************/ \n"); 
+ 			if (host->id == 0) {
+ 				pSDMMC_SLOT0->CONTL &= ~(HwSD_POWER_SD4 | HwSD_POWER_SD8);
+-				pSDMMC_SLOT0->CONTL |= HwSD_POWER_POW|(HwSD_POWER_VOL33);;
++				pSDMMC_SLOT0->CONTL |= HwSD_POWER_VOL33;
+ 
+ 				pSDMMC_SLOT0->CONTH &=~Hw19;                
+ 			} else if (host->id == 1) {
+ 				pSDMMC_SLOT1->CONTL &= ~(HwSD_POWER_SD4 | HwSD_POWER_SD8);
+-				pSDMMC_SLOT1->CONTL |= HwSD_POWER_POW|(HwSD_POWER_VOL33);;
++				pSDMMC_SLOT1->CONTL |= HwSD_POWER_VOL33;
+ 
+ 				pSDMMC_SLOT1->CONTH &=~Hw19;							
+ 			}
+@@ -620,11 +613,11 @@ static void tcc_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+ 			//printk("\n/***********4 bit mode***************/\n "); 
+ 			if (host->id == 0) {
+ 				pSDMMC_SLOT0->CONTL &= ~HwSD_POWER_SD8;
+-				pSDMMC_SLOT0->CONTL |= HwSD_POWER_POW|(HwSD_POWER_VOL33)|HwSD_POWER_SD4;
++				pSDMMC_SLOT0->CONTL |= (HwSD_POWER_VOL33 | HwSD_POWER_SD4);
+ 				pSDMMC_SLOT0->CONTH |=Hw19;
+ 			} else if (host->id == 1) {	
+ 				pSDMMC_SLOT1->CONTL &= ~HwSD_POWER_SD8;
+-				pSDMMC_SLOT1->CONTL |= HwSD_POWER_POW|(HwSD_POWER_VOL33)|HwSD_POWER_SD4;
++				pSDMMC_SLOT1->CONTL |= (HwSD_POWER_VOL33 | HwSD_POWER_SD4);
+ 				pSDMMC_SLOT1->CONTH |=Hw19;	
+ 			}
+ 			break;
+@@ -828,6 +821,7 @@ static irqreturn_t tcc_mmc_interrupt_handler(int irq, void *dev_id)
+ 		udelay(30); //XXX: SDIO lost response when WIFI in deepsleep
+ 	}
+ 
++
+ 	if (cardint) {
+ 		mmc_signal_sdio_irq(host->mmc);
+ 	}        
+@@ -928,7 +922,6 @@ static void init_mmc_host(struct tcc_mmc_host *host)
+ 		tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, SD0_ON, OUTPUT, ON, SET_DIRECTION|SET_VALUE);
+ 
+ 		/* iobus */
+-		//tca_ckc_set_iobus_swreset(RB_SDMMCCONTROLLER, OFF);
+ 		tca_ckc_set_iobus_swreset(RB_SDMMCCONTROLLER, ON);
+ 		tca_ckc_setiobus(RB_SDMMCCONTROLLER, ENABLE);
+ 
+@@ -960,7 +953,6 @@ static void init_mmc_host(struct tcc_mmc_host *host)
+ 		tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, SD1_ON, OUTPUT, ON, SET_DIRECTION|SET_VALUE);
+ 
+ 		/* iobus */
+-		//tca_ckc_set_iobus_swreset(RB_SDMMCCONTROLLER, OFF);
+ 		tca_ckc_set_iobus_swreset(RB_SDMMCCONTROLLER, ON);
+ 		tca_ckc_setiobus(RB_SDMMCCONTROLLER, ENABLE);
+ 
+@@ -977,8 +969,8 @@ static void init_mmc_host(struct tcc_mmc_host *host)
+ 		BITCSET(pSDMMC_SLOT1->TIME, 0x00FF, 0x0E);
+ 
+ 		BITCSET(HwGPIOB->GPFN0, Hw16-Hw0, HwPORTCFG_GPFN3(2)|HwPORTCFG_GPFN2(2)
+-										|HwPORTCFG_GPFN1(2)|HwPORTCFG_GPFN0(2));	/* GPIOB[3:0] - SD1_D[0:3] */
+-		BITCSET(HwGPIOB->GPFN1, Hw24-Hw16, HwPORTCFG_GPFN5(2)|HwPORTCFG_GPFN4(2));	/* GPIOB[14:12] - SD1_CMD, SD1_CLK, SD1_WP */
++						| HwPORTCFG_GPFN1(2)|HwPORTCFG_GPFN0(2));	/* GPIOB[3:0] - SD1_D[0:3] */
++		BITCSET(HwGPIOB->GPFN1, Hw20-Hw16, HwPORTCFG_GPFN5(2)|HwPORTCFG_GPFN4(2));	/* GPIOB[13:12] - SD1_CMD, SD1_CLK*/
+ 		BITCSET(HwGPIOB->GPCD0, 0x0F0000FF, 0x3F0000FF);							/* driver strength */
+ 
+ 		pSDMMC_SLOT1->CONTL &= ~(HwSD_POWER_SD4 | HwSD_POWER_SD8);
+@@ -992,26 +984,29 @@ static void deinit_mmc_host(struct tcc_mmc_host *host)
+ 		/* clock */
+ 		tca_ckc_setperi(PERI_SDMMC0, DISABLE, 480000, PCDIRECTPLL3);
+ 
+-		/* iobus */
+-		tca_ckc_set_iobus_swreset(RB_SDMMCCONTROLLER, OFF);
+-		tca_ckc_setiobus(RB_SDMMCCONTROLLER, DISABLE);
+-
+ 		/* power */
+ 		tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, SD0_ON, OUTPUT, LOW, SET_DIRECTION|SET_VALUE);
+ 
+ 		/* slot0 port2 - GPIO mode */
+ 		BITCLR(HwGPIOE->GPFN1, Hw32-Hw16);	/* GPIOE[15:12] */
+ 		BITCLR(HwGPIOE->GPFN2, Hw24-Hw16);	/* GPIOE[21:20] */
+-		BITCLR(HwGPIOA->GPFN0, Hw28-Hw24);	/* GPIOA[6]     */
+ 		/* output mode */
+ 		BITSET(HwGPIOE->GPEN, Hw21|Hw20|Hw15|Hw14|Hw13|Hw12);
+-		BITSET(HwGPIOA->GPEN, Hw6);
+ 
+ 		/* SD Bus Power */
+ 		BITCLR(pSDMMC_SLOT0->CONTL, HwSD_POWER_POW);
+-
+ 	} else if (host->id == 1) {
+-		//TODO:
++		/* clock */
++		tca_ckc_setperi(PERI_SDMMC1, DISABLE, 480000, PCDIRECTPLL3);
++
++		/* power */
++		tcc_pca953x_setup(PCA9539_U3_SLAVE_ADDR, SD1_ON, OUTPUT, LOW, SET_DIRECTION|SET_VALUE);
++
++		BITCLR(HwGPIOB->GPFN0, Hw16-Hw0);
++		BITCLR(HwGPIOB->GPFN1, Hw20-Hw16);
++		BITSET(HwGPIOB->GPEN, Hw13|Hw12|Hw3|Hw2|Hw1|Hw0);
++		/* SD Bus Power */
++		BITCLR(pSDMMC_SLOT1->CONTL, HwSD_POWER_POW);
+ 	}
+ }
+ 
+@@ -1159,7 +1154,7 @@ static int __init tcc_mmc_probe(struct platform_device *pdev)
+ 	pPIC->MODE1 	|= HwINT1_SD0 << host->id;	// Level trigger
+ 
+ 	snprintf(host->slot_desc, 16, "tcc-sdhc%d", host->id);
+-	ret = request_irq(host->irq, tcc_mmc_interrupt_handler, IRQF_DISABLED, host->slot_desc, host);
++	ret = request_irq(host->irq, tcc_mmc_interrupt_handler, IRQF_SHARED, host->slot_desc, host);
+ 	if (ret)
+ 		goto error;
+ 
+@@ -1191,11 +1186,12 @@ static int tcc_mmc_remove(struct platform_device *pdev)
+ 		struct tcc_mmc_host *host = mmc_priv(mmc);
+ 
+ 		mmc_remove_host(mmc);
+-		del_timer(&host->timer);
++		tcc_sw_reset(host, HwSD_SRESET_RSTALL);
++		free_irq(host->irq, host);
++		del_timer_sync(&host->detect_timer);
+ 		del_timer_sync(&host->timer);        
+-		mmc_free_host(mmc);
+-
+ 		tasklet_kill(&host->finish_tasklet);
++		mmc_free_host(mmc);
+ 	}
+ 
+ 	return 0;
+-- 
+1.6.3.3
+

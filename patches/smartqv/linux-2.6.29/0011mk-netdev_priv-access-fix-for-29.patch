@@ -1,0 +1,452 @@
+Index: linux-2.6.29/drivers/net/wireless/marvell8686/wlan_proc.c
+===================================================================
+--- linux-2.6.29.orig/drivers/net/wireless/marvell8686/wlan_proc.c	2010-04-07 13:16:25.000000000 -0400
++++ linux-2.6.29/drivers/net/wireless/marvell8686/wlan_proc.c	2010-04-07 13:17:35.000000000 -0400
+@@ -51,7 +51,7 @@
+     struct net_device *netdev = data;
+     struct dev_mc_list *mcptr = netdev->mc_list;
+     char fmt[64];
+-    wlan_private *priv = netdev->priv;
++    wlan_private *priv = netdev_priv(netdev);
+     wlan_adapter *Adapter = priv->adapter;
+     ulong flags;
+ 
+Index: linux-2.6.29/drivers/net/wireless/marvell8686/wlan_main.c
+===================================================================
+--- linux-2.6.29.orig/drivers/net/wireless/marvell8686/wlan_main.c	2010-04-07 13:18:41.000000000 -0400
++++ linux-2.6.29/drivers/net/wireless/marvell8686/wlan_main.c	2010-04-07 13:18:51.000000000 -0400
+@@ -246,7 +246,7 @@
+ static int
+ wlan_open(struct net_device *dev)
+ {
+-    wlan_private *priv = (wlan_private *) dev->priv;
++    wlan_private *priv = (wlan_private *) netdev_priv(dev);
+     wlan_adapter *adapter = priv->adapter;
+ 
+     ENTER();
+@@ -278,7 +278,7 @@
+ static int
+ wlan_close(struct net_device *dev)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+ 
+     ENTER();
+ 
+@@ -500,7 +500,7 @@
+ wlan_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
+ {
+     int ret;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+ 
+     ret = WLAN_STATUS_SUCCESS;
+ 
+@@ -527,7 +527,7 @@
+ static void
+ wlan_tx_timeout(struct net_device *dev)
+ {
+-    wlan_private *priv = (wlan_private *) dev->priv;
++    wlan_private *priv = (wlan_private *) netdev_priv(dev);
+ 
+     ENTER();
+ 
+@@ -551,7 +551,7 @@
+ static struct net_device_stats *
+ wlan_get_stats(struct net_device *dev)
+ {
+-    wlan_private *priv = (wlan_private *) dev->priv;
++    wlan_private *priv = (wlan_private *) netdev_priv(dev);
+ 
+     return &priv->stats;
+ }
+@@ -567,7 +567,7 @@
+ wlan_set_mac_address(struct net_device *dev, void *addr)
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = (wlan_private *) dev->priv;
++    wlan_private *priv = (wlan_private *) netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     struct sockaddr *pHwAddr = (struct sockaddr *) addr;
+ 
+@@ -608,7 +608,7 @@
+ static void
+ wlan_set_multicast_list(struct net_device *dev)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int OldPacketFilter;
+     int ret = WLAN_STATUS_SUCCESS;
+@@ -920,7 +920,7 @@
+         return NULL;
+     }
+ 
+-    priv = dev->priv;
++    priv = netdev_priv(dev);
+ 
+     /* allocate buffer for wlan_adapter */
+     if (!(priv->adapter = kmalloc(sizeof(wlan_adapter), GFP_KERNEL))) {
+@@ -1299,7 +1299,7 @@
+ void
+ wlan_interrupt(struct net_device *dev)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+ 
+     priv->adapter->IntCounter++;
+ 
+Index: linux-2.6.29/drivers/net/wireless/marvell8686/wlan_join.c
+===================================================================
+--- linux-2.6.29.orig/drivers/net/wireless/marvell8686/wlan_join.c	2010-04-07 13:19:33.000000000 -0400
++++ linux-2.6.29/drivers/net/wireless/marvell8686/wlan_join.c	2010-04-07 13:19:42.000000000 -0400
+@@ -258,7 +258,7 @@
+ wlan_set_essid(struct net_device *dev, struct iw_request_info *info,
+                struct iw_point *dwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int ret = WLAN_STATUS_SUCCESS;
+     WLAN_802_11_SSID reqSSID;
+@@ -437,7 +437,7 @@
+ wlan_set_wap(struct net_device *dev, struct iw_request_info *info,
+              struct sockaddr *awrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int ret = WLAN_STATUS_SUCCESS;
+     const u8 bcast[ETH_ALEN] = { 255, 255, 255, 255, 255, 255 };
+Index: linux-2.6.29/drivers/net/wireless/marvell8686/wlan_scan.c
+===================================================================
+--- linux-2.6.29.orig/drivers/net/wireless/marvell8686/wlan_scan.c	2010-04-07 13:20:38.000000000 -0400
++++ linux-2.6.29/drivers/net/wireless/marvell8686/wlan_scan.c	2010-04-07 13:20:51.000000000 -0400
+@@ -1809,7 +1809,7 @@
+ wlan_set_scan(struct net_device *dev, struct iw_request_info *info,
+               struct iw_param *vwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     union iwreq_data wrqu;
+ #if WIRELESS_EXT >= 18
+@@ -1948,7 +1948,7 @@
+ wlan_get_scan(struct net_device *dev, struct iw_request_info *info,
+               struct iw_point *dwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int ret = WLAN_STATUS_SUCCESS;
+     char *current_ev = extra;
+Index: linux-2.6.29/drivers/net/wireless/marvell8686/wlan_wext.c
+===================================================================
+--- linux-2.6.29.orig/drivers/net/wireless/marvell8686/wlan_wext.c	2010-04-07 13:20:41.000000000 -0400
++++ linux-2.6.29/drivers/net/wireless/marvell8686/wlan_wext.c	2010-04-07 13:20:58.000000000 -0400
+@@ -671,7 +671,7 @@
+                     struct iw_point *dwrq, char *extra)
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     WLAN_802_11_KEY *pKey;
+ 
+     ENTER();
+@@ -732,7 +732,7 @@
+                        struct iw_point *dwrq, char *extra)
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     MRVL_WEP_KEY *pWep;
+     int index, PrevAuthMode;
+@@ -1833,7 +1833,7 @@
+ wlan_get_freq(struct net_device *dev, struct iw_request_info *info,
+               struct iw_freq *fwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     CHANNEL_FREQ_POWER *cfp;
+ 
+@@ -1878,7 +1878,7 @@
+ wlan_get_wap(struct net_device *dev, struct iw_request_info *info,
+              struct sockaddr *awrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+ 
+     ENTER();
+@@ -1908,7 +1908,7 @@
+ wlan_set_nick(struct net_device *dev, struct iw_request_info *info,
+               struct iw_point *dwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+ 
+     ENTER();
+@@ -1941,7 +1941,7 @@
+ wlan_get_nick(struct net_device *dev, struct iw_request_info *info,
+               struct iw_point *dwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+ 
+     ENTER();
+@@ -1985,7 +1985,7 @@
+              struct iw_param *vwrq, char *extra)
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int rthr = vwrq->value;
+ 
+@@ -2026,7 +2026,7 @@
+              struct iw_param *vwrq, char *extra)
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+ 
+     ENTER();
+@@ -2069,7 +2069,7 @@
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+     int fthr = vwrq->value;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+ 
+     ENTER();
+@@ -2108,7 +2108,7 @@
+               struct iw_param *vwrq, char *extra)
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+ 
+     ENTER();
+@@ -2150,7 +2150,7 @@
+ wlan_get_mode(struct net_device *dev,
+               struct iw_request_info *info, u32 * uwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *adapter = priv->adapter;
+ 
+     ENTER();
+@@ -2189,7 +2189,7 @@
+                 struct iw_point *dwrq, u8 * extra)
+ {
+ 
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *adapter = priv->adapter;
+     int index = (dwrq->flags & IW_ENCODE_INDEX);
+ 
+@@ -2302,7 +2302,7 @@
+                struct iw_param *vwrq, char *extra)
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+ 
+     ENTER();
+@@ -2350,7 +2350,7 @@
+                struct iw_param *vwrq, char *extra)
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *adapter = priv->adapter;
+ 
+     ENTER();
+@@ -2401,7 +2401,7 @@
+ wlan_get_retry(struct net_device *dev, struct iw_request_info *info,
+                struct iw_param *vwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int ret = WLAN_STATUS_SUCCESS;
+ 
+@@ -2484,7 +2484,7 @@
+                struct iw_point *dwrq, char *extra)
+ {
+     int i, j;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     struct iw_range *range = (struct iw_range *) extra;
+     CHANNEL_FREQ_POWER *cfp;
+@@ -2653,7 +2653,7 @@
+ wlan_set_power(struct net_device *dev, struct iw_request_info *info,
+                struct iw_param *vwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+ 
+     ENTER();
+@@ -2711,7 +2711,7 @@
+ wlan_get_power(struct net_device *dev, struct iw_request_info *info,
+                struct iw_param *vwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int mode;
+ 
+@@ -2929,7 +2929,7 @@
+                 struct iw_request_info *info,
+                 struct iw_point *dwrq, char *extra)
+ {
+-    return wlan_set_gen_ie_helper(dev->priv, dwrq->pointer, dwrq->length);
++    return wlan_set_gen_ie_helper(netdev_priv(dev), dwrq->pointer, dwrq->length);
+ }
+ 
+ /** 
+@@ -2949,7 +2949,7 @@
+                 struct iw_request_info *info,
+                 struct iw_point *dwrq, char *extra)
+ {
+-    return wlan_get_gen_ie_helper(dev->priv, dwrq->pointer, &dwrq->length);
++    return wlan_get_gen_ie_helper(netdev_priv(dev), dwrq->pointer, &dwrq->length);
+ }
+ 
+ /** 
+@@ -2999,7 +2999,7 @@
+ wlan_set_auth(struct net_device *dev, struct iw_request_info *info,
+               struct iw_param *vwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     if (!Is_Command_Allowed(priv)) {
+         PRINTM(MSG, "%s: not allowed\n", __FUNCTION__);
+         return -EBUSY;
+@@ -3051,7 +3051,7 @@
+ wlan_get_auth(struct net_device *dev, struct iw_request_info *info,
+               struct iw_param *vwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int ret = WLAN_STATUS_SUCCESS;
+     ENTER();
+@@ -3119,7 +3119,7 @@
+               struct iw_point *dwrq, char *extra)
+ {
+     struct iw_mlme *mlme = (struct iw_mlme *) extra;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     if (!Is_Command_Allowed(priv)) {
+         PRINTM(MSG, "%s: not allowed\n", __FUNCTION__);
+@@ -3153,7 +3153,7 @@
+                     struct iw_point *dwrq, char *extra)
+ {
+     struct iw_encode_ext *ext = (struct iw_encode_ext *) extra;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     WLAN_802_11_KEY *pkey;
+     int keyindex;
+     u8 *pKeyMaterial = NULL;
+@@ -4011,7 +4011,7 @@
+     u8 *tempResponseBuffer;
+     CmdCtrlNode *pCmdNode;
+     HostCmd_DS_GEN *pCmdPtr;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     u16 wait_option = 0;
+     struct iwreq *wrq = (struct iwreq *) req;
+@@ -4112,7 +4112,7 @@
+ static int
+ wlan_arpfilter_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     struct iwreq *wrq = (struct iwreq *) req;
+     wlan_adapter *Adapter = priv->adapter;
+     MrvlIEtypesHeader_t hdr;
+@@ -6510,7 +6510,7 @@
+     int idata = 0;
+     int *pdata;
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     struct iwreq *wrq = (struct iwreq *) req;
+ 
+@@ -7313,7 +7313,7 @@
+         EXCELLENT = 95,
+         PERFECT = 100
+     };
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int ret = WLAN_STATUS_SUCCESS;
+     u8 rssi;
+@@ -7452,7 +7452,7 @@
+               struct iw_freq *fwrq, char *extra)
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int rc = -EINPROGRESS;      /* Call commit handler */
+     CHANNEL_FREQ_POWER *cfp;
+@@ -7643,7 +7643,7 @@
+ wlan_set_rate(struct net_device *dev, struct iw_request_info *info,
+               struct iw_param *vwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     u32 data_rate;
+     int ret = WLAN_STATUS_SUCCESS;
+@@ -7719,7 +7719,7 @@
+ wlan_get_rate(struct net_device *dev, struct iw_request_info *info,
+               struct iw_param *vwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int ret = WLAN_STATUS_SUCCESS;
+ 
+@@ -7764,7 +7764,7 @@
+               struct iw_request_info *info, u32 * uwrq, char *extra)
+ {
+     int ret = WLAN_STATUS_SUCCESS;
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+ 
+     WLAN_802_11_NETWORK_INFRASTRUCTURE WantedMode;
+@@ -7905,7 +7905,7 @@
+ wlan_set_txpow(struct net_device *dev, struct iw_request_info *info,
+                struct iw_param *vwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int ret = WLAN_STATUS_SUCCESS;
+ 
+@@ -7969,7 +7969,7 @@
+ wlan_get_essid(struct net_device *dev, struct iw_request_info *info,
+                struct iw_point *dwrq, char *extra)
+ {
+-    wlan_private *priv = dev->priv;
++    wlan_private *priv = netdev_priv(dev);
+     wlan_adapter *Adapter = priv->adapter;
+     int tblIdx = -1;
+     BSSDescriptor_t *pBSSDesc;

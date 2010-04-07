@@ -1,0 +1,45 @@
+From 31df2082b1d525f84d7fb0e3c7c14cc9601a206f Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Tue, 20 Oct 2009 16:17:59 +0800
+Subject: [PATCH]  fix the bug of hdmi output without sound
+
+---
+ drivers/char/hhtech_gpio.c |    8 ++++----
+ 1 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 6149a6d..e3eaeca 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -277,8 +277,8 @@ static void shutdown_unused_devices(void)
+ 	    *(volatile unsigned long *)(0xf0532024 + 0x100 * i) = reg_val & ~3;
+ 	}
+ 
+-	*(volatile unsigned long *)0xF053B004 = 0x0;
+-	*(volatile unsigned long *)0xF0510000 = 0x0;
++	*(volatile unsigned long *)0xF053B004 = 0x0;//tsif off
++	*(volatile unsigned long *)0xF0510000 = 0x0;//mpefec off
+ 	*(volatile unsigned long *)0xF0240004 |= 0x80;//shut down clk of TV-OUT
+ 
+ 	*(volatile unsigned long *)0xF0251030 = 0x47;//shut down power of CIF,VIQE,LCDC0,MSCL1
+@@ -286,7 +286,7 @@ static void shutdown_unused_devices(void)
+ 	//below is stop the peri clock
+ 	for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++)
+ 	{
+-	    if((i == 0)||(i == 1)||(i == 3)||(i == 4)||(i == 7)||(i == 8)||(i == 11)||(i == 23)||(i == 24)||(i == 26)||(i == 27)||(i == 31))
++	    if((i == 0)||(i == 1)||(i == 3)||(i == 4)||(i == 7)||(i == 8)||(i == 11)||(i == 23)||(i == 24)||(i == 25)||(i == 26)||(i == 27)||(i == 31))
+ 		continue;
+ 	    tca_ckc_setiobus(i,0);
+ 	}
+@@ -296,7 +296,7 @@ static void shutdown_unused_devices(void)
+ 	for(i = 0;i < 35; i++)
+ 	{
+ 	    addr = 0x8c + i * 4;
+-	    if((addr == 0x90)||(addr == 0x94)||(addr == 0xa8)||(addr == 0xac)||(addr == 0xb0)||(addr == 0xb8)||(addr == 0xbc)||(addr == 0xfc)||(addr == 0xec)||(addr == 0x104)||(addr == 0x108)||(addr == 0x10c)||(addr == 0x110))
++	    if((addr == 0x90)||(addr == 0x94)||(addr == 0xa8)||(addr == 0xac)||(addr == 0xb0)||(addr == 0xb8)||(addr == 0xbc)||(addr == 0xf0)||(addr == 0xfc)||(addr == 0xec)||(addr == 0x104)||(addr == 0x108)||(addr == 0x10c)||(addr == 0x110))
+ 		continue;
+ 	    *(volatile unsigned long *)(0xf040008c + i*4) &= ~(0x0f000000);
+ 	    *(volatile unsigned long *)(0xf040008c + i*4) |= 0x0e000000;
+-- 
+1.6.3.3
+

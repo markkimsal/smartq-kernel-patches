@@ -1,0 +1,31 @@
+From 11dd2071e83e99dd8afa1841b90a023d5473c52a Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Wed, 4 Nov 2009 15:07:14 +0800
+Subject: [PATCH] Fix tvo_status=0 when hdmi out
+
+---
+ drivers/video/tccfb.c |    8 +++++++-
+ 1 files changed, 7 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index c7f9937..ec05b2a 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -1224,7 +1224,13 @@ unsigned int tvo_cleanup(void)
+ }
+ unsigned int tvo_status(void)
+ {
+-	return gTvoStatus;
++ 	/*
++	return 1 when:
++ 	1. gTvoStatus = 1
++ 	2. HDMI_EN = 1 && LCD_EN = 0
++	*/
++	return gTvoStatus | (gpio_get_value(GPIO_HDMI_EN) 
++	 & (gpio_get_value(GPIO_LCD_PWR_EN) == 0));
+ }
+ void tvo_powerup(void)
+ {
+-- 
+1.6.3.3
+

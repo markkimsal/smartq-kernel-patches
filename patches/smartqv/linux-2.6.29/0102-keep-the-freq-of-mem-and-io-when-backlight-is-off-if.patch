@@ -1,0 +1,88 @@
+From 34ffbf49cfd1cc451ad5f1c593c757e7fde598e5 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Tue, 24 Nov 2009 16:27:29 +0800
+Subject: [PATCH] keep the freq of mem and io when backlight is off if otg device connection be detected
+
+---
+ drivers/char/tcc_backlight.c |   34 ++++++++++++++++------------------
+ 1 files changed, 16 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/char/tcc_backlight.c b/drivers/char/tcc_backlight.c
+index ede686b..f59de6c 100644
+--- a/drivers/char/tcc_backlight.c
++++ b/drivers/char/tcc_backlight.c
+@@ -197,15 +197,17 @@ static int bl_count = 3;//not use turn-off ddi_bus way until finish the init
+ static int freq_change = 0;
+ void bl_control(bool flag)
+ {
++	int device_conn;
++
+ 	PTIMER vTimerAddr = (PTIMER)((unsigned int)&HwTMR_BASE);
+ 	PGPIO vGpioAddr = (PGPIO)((unsigned int)&HwGPIO_BASE);
+ 
+ 	if(bl_count)
+-	    bl_count--;
++		bl_count--;
+ 
+ 	if (flag) {
+ 		if(ddi_off_mode)
+-		    *(volatile unsigned long *)0xF0204000 |= 0x1;
++			*(volatile unsigned long *)0xF0204000 |= 0x1;
+ 
+ 		noneed_respond = 0;
+ 		ddi_off_mode = 0;
+@@ -213,13 +215,10 @@ void bl_control(bool flag)
+ 		
+ 		if(freq_change)
+ 		{
+-		    if(!bl_count)
+-		    {
+-			memchange(3300000);
++			memchange(3300000);// change mem bus to 330m
+ 			mdelay(50);
+-		    }
+ 
+-		*(volatile unsigned long *)0xF0400010 = 0x200022;//change io bus to 156M 
++			*(volatile unsigned long *)0xF0400010 = 0x200022;//change io bus to 156M 
+ 		}
+ 
+ 		freq_change = 0;
+@@ -232,25 +231,24 @@ void bl_control(bool flag)
+ 		tca_bkl_powerdown((unsigned int)vTimerAddr,(unsigned int)vGpioAddr);
+ 		gBKLPwrInfo.status = PWR_STATUS_OFF;
+ 
+-		if((!gpio_get_value(GPIO_HDMI_EN))&&(!gpio_get_value(GPIO_TVOUT_EN)))
++		device_conn = ((0x90000 & *(volatile unsigned long *)0xF0550000) == 0x90000);//check if has a otg-device connection
++
++		if(!device_conn && !unlikely(bl_count) && !gpio_get_value(GPIO_HDMI_EN) && !gpio_get_value(GPIO_TVOUT_EN))
+ 		{
+-		    *(volatile unsigned long *)0xF0400010 = 0x2000b2;//change io bus to 40M  
++			*(volatile unsigned long *)0xF0400010 = 0x2000b2;//change io bus to 40M  
+ 
+-		    if(!bl_count)
+-		    {
+-			 mdelay(1);
+-			memchange(1250000);
++			mdelay(1);
++			memchange(1250000);//change mem bus to 125m
+ 			mdelay(50);
+-		    }
+-		    freq_change = 1;
+-		}
++			freq_change = 1;
++		} 
+ 
+ 		gpio_direction_output(GPIO_LCD_PWR_EN, 0);
+ 
+ 		if((!bl_count)&&(!video_on)&&(!gpio_get_value(GPIO_HDMI_EN))&&(!gpio_get_value(GPIO_TVOUT_EN)))
+ 		{
+-		    ddi_off_mode = 1;
+-		    *(volatile unsigned long *)0xF0204000 &= ~(0x1);
++			ddi_off_mode = 1;
++			*(volatile unsigned long *)0xF0204000 &= ~(0x1);
+ 		}
+ 	}
+ }
+-- 
+1.6.3.3
+

@@ -1,0 +1,80 @@
+From 32da6b9c8069999a81e826a26944ed1e163cc482 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Mon, 17 Aug 2009 14:45:00 +0800
+Subject: [PATCH] Solve the collision of nand flash and wifi driver
+
+---
+ drivers/block/tcc/nand_io_v6.c |   23 +++++------------------
+ drivers/block/tcc/nand_io_v7.c |   21 ++++-----------------
+ 2 files changed, 9 insertions(+), 35 deletions(-)
+
+diff --git a/drivers/block/tcc/nand_io_v6.c b/drivers/block/tcc/nand_io_v6.c
+index 7b2f2db..f6f8be0 100644
+--- a/drivers/block/tcc/nand_io_v6.c
++++ b/drivers/block/tcc/nand_io_v6.c
+@@ -1604,24 +1604,11 @@ void NAND_IO_Init( void )
+ 			//pEDI->EDI_CSNCFG0	= 0x00403265;
+ 			BITCSET(pEDI->EDI_CSNCFG0, 0xFFFF, 0x8765 );
+ 			
+-			#ifdef NAND_8BIT_ONLY
+-			pGPIO->GPBFN0 		= 0x11110000;	//NANDXD[7:4]
+-			pGPIO->GPBFN1		= 0x00001111;	//NANDXD[3:0]
+-			#else
+-			pGPIO->GPBFN0 		= 0x11111111;	//NANDXD[11:8],[7:4]
+-			pGPIO->GPBFN1 		= 0x11111111;	//NANDXD[15:12],[3:0]
+-			#endif
+-			pGPIO->GPBFN2 		= 0x11111111;	//{CSN0,XA2,XA1,XA0,OEN1,OEN0,WEN1,WEN0}
+-			pGPIO->GPBFN3 		= 0x01011111;  	//{GPIOB[31],CSN1,RDY1,RDY0,XX,XX,XX,XX}
+-
+-			//=================================================
+-			// NAND Write Portect Pin Set
+-			//=================================================
+-			#if defined(TCC89_92_BOARD)
+-			pGPIO->GPBFN3 &= ~0x10000000;		// ND_WP: GPIO_B31
+-			#else	// TCC9200S_BOARD
+-			pGPIO->GPBFN2 &= ~0x01000000;		// ND_WP: GPIO_B22
+-			#endif
++			pGPIO->GPBFN0 		= 0x11112222;	//NANDXD[7:4]
++			pGPIO->GPBFN1		= 0x00221111;	//NANDXD[3:0]
++			pGPIO->GPBFN2 		= 0x10111010;	//{CSN0,XA2,XA1,XA0,OEN1,OEN0,WEN1,WEN0}
++			pGPIO->GPBFN3 		= 0x00010111;  //{GPIOB[31],CSN1,RDY1,RDY0,XX,XX,XX,XX}
++
+ 			// Write Protect Pin: Output Mode
+ 			BITSET( pGPIO->GPBEN, NAND_IO_NFC_nWPBit );
+ 			
+diff --git a/drivers/block/tcc/nand_io_v7.c b/drivers/block/tcc/nand_io_v7.c
+index 46c6713..d701c2b 100644
+--- a/drivers/block/tcc/nand_io_v7.c
++++ b/drivers/block/tcc/nand_io_v7.c
+@@ -1611,24 +1611,11 @@ void NAND_IO_Init( void )
+ 			//pEDI->EDI_CSNCFG0	= 0x00403265;
+ 			BITCSET(pEDI->EDI_CSNCFG0, 0xFFFF, 0x8765 );
+ 			
+-			#ifdef NAND_8BIT_ONLY
+-			pGPIO->GPBFN0 		= 0x11110000;	//NANDXD[7:4]
+-			pGPIO->GPBFN1		= 0x00001111;	//NANDXD[3:0]
+-			#else
+-			pGPIO->GPBFN0 		= 0x11111111;	//NANDXD[11:8],[7:4]
+-			pGPIO->GPBFN1 		= 0x11111111;	//NANDXD[15:12],[3:0]
+-			#endif
+-			pGPIO->GPBFN2 		= 0x11111111;	//{CSN0,XA2,XA1,XA0,OEN1,OEN0,WEN1,WEN0}
+-			pGPIO->GPBFN3 		= 0x01011111;  	//{GPIOB[31],CSN1,RDY1,RDY0,XX,XX,XX,XX}
++			pGPIO->GPBFN0 		= 0x11112222;	//NANDXD[7:4]
++			pGPIO->GPBFN1		= 0x00221111;	//NANDXD[3:0]
++			pGPIO->GPBFN2 		= 0x10111010;	//{CSN0,XA2,XA1,XA0,OEN1,OEN0,WEN1,WEN0}
++			pGPIO->GPBFN3 		= 0x00010111;  //{GPIOB[31],CSN1,RDY1,RDY0,XX,XX,XX,XX}
+ 
+-			//=================================================
+-			// NAND Write Portect Pin Set
+-			//=================================================
+-			#if defined(TCC89_92_BOARD)
+-			pGPIO->GPBFN3 &= ~0x10000000;		// ND_WP: GPIO_B31
+-			#else	// TCC9200S_BOARD
+-			pGPIO->GPBFN2 &= ~0x01000000;		// ND_WP: GPIO_B22
+-			#endif
+ 			// Write Protect Pin: Output Mode
+ 			BITSET( pGPIO->GPBEN, NAND_IO_NFC_nWPBit );
+ 
+-- 
+1.6.3.3
+

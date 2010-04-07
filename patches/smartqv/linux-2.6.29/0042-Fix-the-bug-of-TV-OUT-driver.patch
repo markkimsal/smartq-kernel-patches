@@ -1,0 +1,105 @@
+From 09ecbc069a3bd7a1c88cd642c031f39e4072f905 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Thu, 17 Sep 2009 16:17:33 +0800
+Subject: [PATCH] Fix the bug of TV-OUT driver
+
+---
+ drivers/video/tca_tvout.c |   29 ++++++++++++++---------------
+ 1 files changed, 14 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/video/tca_tvout.c b/drivers/video/tca_tvout.c
+index 4966d35..183bd48 100644
+--- a/drivers/video/tca_tvout.c
++++ b/drivers/video/tca_tvout.c
+@@ -31,6 +31,8 @@
+ #endif
+ 
+ #include "tca_tvout.h"
++#include <hhtech_gpio.h>
++#include <mach/gpio.h>
+ 
+ /*****************************************************************************
+ *
+@@ -595,12 +597,11 @@ void tca_tvo_setlcd2tv(unsigned int type)
+ 	pLCDC = pLCDC_BASE[gTvoutLcdcId];
+ 	
+ 
+-{
+-	PGPIO	pGPIO 	= (GPIO *)tcc_allocbaseaddress((unsigned int)&HwGPIO_BASE);
+-	BITCLR(pGPIO->GPCDAT, Hw28);	//	LCD_DISP Off
+-}
++	// LCD_DISP Off
++	gpio_direction_output(GPIO_LCD_PWR_EN, 0);
+ 
+ 	//todo: Backlight off
++	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 0);
+ 	
+ 	pLCDC->LCTRL &= (~Hw0); 	// LCDC Disable
+ 
+@@ -677,10 +678,10 @@ void tca_tvo_setlcd2tv(unsigned int type)
+ 		case	PAL_M:
+ 		case	NTSC_443:
+ 		case	PSEUDO_PAL:
+-				TV_HSIZE = 720; TV_VSIZE = 486;
++				TV_HSIZE = 720; TV_VSIZE = 480;
+ 				TV_HPW	 = 212; TV_HBP	 =	32; TV_HFP	 =	32;
+-				TV_VPW0  =	 6; TV_VBP0  =	28; TV_VFP0  =	 5;
+-				TV_VPW1  =	 6; TV_VBP1  =	29; TV_VFP1  =	 4;
++				TV_VPW0  =	 1; TV_VBP0  =	37; TV_VFP0  =	 7;
++				TV_VPW1  =	 1; TV_VBP1  =	38; TV_VFP1  =	 6;
+ 
+ 				pLCDC->LHTIME1 = ((TV_HPW-1)  << 16) | ((TV_HSIZE*2) - 1);
+ 				pLCDC->LHTIME2 = ((TV_HBP-1)  << 16) | (TV_HFP-1);
+@@ -746,7 +747,7 @@ void tca_tvo_setlcd2tv(unsigned int type)
+ 			{
+ 				IMGx_POSY[0] = (TV_VSIZE - IMGx_VSIZE[0]) >> 2;
+ 			}
+-			
++
+ 			pLCDC->LI0P = ((IMGx_POSY[0]+TMP_POSY) << 16) | (IMGx_POSX[0]+TMP_POSX);
+ 			pLCDC->LI0C	|= 0x80000000;
+ 
+@@ -762,7 +763,7 @@ void tca_tvo_setlcd2tv(unsigned int type)
+ 				
+ 				TMP_POSX = (unsigned int)(pLCDC->LI1P & 0x0fff);
+ 				TMP_POSY = (unsigned int)((pLCDC->LI1P & 0x0fff0000) >> 16);
+-				
++
+ 				if(IMGx_HSIZE[1] < TV_HSIZE)
+ 				{
+ 					IMGx_POSX[1] = (TV_HSIZE - IMGx_HSIZE[1]) >> 1;
+@@ -784,7 +785,7 @@ void tca_tvo_setlcd2tv(unsigned int type)
+ 				
+ 				TMP_POSX = (unsigned int)(pLCDC->LI2P & 0x0fff);
+ 				TMP_POSY = (unsigned int)((pLCDC->LI2P & 0x0fff0000) >> 16);
+-				
++
+ 				if(IMGx_HSIZE[2] < TV_HSIZE)
+ 				{
+ 					IMGx_POSX[2] = (TV_HSIZE - IMGx_HSIZE[2]) >> 1;
+@@ -831,11 +832,9 @@ void tca_tvo_settv2lcd(void)
+ 
+ 	pLCDC = pLCDC_BASE[gTvoutLcdcId];
+ 	
++	// LCD_DISP On
++	gpio_direction_output(GPIO_LCD_PWR_EN, 1);
+ 
+-{
+-	PGPIO	pGPIO 	= (GPIO *)tcc_allocbaseaddress((unsigned int)&HwGPIO_BASE);
+-	BITSET(pGPIO->GPCDAT, Hw28);	//	LCD_DISP On
+-}
+ 	pLCDC->LCTRL   &= (~Hw0);		// LCDC Disable
+ 
+ 	while(pLCDC->LSTATUS & Hw30)	// BUSY
+@@ -895,7 +894,7 @@ void tca_tvo_settv2lcd(void)
+ #endif
+ 
+ 	// todo: Backlight On
+-
++	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 1);
+ 
+ 	gTvoutFlag = 0;
+ 	gTvoutFlag_prev = 0;
+-- 
+1.6.3.3
+

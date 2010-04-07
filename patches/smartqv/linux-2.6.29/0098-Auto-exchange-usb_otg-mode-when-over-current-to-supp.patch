@@ -1,0 +1,40 @@
+From fd5af2847306704659c8ea40191adaaf5b1b5ad5 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Thu, 19 Nov 2009 17:11:18 +0800
+Subject: [PATCH] Auto exchange usb_otg mode when over-current to support 3G Card better
+
+---
+ drivers/usb/core/hub.c |   10 ++++++++++
+ 1 files changed, 10 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/usb/core/hub.c b/drivers/usb/core/hub.c
+index b19cbfc..b9bb936 100644
+--- a/drivers/usb/core/hub.c
++++ b/drivers/usb/core/hub.c
+@@ -37,6 +37,9 @@
+ #endif
+ #endif
+ 
++#if defined(CONFIG_ARCH_TCC8900) && defined(CONFIG_LCD_7)
++extern int choosedevice;
++#endif
+ struct usb_hub {
+ 	struct device		*intfdev;	/* the "interface" device */
+ 	struct usb_device	*hdev;
+@@ -3120,6 +3123,13 @@ static void hub_events(void)
+ 				clear_port_feature(hdev, i,
+ 					USB_PORT_FEAT_C_OVER_CURRENT);
+ 				hub_power_on(hub, true);
++#if defined(CONFIG_ARCH_TCC8900) && defined(CONFIG_LCD_7)
++				printk("choosedevice = 1\n");
++				choosedevice = 1;
++				mdelay(500);
++				printk("choosedevice = 0\n");
++				choosedevice = 0;
++#endif
+ 			}
+ 
+ 			if (portchange & USB_PORT_STAT_C_RESET) {
+-- 
+1.6.3.3
+

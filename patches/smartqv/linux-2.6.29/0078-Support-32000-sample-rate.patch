@@ -1,0 +1,43 @@
+From 8d00bedfc4846d82a70a1bc25476811fd7117ec8 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Thu, 5 Nov 2009 17:40:49 +0800
+Subject: [PATCH] Support 32000 sample rate
+
+---
+ sound/soc/codecs/wm8987.c        |    2 +-
+ sound/soc/tcc/tcc_board_wm8987.c |    2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/codecs/wm8987.c b/sound/soc/codecs/wm8987.c
+index 19f1377..223d604 100755
+--- a/sound/soc/codecs/wm8987.c
++++ b/sound/soc/codecs/wm8987.c
+@@ -693,7 +693,7 @@ static int wm8987_set_bias_level(struct snd_soc_codec *codec,
+ }
+ 
+ #define WM8987_RATES (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 |\
+-	SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 | SNDRV_PCM_RATE_44100 | \
++	SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 | SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 | \
+ 	SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 | SNDRV_PCM_RATE_96000)
+ 
+ #define WM8987_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE |\
+diff --git a/sound/soc/tcc/tcc_board_wm8987.c b/sound/soc/tcc/tcc_board_wm8987.c
+index 2ca11b8..af11d74 100644
+--- a/sound/soc/tcc/tcc_board_wm8987.c
++++ b/sound/soc/tcc/tcc_board_wm8987.c
+@@ -118,11 +118,11 @@ static int tcc_hw_params(struct snd_pcm_substream *substream, struct snd_pcm_hw_
+ 	case 16000:
+ 	case 48000:
+ 	case 96000:
++	case 32000:
+ 		clk = 12288000;
+ 		break;
+ 	case 11025:
+ 	case 22050:
+-    case 32000:
+ 	case 44100:
+ 		clk = 11289600;
+ 		break;
+-- 
+1.6.3.3
+

@@ -1,0 +1,45 @@
+From f9f65e82119f326a14947519d4294d5bacf19b81 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Thu, 13 Aug 2009 16:23:26 +0800
+Subject: [PATCH] add power off function
+
+---
+ arch/arm/mach-tcc8900/board-tcc8900.c |   12 ++++++++++++
+ 1 files changed, 12 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/board-tcc8900.c b/arch/arm/mach-tcc8900/board-tcc8900.c
+index f3419e5..e5697ce 100644
+--- a/arch/arm/mach-tcc8900/board-tcc8900.c
++++ b/arch/arm/mach-tcc8900/board-tcc8900.c
+@@ -25,6 +25,8 @@
+ 
+ #include <bsp.h>
+ #include <mach/common.h>
++#include <hhtech_gpio.h>
++#include <mach/gpio.h>
+ 
+ extern void __init tcc8900_irq_init(void);
+ extern void __init tcc8900_map_common_io(void);
+@@ -57,9 +59,19 @@ static struct i2c_board_info __initdata tcc8900_i2c_board_info[] = {
+ 	}
+ };
+ 
++static void tcc8900_power_off(void)
++{
++	int dc_status = !gpio_get_value(GPIO_DC_DETE);
++
++	if(dc_status)
++	    machine_restart(NULL);
++	else
++	    gpio_direction_output(GPIO_PWR_EN, 0);
++}
+ 
+ static void __init tcc8900_map_io(void)
+ {
++    pm_power_off = tcc8900_power_off;
+     tcc8900_map_common_io();
+ }
+ 
+-- 
+1.6.3.3
+

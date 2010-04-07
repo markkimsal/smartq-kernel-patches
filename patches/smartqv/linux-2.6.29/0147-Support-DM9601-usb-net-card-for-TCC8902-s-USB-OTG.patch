@@ -1,0 +1,41 @@
+From 0e0b72e61bcb805b3db97b95d33604f68daf39db Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Thu, 28 Jan 2010 09:13:18 +0800
+Subject: [PATCH] Support DM9601 usb net card for TCC8902's USB OTG
+
+---
+ drivers/net/usb/dm9601.c |    5 ++++-
+ drivers/net/usb/usbnet.c |    1 -
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/usb/dm9601.c b/drivers/net/usb/dm9601.c
+index db3377d..98ff482 100644
+--- a/drivers/net/usb/dm9601.c
++++ b/drivers/net/usb/dm9601.c
+@@ -518,7 +518,10 @@ static struct sk_buff *dm9601_tx_fixup(struct usbnet *dev, struct sk_buff *skb,
+ 			return NULL;
+ 	}
+ 
+-	__skb_push(skb, DM_TX_OVERHEAD);
++	/* because TCC8902's USB OTG Controller request that the
++	 * transfer buffer of urb must be DWORD aligned, so make
++	 * skb->data DWORD aligned */
++	__skb_push(skb, ((unsigned int)skb->data) % 4);
+ 
+ 	/* usbnet adds padding if length is a multiple of packet size
+ 	   if so, adjust length value in header */
+diff --git a/drivers/net/usb/usbnet.c b/drivers/net/usb/usbnet.c
+index 02d25c7..c198b06 100644
+--- a/drivers/net/usb/usbnet.c
++++ b/drivers/net/usb/usbnet.c
+@@ -309,7 +309,6 @@ static void rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
+ 		usb_free_urb (urb);
+ 		return;
+ 	}
+-	skb_reserve (skb, NET_IP_ALIGN);
+ 
+ 	entry = (struct skb_data *) skb->cb;
+ 	entry->urb = urb;
+-- 
+1.6.3.3
+

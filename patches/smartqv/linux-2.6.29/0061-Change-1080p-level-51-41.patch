@@ -1,0 +1,43 @@
+From 144cdaedf7cc7da7cc6ba0ef515f91d41255efae Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Tue, 20 Oct 2009 10:07:24 +0800
+Subject: [PATCH] Change 1080p level 51 -> 41
+
+---
+ arch/arm/configs/SmartV5_defconfig |    4 ++--
+ arch/arm/configs/SmartV7_defconfig |    4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/configs/SmartV5_defconfig b/arch/arm/configs/SmartV5_defconfig
+index 2c36109..f93bfba 100644
+--- a/arch/arm/configs/SmartV5_defconfig
++++ b/arch/arm/configs/SmartV5_defconfig
+@@ -179,8 +179,8 @@ CONFIG_DRAM_DDR2=y
+ CONFIG_RAM_256MB=y
+ # CONFIG_HD720p_LEVEL41 is not set
+ # CONFIG_HD720p_LEVEL51 is not set
+-# CONFIG_HD1080p_LEVEL41 is not set
+-CONFIG_HD1080p_LEVEL51=y
++CONFIG_HD1080p_LEVEL41=y
++# CONFIG_HD1080p_LEVEL51 is not set
+ CONFIG_TCC_STRING="tcc8900"
+ 
+ #
+diff --git a/arch/arm/configs/SmartV7_defconfig b/arch/arm/configs/SmartV7_defconfig
+index 6940bf0..fb17d23 100644
+--- a/arch/arm/configs/SmartV7_defconfig
++++ b/arch/arm/configs/SmartV7_defconfig
+@@ -179,8 +179,8 @@ CONFIG_DRAM_DDR2=y
+ CONFIG_RAM_256MB=y
+ # CONFIG_HD720p_LEVEL41 is not set
+ # CONFIG_HD720p_LEVEL51 is not set
+-# CONFIG_HD1080p_LEVEL41 is not set
+-CONFIG_HD1080p_LEVEL51=y
++CONFIG_HD1080p_LEVEL41=y
++# CONFIG_HD1080p_LEVEL51 is not set
+ CONFIG_TCC_STRING="tcc8900"
+ 
+ #
+-- 
+1.6.3.3
+

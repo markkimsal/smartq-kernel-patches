@@ -1,0 +1,844 @@
+From 9a84138c45166d69b7bccb3eb26ee76a403e4997 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Fri, 6 Nov 2009 14:05:49 +0800
+Subject: [PATCH] merge code from patch 2265 about dwc_otg and add otg suspend function
+
+---
+ drivers/usb/dwc_otg/dwc_otg_attr.c      |    2 +-
+ drivers/usb/dwc_otg/dwc_otg_cil.h       |    2 +-
+ drivers/usb/dwc_otg/dwc_otg_cil_intr.c  |    1 -
+ drivers/usb/dwc_otg/dwc_otg_driver.c    |  172 ++++++++++++++++++++-----------
+ drivers/usb/dwc_otg/dwc_otg_hcd.c       |   59 ++++++-----
+ drivers/usb/dwc_otg/dwc_otg_hcd.h       |    6 +-
+ drivers/usb/dwc_otg/dwc_otg_hcd_queue.c |    2 +-
+ drivers/usb/dwc_otg/dwc_otg_pcd.c       |   31 +++---
+ drivers/usb/dwc_otg/dwc_otg_pcd.h       |   11 +-
+ drivers/usb/dwc_otg/dwc_otg_plat.h      |    8 ++-
+ drivers/usb/dwc_otg/tcc_usb_phy.c       |   14 ++--
+ 11 files changed, 184 insertions(+), 124 deletions(-)
+
+diff --git a/drivers/usb/dwc_otg/dwc_otg_attr.c b/drivers/usb/dwc_otg/dwc_otg_attr.c
+index 090c0a3..c15b8a0 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_attr.c
++++ b/drivers/usb/dwc_otg/dwc_otg_attr.c
+@@ -250,7 +250,7 @@
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/init.h>
+-#include <linux/device.h>
++#include <linux/platform_device.h>
+ #include <linux/errno.h>
+ #include <linux/types.h>
+ #include <linux/stat.h>  /* permission constants */
+diff --git a/drivers/usb/dwc_otg/dwc_otg_cil.h b/drivers/usb/dwc_otg/dwc_otg_cil.h
+index 4937c68..aa810ae 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_cil.h
++++ b/drivers/usb/dwc_otg/dwc_otg_cil.h
+@@ -659,7 +659,7 @@ typedef struct dwc_otg_core_if
+ #endif
+ 
+ 	struct work_struct vbus_work;
+-	uint8_t vbus_state;
++	int8_t vbus_state;
+ } dwc_otg_core_if_t;
+ 
+ /*
+diff --git a/drivers/usb/dwc_otg/dwc_otg_cil_intr.c b/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
+index 7e38073..3b96620 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
++++ b/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
+@@ -54,7 +54,6 @@
+ static const unsigned char DWC_OTG_CIL_INTR_C_Version[] =
+     {SIGBYAHONG, DWC_OTG_CIL_INTR_SIGNATURE, SIGN_OS ,SIGN_CHIPSET, DWC_OTG_CIL_INTR_VERSION, 0};
+ extern int choosedevice;
+-extern dwc_otg_device_t *hh_otg_device;
+ const unsigned char* dwc_otg_cil_intr_get_version(void)
+ {
+ 	return DWC_OTG_CIL_INTR_C_Version;
+diff --git a/drivers/usb/dwc_otg/dwc_otg_driver.c b/drivers/usb/dwc_otg/dwc_otg_driver.c
+index 33ab6c9..050c29e 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_driver.c
++++ b/drivers/usb/dwc_otg/dwc_otg_driver.c
+@@ -52,7 +52,6 @@
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/init.h>
+-#include <linux/device.h>
+ #include <linux/errno.h>
+ #include <linux/types.h>
+ #include <linux/stat.h>	 /* permission constants */
+@@ -209,7 +208,7 @@ static DRIVER_ATTR(hvbus, S_IRUGO|S_IWUSR, show_hvbus, set_hvbus);
+ /**
+  * This function shows the Driver Version.
+  */
+-static ssize_t version_show(struct device_driver *dev, char *buf)
++static ssize_t version_show(struct device_driver *_drv, char *buf)
+ {
+ #ifdef DWC_HOST_ONLY
+ 	return snprintf(buf, sizeof(DWC_DRIVER_VERSION)+2,"%s\n",
+@@ -298,7 +297,8 @@ static void tcc_vbus_work(struct work_struct *work)
+  */
+ static ssize_t fsg_show(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-	dwc_otg_device_t *dwc_otg_device = dev_get_otgdata(dev);
++	struct platform_device *pdev = to_platform_device(dev);
++	dwc_otg_device_t *dwc_otg_device = platform_get_otgdata(pdev);
+ 	return sprintf(buf, "%d\n", dwc_otg_device->flagDeviceAttach);
+ }
+ static DEVICE_ATTR(fsg, S_IRUGO, fsg_show, NULL);
+@@ -307,12 +307,14 @@ static DEVICE_ATTR(fsg, S_IRUGO, fsg_show, NULL);
+ #ifdef DWC_SET_MODE
+ static ssize_t read_mode(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-	dwc_otg_device_t *dwc_otg_device = dev_get_otgdata(dev);
++	struct platform_device *pdev = to_platform_device(dev);
++	dwc_otg_device_t *dwc_otg_device = platform_get_otgdata(pdev);
+ 	return sprintf(buf, "%d\n", dwc_otg_device->flagMode);
+ }
+ static ssize_t set_mode(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+ {
+-	dwc_otg_device_t *dwc_otg_device = dev_get_otgdata(dev);
++	struct platform_device *pdev = to_platform_device(dev);
++	dwc_otg_device_t *dwc_otg_device = platform_get_otgdata(pdev);
+ 	unsigned long mode;
+ 	mode = simple_strtoul(buf, (char **)NULL, 10);
+ 	dwc_otg_device->flagMode = (uint8_t)mode;
+@@ -920,10 +922,10 @@ static irqreturn_t dwc_otg_common_irq(int _irq, void *_dev)
+  *
+  * @param[in] _lmdev
+  */
+-static int dwc_otg_driver_remove(struct device *dev)
++static int dwc_otg_driver_remove(struct platform_device *pdev)
+ {
+-	dwc_otg_device_t *otg_dev = dev_get_otgdata(dev);
+-	DWC_DEBUGPL(DBG_ANY, "%s(%p)\n", __func__, dev);
++	dwc_otg_device_t *otg_dev = platform_get_otgdata(pdev);
++	DWC_DEBUGPL(DBG_ANY, "%s(%p)\n", __func__, pdev);
+ 
+ 	if (otg_dev == NULL)
+ 	{
+@@ -931,47 +933,54 @@ static int dwc_otg_driver_remove(struct device *dev)
+ 		return 0;
+ 	}
+ 
++	/* remove power control functions */
++	remove_pwm_node(DEVICE_OTG);
++
+ 	if (!IS_ERR(otg_dev->vbus_usb_task)) {
+ 		printk("vbus_usb_task stops...\n");
+ 		kthread_stop(otg_dev->vbus_usb_task);
+ 	}
+ 
++	/* flush work_queue */
++	flush_scheduled_work();
++	cancel_work_sync(&otg_dev->core_if->vbus_work);
++	otg_dev->core_if->vbus_state = -1;
++
+ 	/*
+ 	 * Free the IRQ
+ 	 */
+ 	if (otg_dev->common_irq_installed)
+ 	{
+-		free_irq( ARM_VP_OTG_INTR, otg_dev );
++		free_irq(ARM_VP_OTG_INTR, otg_dev);
+ 	}
+ 
+ #ifndef DWC_DEVICE_ONLY
+ 	if (otg_dev->hcd != NULL)
+ 	{
+-		dwc_otg_hcd_remove( dev );
++		dwc_otg_hcd_remove(pdev);
+ 	}
+ #endif
+ 
+ #ifndef DWC_HOST_ONLY
+ 	if (otg_dev->pcd != NULL)
+ 	{
+-		dwc_otg_pcd_remove( dev );
++		dwc_otg_pcd_remove(pdev);
+ 	}
+ #endif
+-	cancel_work_sync(&otg_dev->core_if->vbus_work);
+ 	if (otg_dev->core_if != NULL)
+ 	{
+-		dwc_otg_cil_remove( otg_dev->core_if );
++		dwc_otg_cil_remove(otg_dev->core_if);
+ 	}
+ 
+ 	/*
+ 	 * Remove the device attributes
+ 	 */
+ #ifdef _USE_ATTR_
+-	dwc_otg_attr_remove(dev);
++	dwc_otg_attr_remove(pdev);
+ #endif
+ #ifdef DWC_SET_MODE
+-	device_remove_file(dev, &dev_attr_setmode);
+-	device_remove_file(dev, &dev_attr_fsg);
++	device_remove_file(&pdev->dev, &dev_attr_setmode);
++	device_remove_file(&pdev->dev, &dev_attr_fsg);
+ #endif
+ 
+ 	/*
+@@ -986,7 +995,7 @@ static int dwc_otg_driver_remove(struct device *dev)
+ 	/*
+ 	 * Clear the drvdata pointer.
+ 	 */
+-	dev_set_otgdata( dev, 0 );
++	platform_set_otgdata(pdev, NULL);
+ 
+ 	return 0;
+ }
+@@ -1002,21 +1011,19 @@ static int dwc_otg_driver_remove(struct device *dev)
+  *
+  * @param[in] _lmdev  lm_device definition
+  */
+-dwc_otg_device_t *hh_otg_device;
+-static int dwc_otg_driver_probe(struct device *dev)
++static int dwc_otg_driver_probe(struct platform_device *pdev)
+ {
+ 	int retval = 0;
+ 	dwc_otg_device_t *dwc_otg_device;
+ 	int32_t snpsid;
+ 
+-	dev_dbg(dev, "dwc_otg_driver_probe(%p)\n", dev);
+-//	dev_dbg(&_lmdev->dev, "start=0x%08x\n", (unsigned)_lmdev->resource.start);
++	printk(KERN_DEBUG "dwc_otg_driver_probe(%p)\n", pdev);
+ 
+ 	dwc_otg_device = kmalloc(sizeof(dwc_otg_device_t), GFP_KERNEL);
+ 
+ 	if (dwc_otg_device == 0)
+ 	{
+-		dev_err(dev, "kmalloc of dwc_otg_device failed\n");
++		printk(KERN_ERR "kmalloc of dwc_otg_device failed\n");
+ 		retval = -ENOMEM;
+ 		goto fail;
+ 	}
+@@ -1034,11 +1041,11 @@ static int dwc_otg_driver_probe(struct device *dev)
+ 
+ 	if (dwc_otg_device->base == NULL)
+ 	{
+-		dev_err(dev, "ioremap() failed\n");
++		printk(KERN_ERR "ioremap() failed\n");
+ 		retval = -ENOMEM;
+ 		goto fail;
+ 	}
+-	dev_dbg(dev, "base=0x%08x\n", (unsigned)dwc_otg_device->base);
++	printk(KERN_DEBUG "base=0x%08x\n", (unsigned)dwc_otg_device->base);
+ 
+ 	/*
+ 	 * Attempt to ensure this device is really a DWC_otg Controller.
+@@ -1049,7 +1056,7 @@ static int dwc_otg_driver_probe(struct device *dev)
+ 
+ 	if ((snpsid & 0xFFFFF000) != 0x4F542000)
+ 	{
+-		dev_err(dev, "Bad value for SNPSID: 0x%08x\n", snpsid);
++		printk(KERN_ERR "Bad value for SNPSID: 0x%08x\n", snpsid);
+ 		retval = -EINVAL;
+ 		goto fail;
+ 	}
+@@ -1058,19 +1065,18 @@ static int dwc_otg_driver_probe(struct device *dev)
+ 	 * Initialize driver data to point to the global DWC_otg
+ 	 * Device structure.
+ 	 */
+-	dev_set_otgdata( dev, dwc_otg_device );
+-	dev_dbg(dev, "dwc_otg_device=0x%p\n", dwc_otg_device);
++	platform_set_otgdata(pdev, dwc_otg_device);
++	printk(KERN_DEBUG "dwc_otg_device=0x%p\n", dwc_otg_device);
+ 
+ 	dwc_otg_device->core_if = dwc_otg_cil_init( dwc_otg_device->base,
+ 	                          &dwc_otg_module_params);
+ 	if (dwc_otg_device->core_if == 0)
+ 	{
+-		dev_err(dev, "CIL initialization failed!\n");
++		printk(KERN_ERR "CIL initialization failed!\n");
+ 		retval = -ENOMEM;
+ 		goto fail;
+ 	}
+ 
+-	hh_otg_device = dwc_otg_device;
+ 	/*
+ 	 * Validate parameter values.
+ 	 */
+@@ -1084,12 +1090,12 @@ static int dwc_otg_driver_probe(struct device *dev)
+ 	 * Create Device Attributes in sysfs
+ 	 */
+ #ifdef _USE_ATTR_
+-	dwc_otg_attr_create (dev);
++	dwc_otg_attr_create (pdev);
+ #endif
+ #ifdef DWC_SET_MODE
+-	device_create_file(dev, &dev_attr_setmode);
++	device_create_file(&pdev->dev, &dev_attr_setmode);
+ 	dwc_otg_device->flagMode = 2;
+-	device_create_file(dev, &dev_attr_fsg);
++	device_create_file(&pdev->dev, &dev_attr_fsg);
+ 	dwc_otg_device->flagDeviceAttach = 0;
+ #endif
+ 
+@@ -1132,12 +1138,14 @@ static int dwc_otg_driver_probe(struct device *dev)
+ #endif
+ 	tcc_usb_link_reset();	//Reset OTG LINK - AlenOh
+ 	dwc_otg_core_init(dwc_otg_device->core_if);
+-
++	
++	mdelay(5);	//TODO: remove delay...
++	
+ #ifndef DWC_HOST_ONLY
+ 	/*
+ 	 * Initialize the PCD
+ 	 */
+-	retval = dwc_otg_pcd_init( dev );
++	retval = dwc_otg_pcd_init(pdev);
+ 	if (retval != 0)
+ 	{
+ 		DWC_ERROR("dwc_otg_pcd_init failed\n");
+@@ -1152,7 +1160,7 @@ static int dwc_otg_driver_probe(struct device *dev)
+ 	//TCC_DVBUS_Control(1);
+ 	//USBPHY_SetID(0);
+ 	//USBPHY_SetMode(USBPHY_MODE_HOST);
+-	retval = dwc_otg_hcd_init(dev);
++	retval = dwc_otg_hcd_init(pdev);
+ 	if (retval != 0)
+ 	{
+ 		DWC_ERROR("dwc_otg_hcd_init failed\n");
+@@ -1187,23 +1195,71 @@ static int dwc_otg_driver_probe(struct device *dev)
+ 	return 0;
+ 
+ fail:
+-	dwc_otg_driver_remove(dev);
++	dwc_otg_driver_remove(pdev);
+ 	return retval;
+ }
+-EXPORT_SYMBOL(hh_otg_device);
+ 
+-#ifdef	CONFIG_PM
+-static int dwc_otg_driver_suspend(struct device *pdev, pm_message_t state)
++#ifdef CONFIG_PM
++static int dwc_otg_driver_suspend(struct platform_device *pdev, pm_message_t state)
+ {
+-	printk("dwc_otg_driver_suspend success\n");
++#if 0
++	//dwc_otg_device_t *dwc_otg_device = platform_get_otgdata(pdev);
++
++	///* mode change & wait */
++	//dwc_otg_device->flagMode_backup = dwc_otg_device->flagMode;
++	//dwc_otg_device->flagMode = 1;
++	//while (dwc_otg_device->flagID == 0) {
++	//	msleep_interruptible(200);
++	//}
++	//msleep_interruptible(200);
++	//
++	//USBPHY_Off();
++
++	dwc_otg_driver_remove(pdev);
++#else
++	dwc_otg_device_t *dwc_otg_device = platform_get_otgdata(pdev);
++
++	/* device mode change & wait */
++	dwc_otg_device->flagMode_backup = dwc_otg_device->flagMode;
++	dwc_otg_device->flagMode = 1;
++	while (dwc_otg_device->flagID == 0) {
++		msleep_interruptible(200);
++	}
++	msleep_interruptible(200);
++
++	USBPHY_Off();
++#endif
++
+ 	return 0;
+ }
+ 
+-static int dwc_otg_driver_resume(struct device *pdev)
++static int dwc_otg_driver_resume(struct platform_device *pdev)
+ {
++#if 0
++	dwc_otg_driver_probe(pdev);
++#else
++	dwc_otg_device_t *dwc_otg_device = platform_get_otgdata(pdev);
++	
++	USBPHY_On();
++
++	/* device mode change & wait */
++	dwc_otg_device->flagMode = 1;
++	while (dwc_otg_device->flagID == 0) {
++		msleep_interruptible(200);
++	}
++	msleep_interruptible(200);
++	
++	/* resotre mode */
++	dwc_otg_device->flagMode = dwc_otg_device->flagMode_backup;
++#endif
++
+ 	return 0;
+ }
++#else
++#define dwc_otg_driver_suspend	NULL
++#define dwc_otg_driver_resume	NULL
+ #endif
++
+ /**
+  * This structure defines the methods to be called by a bus driver
+  * during the lifecycle of a device on that bus. Both drivers and
+@@ -1215,16 +1271,15 @@ static int dwc_otg_driver_resume(struct device *pdev)
+  * to this driver. The remove function is called when a device is
+  * unregistered with the bus driver.
+  */
+-static struct device_driver dwc_otg_driver =
+-{
+-	.name   = (char*)dwc_driver_name,
+-	.bus    = &platform_bus_type,
++static struct platform_driver dwc_otg_driver = {
+ 	.probe  = dwc_otg_driver_probe,
+ 	.remove = dwc_otg_driver_remove,
+-#ifdef CONFIG_PM
+ 	.suspend = dwc_otg_driver_suspend,
+-	.resume	 = dwc_otg_driver_resume,
+-#endif
++	.resume = dwc_otg_driver_resume,
++	.driver = {
++		.name = dwc_driver_name,
++		.owner = THIS_MODULE,
++	},
+ };
+ 
+ 
+@@ -1243,15 +1298,14 @@ static int __init dwc_otg_driver_init(void)
+ 	int retval = 0;
+ 
+ 	printk(KERN_INFO "%s: version %s\n", dwc_driver_name, DWC_DRIVER_VERSION);
+-	retval = driver_register(&dwc_otg_driver);
+-	if (retval < 0)
+-	{
++	retval = platform_driver_register(&dwc_otg_driver);
++	if (retval < 0) {
+ 		printk(KERN_ERR "%s retval=%d\n", __func__, retval);
+ 		return retval;
+ 	}
+-	driver_create_file(&dwc_otg_driver, &driver_attr_version);
+-	driver_create_file(&dwc_otg_driver, &driver_attr_debuglevel);
+-	driver_create_file(&dwc_otg_driver, &driver_attr_hvbus);
++	driver_create_file(&dwc_otg_driver.driver, &driver_attr_version);
++	driver_create_file(&dwc_otg_driver.driver, &driver_attr_debuglevel);
++	driver_create_file(&dwc_otg_driver.driver, &driver_attr_hvbus);
+ 
+ 	return retval;
+ }
+@@ -1267,15 +1321,15 @@ static void __exit dwc_otg_driver_cleanup(void)
+ {
+ 	printk(KERN_DEBUG "dwc_otg_driver_cleanup()\n");
+ 
+-	driver_remove_file(&dwc_otg_driver, &driver_attr_debuglevel);
+-	driver_remove_file(&dwc_otg_driver, &driver_attr_version);
+-	driver_remove_file(&dwc_otg_driver, &driver_attr_hvbus);
+-
+-	driver_unregister(&dwc_otg_driver);
++	driver_remove_file(&dwc_otg_driver.driver, &driver_attr_debuglevel);
++	driver_remove_file(&dwc_otg_driver.driver, &driver_attr_version);
++	driver_remove_file(&dwc_otg_driver.driver, &driver_attr_hvbus);
+ 
+ 	/* remove power control functions */
+ 	remove_pwm_node(DEVICE_OTG);
+ 
++	platform_driver_unregister(&dwc_otg_driver);
++
+ 	printk(KERN_INFO "%s module removed\n", dwc_driver_name);
+ }
+ module_exit(dwc_otg_driver_cleanup);
+diff --git a/drivers/usb/dwc_otg/dwc_otg_hcd.c b/drivers/usb/dwc_otg/dwc_otg_hcd.c
+index 7628de7..f7acdab 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_hcd.c
++++ b/drivers/usb/dwc_otg/dwc_otg_hcd.c
+@@ -42,7 +42,7 @@
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/init.h>
+-#include <linux/device.h>
++#include <linux/platform_device.h>
+ #include <linux/errno.h>
+ #include <linux/list.h>
+ #include <linux/interrupt.h>
+@@ -56,9 +56,20 @@
+ #include "dwc_otg_driver.h"
+ #include "dwc_otg_hcd.h"
+ #include "dwc_otg_regs.h"
++#include "tcc_usb_phy.h"
+ 
+ static const char dwc_otg_hcd_name [] = "dwc_otg_hcd";
+ 
++static int dwc_otg_hcd_hub_suspend(struct usb_hcd *_hcd)
++{
++	return 0;
++}
++
++static int dwc_otg_hcd_hub_resume(struct usb_hcd *_hcd)
++{
++	return 0;
++}
++
+ static const struct hc_driver dwc_otg_hc_driver = {
+ 
+ 	.description =		dwc_otg_hcd_name,
+@@ -83,12 +94,8 @@ static const struct hc_driver dwc_otg_hc_driver = {
+ 
+ 	.hub_status_data =	dwc_otg_hcd_hub_status_data,
+ 	.hub_control =		dwc_otg_hcd_hub_control,
+-#ifdef  CONFIG_PM
+-	.bus_suspend = 		dwc_otg_hcd_suspend,
+-	.bus_resume =		dwc_otg_hcd_resume,
+-#endif
+-	//.hub_suspend =
+-	//.hub_resume =
++	.bus_suspend = dwc_otg_hcd_hub_suspend,
++	.bus_resume = dwc_otg_hcd_hub_resume,
+ };
+ 
+ 
+@@ -404,11 +411,11 @@ static struct tasklet_struct reset_tasklet = {
+  * a negative error on failure.
+  */
+ static u64 dwc_otg_dmamask = 0xffffffffUL;
+-int __init dwc_otg_hcd_init(struct device *dev)
++int __init dwc_otg_hcd_init(struct platform_device *pdev)
+ {
+ 	struct usb_hcd *hcd = NULL;
+ 	dwc_otg_hcd_t *dwc_otg_hcd = NULL;
+-	dwc_otg_device_t *otg_dev = dev_get_otgdata(dev);
++	dwc_otg_device_t *otg_dev = platform_get_otgdata(pdev);
+ 
+ 	int 		num_channels;
+ 	int 		i;
+@@ -423,7 +430,7 @@ int __init dwc_otg_hcd_init(struct device *dev)
+ 	 * Allocate memory for the base HCD plus the DWC OTG HCD.
+ 	 * Initialize the base HCD.
+ 	 */
+-	hcd = usb_create_hcd(&dwc_otg_hc_driver, dev, "DWC OTG Controller");
++	hcd = usb_create_hcd(&dwc_otg_hc_driver, &pdev->dev, "DWC OTG Controller");
+ 	if (hcd == NULL) {
+ 		retval = -ENOMEM;
+ 		goto error1;
+@@ -485,12 +492,12 @@ int __init dwc_otg_hcd_init(struct device *dev)
+ 		DWC_PRINT("Using DMA mode\n");
+ 		//dev->dma_mask = (void *)~0;
+ 		//dev->coherent_dma_mask = ~0;
+-		dev->dma_mask = &dwc_otg_dmamask;
+-		dev->coherent_dma_mask = ~0;
++		pdev->dev.dma_mask = &dwc_otg_dmamask;
++		pdev->dev.coherent_dma_mask = ~0;
+ 	} else {
+ 		DWC_PRINT("Using Slave mode\n");
+-		dev->dma_mask = (void *)0;
+-		dev->coherent_dma_mask = 0;
++		pdev->dev.dma_mask = (void *)0;
++		pdev->dev.coherent_dma_mask = 0;
+ 	}
+ 
+ 	/*
+@@ -511,7 +518,7 @@ int __init dwc_otg_hcd_init(struct device *dev)
+ 	 */
+ 	if (otg_dev->core_if->dma_enable) {
+ 		dwc_otg_hcd->status_buf =
+-		    dma_alloc_coherent(dev,
++		    dma_alloc_coherent(&pdev->dev,
+ 		                       DWC_OTG_HCD_STATUS_BUF_SIZE,
+ 		                       &dwc_otg_hcd->status_buf_dma,
+ 		                       GFP_KERNEL | GFP_DMA);
+@@ -544,9 +551,9 @@ error1:
+  * Removes the HCD.
+  * Frees memory and resources associated with the HCD and deregisters the bus.
+  */
+-void dwc_otg_hcd_remove(struct device *dev)
++void dwc_otg_hcd_remove(struct platform_device *pdev)
+ {
+-	dwc_otg_device_t *otg_dev = dev_get_otgdata(dev);
++	dwc_otg_device_t *otg_dev = platform_get_otgdata(pdev);
+ 	dwc_otg_hcd_t *dwc_otg_hcd;
+ 	struct usb_hcd *hcd;
+ 
+@@ -643,11 +650,6 @@ int dwc_otg_hcd_start(struct usb_hcd *_hcd)
+ 	return 0;
+ }
+ 
+-int dwc_otg_hcd_resume(struct usb_hcd *_hcd)
+-{
+-	return 0;
+-}
+-
+ static void qh_list_free(dwc_otg_hcd_t *_hcd, struct list_head *_qh_list)
+ {
+ 	struct list_head 	*item;
+@@ -688,16 +690,17 @@ void dwc_otg_hcd_stop(struct usb_hcd *_hcd)
+ 
+ 	/* Turn off the vbus power */
+ 	DWC_PRINT("PortPower off\n");
+-	dwc_otg_hcd->core_if->vbus_state = 0;
+-	schedule_work(&dwc_otg_hcd->core_if->vbus_work);
++	if (dwc_otg_hcd->core_if->vbus_state == -1) {
++		/* if driver rmmod */
++		TCC_DVBUS_Control(0);
++	} else {
++		dwc_otg_hcd->core_if->vbus_state = 0;
++		schedule_work(&dwc_otg_hcd->core_if->vbus_work);
++	}
+ 
+ 	return;
+ }
+ 
+-int dwc_otg_hcd_suspend (struct usb_hcd *_hcd)
+-{
+-	return 0;
+-}
+ 
+ /** Returns the current frame number. */
+ int dwc_otg_hcd_get_frame_number(struct usb_hcd *_hcd)
+diff --git a/drivers/usb/dwc_otg/dwc_otg_hcd.h b/drivers/usb/dwc_otg/dwc_otg_hcd.h
+index ac91450..640d762 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_hcd.h
++++ b/drivers/usb/dwc_otg/dwc_otg_hcd.h
+@@ -402,8 +402,8 @@ static inline struct usb_hcd *dwc_otg_hcd_to_hcd(dwc_otg_hcd_t *dwc_otg_hcd)
+ 
+ /** @name HCD Create/Destroy Functions */
+ /** @{ */
+-extern int __init dwc_otg_hcd_init(struct device *dev);
+-extern void dwc_otg_hcd_remove(struct device *dev);
++extern int __init dwc_otg_hcd_init(struct platform_device *pdev);
++extern void dwc_otg_hcd_remove(struct platform_device *pdev);
+ /** @} */
+ 
+ /** @name Linux HC Driver API Functions */
+@@ -411,8 +411,6 @@ extern void dwc_otg_hcd_remove(struct device *dev);
+ 
+ extern int dwc_otg_hcd_start(struct usb_hcd *hcd);
+ extern void dwc_otg_hcd_stop(struct usb_hcd *hcd);
+-extern int dwc_otg_hcd_resume(struct usb_hcd *hcd);
+-extern int dwc_otg_hcd_suspend(struct usb_hcd *hcd);
+ extern int dwc_otg_hcd_get_frame_number(struct usb_hcd *hcd);
+ extern void dwc_otg_hcd_free(struct usb_hcd *hcd);
+ extern int dwc_otg_hcd_urb_enqueue(struct usb_hcd *hcd,
+diff --git a/drivers/usb/dwc_otg/dwc_otg_hcd_queue.c b/drivers/usb/dwc_otg/dwc_otg_hcd_queue.c
+index 46a9ba3..450d6c9 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_hcd_queue.c
++++ b/drivers/usb/dwc_otg/dwc_otg_hcd_queue.c
+@@ -42,7 +42,7 @@
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/init.h>
+-#include <linux/device.h>
++#include <linux/platform_device.h>
+ #include <linux/errno.h>
+ #include <linux/list.h>
+ #include <linux/interrupt.h>
+diff --git a/drivers/usb/dwc_otg/dwc_otg_pcd.c b/drivers/usb/dwc_otg/dwc_otg_pcd.c
+index 7a8915b..2a9ba10 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_pcd.c
++++ b/drivers/usb/dwc_otg/dwc_otg_pcd.c
+@@ -66,7 +66,7 @@
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/init.h>
+-#include <linux/device.h>
++#include <linux/platform_device.h>
+ #include <linux/errno.h>
+ #include <linux/list.h>
+ #include <linux/interrupt.h>
+@@ -1379,7 +1379,8 @@ static const char on_string[] = "on";
+ static ssize_t set_srp(struct device *dev, struct device_attribute *attr,
+                        const char *_buf, size_t _count)
+ {
+-	dwc_otg_device_t *otg_dev = dev_get_otgdata(dev);
++	struct platform_device *pdev = to_platform_device(dev);
++	dwc_otg_device_t *otg_dev = platform_get_otgdata(pdev);
+ 	int rc = 0;
+ 	int len = _count;
+ 	char *cp = memchr(_buf, '\n', _count);
+@@ -1400,16 +1401,16 @@ static DEVICE_ATTR(srpinit, S_IWUSR, NULL, set_srp);
+  *
+  */
+ 
+-int __init dwc_otg_pcd_init(struct device *dev)
++int __init dwc_otg_pcd_init(struct platform_device *pdev)
+ {
+ 	static char pcd_name[] = "dwc_otg_pcd";
+ 	dwc_otg_pcd_t *pcd;
+-	dwc_otg_device_t *otg_dev = dev_get_otgdata(dev);
++	dwc_otg_device_t *otg_dev = platform_get_otgdata(pdev);
+ 	int retval = 0;
+ 
+-	device_create_file(dev,&dev_attr_srpinit);
++	device_create_file(&pdev->dev,&dev_attr_srpinit);
+ 
+-	DWC_DEBUGPL(DBG_PCDV,"%s(%p)\n",__func__, dev );
++	DWC_DEBUGPL(DBG_PCDV, "%s(%p)\n",__func__, pdev);
+ 	/*
+ 	 * Allocate PCD structure
+ 	 */
+@@ -1420,7 +1421,7 @@ int __init dwc_otg_pcd_init(struct device *dev)
+ 		return -ENOMEM;
+ 	}
+ 
+-	memset( pcd, 0, sizeof(dwc_otg_pcd_t));
++	memset(pcd, 0, sizeof(dwc_otg_pcd_t));
+ 	spin_lock_init( &pcd->lock );
+ 
+ 	otg_dev->pcd = pcd;
+@@ -1428,9 +1429,9 @@ int __init dwc_otg_pcd_init(struct device *dev)
+ 	pcd->gadget.name = pcd_name;
+ 	strcpy(pcd->gadget.dev.bus_id, "gadget");
+ 
+-	pcd->otg_dev = dev_get_otgdata(dev);
++	pcd->otg_dev = platform_get_otgdata(pdev);
+ 
+-	pcd->gadget.dev.parent = dev;
++	pcd->gadget.dev.parent = &pdev->dev;
+ 	pcd->gadget.dev.release = dwc_otg_pcd_gadget_release;
+ 	pcd->gadget.ops = &dwc_otg_pcd_ops;
+ 
+@@ -1535,19 +1536,19 @@ int __init dwc_otg_pcd_init(struct device *dev)
+ /**
+  * Cleanup the PCD.
+  */
+-void dwc_otg_pcd_remove( struct device *dev )
++void dwc_otg_pcd_remove(struct platform_device *pdev)
+ {
+-	dwc_otg_device_t *otg_dev = dev_get_otgdata(dev);
++	dwc_otg_device_t *otg_dev = platform_get_otgdata(pdev);
+ 	dwc_otg_pcd_t *pcd = otg_dev->pcd;
+ 
+-	DWC_DEBUGPL(DBG_PCDV, "%s(%p)\n", __func__, dev);
++	DWC_DEBUGPL(DBG_PCDV, "%s(%p)\n", __func__, pdev);
+ 
+-	device_remove_file(dev,&dev_attr_srpinit);
++	device_remove_file(&pdev->dev, &dev_attr_srpinit);
+ 
+ 	/*
+ 	 * Free the IRQ
+ 	 */
+-	free_irq( ARM_VP_OTG_INTR, pcd );
++	free_irq(ARM_VP_OTG_INTR, pcd);
+ 
+ 	/* start with the driver above us */
+ 	if (pcd->driver)
+@@ -1570,7 +1571,7 @@ void dwc_otg_pcd_remove( struct device *dev )
+ 		kfree (pcd->status_buf);
+ 	}
+ 
+-	kfree( pcd );
++	kfree(pcd);
+ 	otg_dev->pcd = 0;
+ }
+ 
+diff --git a/drivers/usb/dwc_otg/dwc_otg_pcd.h b/drivers/usb/dwc_otg/dwc_otg_pcd.h
+index f15357a..041a8af 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_pcd.h
++++ b/drivers/usb/dwc_otg/dwc_otg_pcd.h
+@@ -37,7 +37,7 @@
+ #include <linux/types.h>
+ #include <linux/list.h>
+ #include <linux/errno.h>
+-#include <linux/device.h>
++#include <linux/platform_device.h>
+ #include <linux/usb/ch9.h>
+ #include <linux/usb/gadget.h>
+ #include <linux/interrupt.h>
+@@ -200,12 +200,11 @@ typedef struct dwc_otg_pcd_request
+ } dwc_otg_pcd_request_t;
+ 
+ 
+-extern int __init dwc_otg_pcd_init(struct device *dev);
++extern int __init dwc_otg_pcd_init(struct platform_device *pdev);
++extern void dwc_otg_pcd_remove(struct platform_device *pdev);
+ 
+-//extern void dwc_otg_pcd_remove( struct dwc_otg_device *_otg_dev );
+-extern void dwc_otg_pcd_remove( struct device *dev );
+-extern int32_t dwc_otg_pcd_handle_intr( dwc_otg_pcd_t *_pcd );
+-extern void dwc_otg_pcd_start_srp_timer(dwc_otg_pcd_t *_pcd );
++extern int32_t dwc_otg_pcd_handle_intr(dwc_otg_pcd_t *_pcd);
++extern void dwc_otg_pcd_start_srp_timer(dwc_otg_pcd_t *_pcd);
+ 
+ extern void dwc_otg_pcd_initiate_srp(dwc_otg_pcd_t *_pcd);
+ extern void dwc_otg_pcd_remote_wakeup(dwc_otg_pcd_t *_pcd, int set);
+diff --git a/drivers/usb/dwc_otg/dwc_otg_plat.h b/drivers/usb/dwc_otg/dwc_otg_plat.h
+index 179b506..5092a56 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_plat.h
++++ b/drivers/usb/dwc_otg/dwc_otg_plat.h
+@@ -39,7 +39,7 @@
+ #include <linux/list.h>
+ #include <linux/delay.h>
+ #include <asm/io.h>
+-#include <linux/device.h>
++#include <linux/platform_device.h>
+ 
+ /**
+  * @file
+@@ -100,6 +100,9 @@ void dwc_modify_reg32( volatile uint32_t *_reg, const uint32_t _clear_mask, cons
+ 	writel( (readl(_reg) & ~_clear_mask) | _set_mask, _reg );
+ };
+ 
++/**
++ * 
++ */
+ static __inline__
+ void *dev_get_otgdata(const struct device *dev)
+ {
+@@ -112,6 +115,9 @@ void dev_set_otgdata(struct device *dev, void *data)
+ 	dev->platform_data = data;
+ }
+ 
++#define platform_get_otgdata(_dev)		dev_get_otgdata(&(_dev)->dev)
++#define platform_set_otgdata(_dev,data)	dev_set_otgdata(&(_dev)->dev, (data))
++
+ /**
+  * Wrapper for the OS micro-second delay function.
+  * @param[in] _usecs Microseconds of delay
+diff --git a/drivers/usb/dwc_otg/tcc_usb_phy.c b/drivers/usb/dwc_otg/tcc_usb_phy.c
+index b4a9402..a1041c3 100644
+--- a/drivers/usb/dwc_otg/tcc_usb_phy.c
++++ b/drivers/usb/dwc_otg/tcc_usb_phy.c
+@@ -87,9 +87,9 @@ void USBPHY_SetMode(USBPHY_MODE_T mode)
+ 		    UPCR2_TM_HS
+ 		    | UPCR2_XCVRSEL_HS
+ 		    | UPCR2_OPMODE_NORMAL
+-		    | UPCR2_TXVRT(8)	// HS DC voltage level adjustment = Design default
++		    | UPCR2_TXVRT(10)	// HS DC voltage level adjustment = Design default
+ 		    | UPCR2_TXRT(0)		// HS Transmitter Rise/Fall Time Adjustment = Design default
+-		    | UPCR2_TP_DIS;
++		    | UPCR2_TP_EN;
+ 		//pUSBPHYCFG->UPCR3	= 0x9000;	// OTG disable
+ 	}
+ 	else if ( mode == USBPHY_MODE_DEVICE )
+@@ -104,9 +104,9 @@ void USBPHY_SetMode(USBPHY_MODE_T mode)
+ 		    UPCR2_TM_HS
+ 		    | UPCR2_XCVRSEL_HS
+ 		    | UPCR2_OPMODE_NORMAL
+-		    | UPCR2_TXVRT(8)	// HS DC voltage level adjustment = Design default
++		    | UPCR2_TXVRT(10)	// HS DC voltage level adjustment = Design default
+ 		    | UPCR2_TXRT(0)		// HS Transmitter Rise/Fall Time Adjustment = Design default
+-		    | UPCR2_TP_DIS;
++		    | UPCR2_TP_EN;
+ 		//pUSBPHYCFG->UPCR3	= 0x9000;	// OTG disable
+ 	}
+ }
+@@ -151,7 +151,7 @@ void TCC_DVBUS_Control(int on)
+  */
+ void USBPHY_Off(void)
+ {
+-#if 0
++#if 1
+ 	BITCSET(pUSBPHYCFG->UPCR2, Hw10|Hw9/*UPCR2_OPMODE_MASK*/, Hw9/*UPCR2_OPMODE_NON_DRVING*/);
+ 	pUSBPHYCFG->UPCR0 = 0x4840;
+ 	pUSBPHYCFG->UPCR0 = 0x6940;
+@@ -162,9 +162,9 @@ void USBPHY_Off(void)
+ 
+ void USBPHY_On(void)
+ {
+-#if 0
++#if 1
+ 	BITCSET(pUSBPHYCFG->UPCR2, Hw10|Hw9/*UPCR2_OPMODE_MASK*/, 0/*UPCR2_OPMODE_NORMAL*/);
+-	pUSBPHYCFG->UPCR0 = 0x2842; /* TODO: 0x2800 */
++	pUSBPHYCFG->UPCR0 = 0x2842;
+ #else
+ 	BITCLR(pUSBPHYCFG->UPCR0, Hw8);
+ #endif
+-- 
+1.6.3.3
+

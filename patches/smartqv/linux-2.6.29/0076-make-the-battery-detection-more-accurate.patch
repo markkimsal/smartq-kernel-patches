@@ -1,0 +1,43 @@
+From a37239abacfeaaa56022172a473ed850073543e6 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Wed, 4 Nov 2009 16:54:31 +0800
+Subject: [PATCH] make the battery detection more accurate
+
+---
+ drivers/char/hhtech_gpio.c |    6 +-----
+ 1 files changed, 1 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index e505c79..f1f43ee 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -242,7 +242,7 @@ static int read_battery(void)
+ 	else
+ 	   old_reference_value = reference_value;
+ 
+-	battery_life = (battery_life * 24000) / (reference_value * 42);
++	battery_life = (battery_life * 24684) / (reference_value * 42);
+ 
+ 	return battery_life;
+ }
+@@ -265,9 +265,6 @@ static int get_battery_life(void)
+ 	return battery_life;
+ }
+ 
+-int work_yet = 0;
+-//add this to avoid ddi off by turning off the backlight when shutdown_unused_devices still not be executed
+-EXPORT_SYMBOL(work_yet);
+ static void shutdown_unused_devices(struct work_struct* work)
+ {
+ 	unsigned int i,reg_val,addr;
+@@ -305,7 +302,6 @@ static void shutdown_unused_devices(struct work_struct* work)
+ 	    *(volatile unsigned long *)(0xf040008c + i*4) &= ~(0x0f000000);
+ 	    *(volatile unsigned long *)(0xf040008c + i*4) |= 0x0e000000;
+ 	}
+-	work_yet = 1;//ok, then ddi bus can be turnd off
+ }
+ 
+ static void battery_update_work(struct work_struct* work)
+-- 
+1.6.3.3
+

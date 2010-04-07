@@ -1,0 +1,26 @@
+From 6565d814a90e91580fc7a0d8b50a6b0721d2d2e7 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Wed, 27 Jan 2010 17:35:09 +0800
+Subject: [PATCH] Shutdown backlight when lcd down
+
+---
+ drivers/char/hhtech_gpio.c |    3 +++
+ 1 files changed, 3 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 45f854d..306ea05 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -744,6 +744,9 @@ static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribut
+ 
+ 	value = !!value;
+ 
++	if (!value) {
++		bl_control(0);
++	}
+ 	gpio_direction_output(GPIO_LCD_PWR_EN, value);
+ 
+ 	return len;
+-- 
+1.6.3.3
+

@@ -1,0 +1,155 @@
+From 8bc9dbb34b3e12413b8be72851552b0ccb5cfd80 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Sat, 29 Aug 2009 14:04:44 +0800
+Subject: [PATCH] add buttons for v7
+
+---
+ arch/arm/mach-tcc8900/devices.c |   65 +++++++++++++++++++++++++++++++-------
+ arch/arm/mach-tcc8900/gpio.c    |    4 ++
+ arch/arm/mach-tcc8900/irq.c     |   16 +++++++++
+ 3 files changed, 73 insertions(+), 12 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/devices.c b/arch/arm/mach-tcc8900/devices.c
+index 62d6c68..772aa56 100644
+--- a/arch/arm/mach-tcc8900/devices.c
++++ b/arch/arm/mach-tcc8900/devices.c
+@@ -684,41 +684,82 @@ static inline void tcc8900_init_dwc_otg(void)
+ #endif
+ 
+ static struct gpio_keys_button hhmid_buttons[] = {
+-        {
+-                .gpio           = TCC_GPD17,			//32*16 + 2
++#if defined (CONFIG_LCD_4)
++	{
++                .gpio           = TCC_GPD17,			
+                 .code		= KEY_PAGEUP,
+                 .desc           = "Button 3",
+                 .active_low     = 1,
+                 .debounce_interval = 5,
+         },
+ 	{
+-                .gpio           = TCC_GPD18,			//32*16 + 2
++                .gpio           = TCC_GPD18,	
+                 .code		= KEY_LEFTALT,
+                 .desc           = "Button 1",
+                 .active_low     = 1,
+                 .debounce_interval = 5,
+         },
+ 	{
+-                .gpio           = TCC_GPD19,			//32*16 + 2
++                .gpio           = TCC_GPD19,			
+                 .code		= KEY_PAGEDOWN,
+                 .desc           = "Button 2",
+                 .active_low     = 1,
+                 .debounce_interval = 5,
+         },
+ 	{
+-                .gpio           = TCC_GPF10,			//32*16 + 2
++                .gpio           = TCC_GPF10,		    
+                 .code		= KEY_POWER,
+                 .desc           = "Button 0",
+                 .active_low     = 1,
+                 .debounce_interval = 5,
+         },
+-//	{
+-//                .gpio           = S3C_GPN12,
+-//                .code		= KEY_PAGEUP,
+-//                .desc           = "Button 3",
+-//                .active_low     = 1,
+-//                .debounce_interval = 5,
+-//        },
++#else
++
++	{
++                .gpio           = TCC_GPD17,		    
++                .code		= KEY_PAGEUP,
++                .desc           = "Button 5",
++                .active_low     = 1,
++                .debounce_interval = 5,
++        },
++
++	{
++                .gpio           = TCC_GPD16,			
++                .code		= KEY_PAGEDOWN,
++                .desc           = "Button 4",
++                .active_low     = 1,
++                .debounce_interval = 5,
++        },
++
++	{
++                .gpio           = TCC_GPD15,			
++                .code		= KEY_LEFTALT,
++                .desc           = "Button 3",
++                .active_low     = 1,
++                .debounce_interval = 5,
++        },
++	{
++                .gpio           = TCC_GPD18,			
++                .code		= KEY_ENTER,
++                .desc           = "Button 1",
++                .active_low     = 1,
++                .debounce_interval = 5,
++        },
++	{
++                .gpio           = TCC_GPD19,		
++                .code		= KEY_ESC,
++                .desc           = "Button 2",
++                .active_low     = 1,
++                .debounce_interval = 5,
++        },
++	{
++                .gpio           = TCC_GPF10,		
++                .code		= KEY_POWER,
++                .desc           = "Button 0",
++                .active_low     = 1,
++                .debounce_interval = 5,
++        },
++#endif
+ };
+ 
+ //static struct gpio_keys_platform_data hhmid_button_data __initdata = {
+diff --git a/arch/arm/mach-tcc8900/gpio.c b/arch/arm/mach-tcc8900/gpio.c
+index bf4f4d9..a4c80d5 100644
+--- a/arch/arm/mach-tcc8900/gpio.c
++++ b/arch/arm/mach-tcc8900/gpio.c
+@@ -169,6 +169,10 @@ int gpio_to_irq(unsigned int pin)
+ {
+     switch(pin)
+     {
++	case TCC_GPD15:
++	    return 8;
++	case TCC_GPD16:
++	    return 9;
+ 	case TCC_GPD17:
+ 	    return 11;
+ 	case TCC_GPD18:
+diff --git a/arch/arm/mach-tcc8900/irq.c b/arch/arm/mach-tcc8900/irq.c
+index 3c27502..8a485ff 100644
+--- a/arch/arm/mach-tcc8900/irq.c
++++ b/arch/arm/mach-tcc8900/irq.c
+@@ -574,6 +574,22 @@ void __init tcc8900_irq_init(void)
+ 	BITSET(pPIC->POL0, 1<<INT_EI11);
+ 	BITSET(pPIC->MODEA0, 1<<INT_EI11);
+ 	gpio_direction_input(TCC_GPF10);
++
++#if defined (CONFIG_LCD_7)
++	BITCSET(pGPIO->EINTSEL1, Hw14-Hw8, 24<<8);
++	BITSET(pPIC->INTMSK0, 1<<INT_EI5);
++	BITCLR(pPIC->MODE0, 1<<INT_EI5);
++	BITSET(pPIC->POL0, 1<<INT_EI5);
++	BITSET(pPIC->MODEA0, 1<<INT_EI5);
++	gpio_direction_input(TCC_GPD15);
++
++	BITCSET(pGPIO->EINTSEL1, Hw22-Hw16, 25<<16);
++	BITSET(pPIC->INTMSK0, 1<<INT_EI6);
++	BITCLR(pPIC->MODE0, 1<<INT_EI6);
++	BITSET(pPIC->POL0, 1<<INT_EI6);
++	BITSET(pPIC->MODEA0, 1<<INT_EI6);
++	gpio_direction_input(TCC_GPD16);
++#endif
+ }
+ 
+ /* end of file */
+-- 
+1.6.3.3
+

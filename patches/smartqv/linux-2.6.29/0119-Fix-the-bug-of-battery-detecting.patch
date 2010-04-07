@@ -1,0 +1,26 @@
+From e7a236460aea7a34366155301c1a91e302535708 Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Thu, 17 Dec 2009 16:07:41 +0800
+Subject: [PATCH] Fix the bug of battery detecting
+
+---
+ drivers/char/hhtech_gpio.c |    3 ++-
+ 1 files changed, 2 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 27f7a1e..3ee8905 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -324,7 +324,8 @@ static void battery_update_work(struct work_struct* work)
+ 	} else
+ 		current_battery = get_battery_life();
+ 	/* Add the current_battery with 40, because the current_battery value of some buggy batteries can't reach 1000 when fullly charged */
+-	current_battery += 40;
++	if(current_battery > 900)
++		current_battery += 40;
+ 	if(current_battery > 1000)
+ 		current_battery = 1000;
+ 	schedule_delayed_work(&battery_work, 30 * HZ);
+-- 
+1.6.3.3
+

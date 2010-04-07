@@ -1,0 +1,35 @@
+From 3a0ebd305a6f5538e481e3df8bac174654e24d32 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Tue, 24 Nov 2009 16:46:21 +0800
+Subject: [PATCH] Support 3G Card: DTT AirCard 901
+
+---
+ drivers/usb/serial/option.c |    5 +++++
+ 1 files changed, 5 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/usb/serial/option.c b/drivers/usb/serial/option.c
+index 885dbf6..d695456 100644
+--- a/drivers/usb/serial/option.c
++++ b/drivers/usb/serial/option.c
+@@ -266,6 +266,10 @@ static int  option_send_setup(struct tty_struct *tty, struct usb_serial_port *po
+ #define ZTE_PRODUCT_AC560			0x0073
+ #define ZTE_PRODUCT_CDMA_TECH			0xfffe
+ 
++/* DTT PRODUCTS */
++#define DTT_VENDOR_ID				0x1ab7
++#define DTT_PRODUCT_AIRCARD_901                 0x2000
++
+ /* Ericsson products */
+ #define ERICSSON_VENDOR_ID			0x0bdb
+ #define ERICSSON_PRODUCT_F3507G			0x1900
+@@ -481,6 +485,7 @@ static struct usb_device_id option_ids[] = {
+ 	{ USB_DEVICE(ZTE_VENDOR_ID, ZTE_PRODUCT_AC560) },
+ 	{ USB_DEVICE(ZTE_VENDOR_ID, ZTE_PRODUCT_MF628) },
+ 	{ USB_DEVICE(ZTE_VENDOR_ID, ZTE_PRODUCT_CDMA_TECH) },
++	{ USB_DEVICE(DTT_VENDOR_ID, DTT_PRODUCT_AIRCARD_901) },
+ 	{ USB_DEVICE(ERICSSON_VENDOR_ID, ERICSSON_PRODUCT_F3507G) },
+ 	{ USB_DEVICE(PANTECH_VENDOR_ID, PANTECH_PRODUCT_PC5740) },
+ 	{ USB_DEVICE(PANTECH_VENDOR_ID, PANTECH_PRODUCT_PC5750) },
+-- 
+1.6.3.3
+

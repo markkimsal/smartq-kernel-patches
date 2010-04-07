@@ -1,0 +1,77 @@
+From 02eff2fdf61b8faed84062f9782c5ff85e598871 Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Wed, 13 Jan 2010 14:48:50 +0800
+Subject: [PATCH] Solve the problem that MU350 can't dial successfully at the first time
+
+---
+ drivers/char/hhtech_gpio.c |   33 ++++++++++++++++++++++++++++++++-
+ 1 files changed, 32 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index a3c3af0..8489022 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -84,7 +84,7 @@ static struct delayed_work shutdown_work;
+ int current_battery = 0;
+ EXPORT_SYMBOL(current_battery);
+ static int user_disable_speaker = 0;
+-
++static int mu350_first_plug_in = 1;
+ unsigned long rtc_wakeup_time = 30 * 60;
+ EXPORT_SYMBOL(rtc_wakeup_time);
+ 
+@@ -1233,6 +1233,35 @@ static ssize_t hhtech_sysfs_store_image_contrast(struct device *dev,
+ 	return len;
+ }
+ 
++static ssize_t hhtech_sysfs_show_mu350_first_plug_in(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	return snprintf(buf, PAGE_SIZE, "%d\n", mu350_first_plug_in);
++}
++
++static ssize_t hhtech_sysfs_store_mu350_first_plug_in(struct device *dev,
++					      struct device_attribute *attr, const char *buf, size_t len)
++{
++	if (len < 1)
++		return -EINVAL;
++
++	if (strnicmp(buf, "1", 1) == 0)
++		mu350_first_plug_in = 1;
++	else if (strnicmp(buf, "0", 1) == 0) {
++		mu350_first_plug_in = 0;
++		/* first change to device mode, then change to host mode */
++#if defined(CONFIG_LCD_4)
++		set_usb_otgdrv_en(0);
++		set_usb_otgdrv_en(1);
++#else
++		choosedevice = 1;
++		choosedevice = 0;
++#endif
++	}
++	else
++		return -EINVAL;
++	return len;
++}
++
+ extern void headp_update_mixer(struct work_struct* work);
+ 
+ /*   headphone plug in and out  Interrupt handle  */
+@@ -1342,6 +1371,7 @@ static DEVICE_ATTR(color_brightness, 0666, hhtech_sysfs_show_color_brightness, h
+ static DEVICE_ATTR(color_contrast, 0666, hhtech_sysfs_show_color_contrast, hhtech_sysfs_store_color_contrast);
+ static DEVICE_ATTR(image_brightness, 0666, hhtech_sysfs_show_image_brightness, hhtech_sysfs_store_image_brightness);
+ static DEVICE_ATTR(image_contrast, 0666, hhtech_sysfs_show_image_contrast, hhtech_sysfs_store_image_contrast);
++static DEVICE_ATTR(mu350_first_plug_in, 0666, hhtech_sysfs_show_mu350_first_plug_in, hhtech_sysfs_store_mu350_first_plug_in);
+ 
+ static struct attribute *attrs[] = {
+ 	&dev_attr_system_flag.attr,
+@@ -1382,6 +1412,7 @@ static struct attribute *attrs[] = {
+ 	&dev_attr_color_contrast.attr,
+ 	&dev_attr_image_brightness.attr,
+ 	&dev_attr_image_contrast.attr,
++	&dev_attr_mu350_first_plug_in.attr,
+ 	NULL,
+ };
+ 
+-- 
+1.6.3.3
+

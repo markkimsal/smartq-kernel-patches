@@ -1,0 +1,45 @@
+From 44516e3b06bbe930197c8e67a7b523ba90f1d0e3 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Fri, 13 Nov 2009 13:28:51 +0800
+Subject: [PATCH] Fix WIFI no irq after autodeepsleep
+
+---
+ drivers/mmc/host/tcc_sdhc.c |    8 ++++++++
+ 1 files changed, 8 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/mmc/host/tcc_sdhc.c b/drivers/mmc/host/tcc_sdhc.c
+index 3c6c3e5..08d1bf0 100644
+--- a/drivers/mmc/host/tcc_sdhc.c
++++ b/drivers/mmc/host/tcc_sdhc.c
+@@ -665,6 +665,7 @@ static void tcc_sdio_hw_enable_int(struct mmc_host *mmc, uint32_t sigs)
+ 	stat_en=tcc_readl(host->iobase+TCCSDHC_INT_ENABLE);	
+ 	tcc_writel( stat_en | sigs, host->iobase+TCCSDHC_INT_ENABLE);
+ 
++	mmiowb();
+ 	spin_unlock_irqrestore(&host->lock, flags);
+ }
+ 
+@@ -679,6 +680,7 @@ static void tcc_sdio_hw_disable_int(struct mmc_host *mmc, uint32_t sigs)
+ 	stat_en=tcc_readl(host->iobase+TCCSDHC_INT_ENABLE);
+ 	tcc_writel(stat_en & ~sigs, host->iobase+TCCSDHC_INT_ENABLE);
+ 
++	mmiowb();
+ 	spin_unlock_irqrestore(&host->lock, flags);
+ }
+ 
+@@ -825,6 +827,12 @@ static irqreturn_t tcc_mmc_interrupt_handler(int irq, void *dev_id)
+ 		mmc_signal_sdio_irq(host->mmc);
+ 	}        
+ 
++	if (host->id == 1) {
++		unsigned int tcc_stat = tcc_readl(host->iobase+TCCSDHC_INT_ENABLE);
++		if (!(tcc_stat & HwSDINT_EN_CDINT)) { //SDIO INT STOPPED
++			udelay(10); //XXX: SDIO lost response when WIFI in deepsleep
++		}
++	}
+ 	return result;
+ }
+ 
+-- 
+1.6.3.3
+

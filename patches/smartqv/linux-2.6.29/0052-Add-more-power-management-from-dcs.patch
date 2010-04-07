@@ -1,0 +1,505 @@
+From 32e3757379f9fa1633ab41996bb4c82c849e3582 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Fri, 25 Sep 2009 14:26:26 +0800
+Subject: [PATCH] Add more power management from dcs
+
+---
+ arch/arm/mach-tcc8900/devices.c                    |    2 +-
+ .../mach-tcc8900/include/mach/TCC89x_Structures.h  |    1 +
+ arch/arm/plat-tcc/tcc_cpufreq.c                    |   23 +---
+ drivers/char/hhtech_gpio.c                         |  161 ++++++++++++++------
+ drivers/char/tcc_pwrkey.c                          |   30 ++++-
+ drivers/video/tccfb_td043mtex.c                    |   15 ++
+ 6 files changed, 158 insertions(+), 74 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/devices.c b/arch/arm/mach-tcc8900/devices.c
+index c39797f..79c9032 100644
+--- a/arch/arm/mach-tcc8900/devices.c
++++ b/arch/arm/mach-tcc8900/devices.c
+@@ -581,8 +581,8 @@ static struct platform_device tcc8900_uart5_device = {
+ static inline void tcc8900_init_uart(void)
+ {
+     platform_device_register(&tcc8900_uart0_device);
+-    platform_device_register(&tcc8900_uart1_device);
+ #if 0
++    platform_device_register(&tcc8900_uart1_device);
+     platform_device_register(&tcc8900_uart2_device);
+     platform_device_register(&tcc8900_uart3_device);
+     platform_device_register(&tcc8900_uart4_device);
+diff --git a/arch/arm/mach-tcc8900/include/mach/TCC89x_Structures.h b/arch/arm/mach-tcc8900/include/mach/TCC89x_Structures.h
+index 9c3f1c6..381d0cd 100644
+--- a/arch/arm/mach-tcc8900/include/mach/TCC89x_Structures.h
++++ b/arch/arm/mach-tcc8900/include/mach/TCC89x_Structures.h
+@@ -215,6 +215,7 @@ typedef struct _TIMERN{
+ *	4. PMU(POWER MANAGEMENT UNIT) Register Map (Base Address = 0xF0404000) 
+ ************************************************************************/
+ //#define	HwCONTROL  				*(volatile unsigned long *)0xF0404000 	//R/W   PMU Control Register 
++#define PMU_PWROFF *(volatile unsigned long *)0xF0404018
+ typedef struct _PMU{
+ 	volatile unsigned int	CONTROL;				// 	0x00 R/W   PMU Control Register 
+ 	volatile unsigned int	WKUPEN ;				//	0x04  R/W    Wakeup Enable Configuration Register 
+diff --git a/arch/arm/plat-tcc/tcc_cpufreq.c b/arch/arm/plat-tcc/tcc_cpufreq.c
+index 6b1618b..fcedd58 100644
+--- a/arch/arm/plat-tcc/tcc_cpufreq.c
++++ b/arch/arm/plat-tcc/tcc_cpufreq.c
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 二, 22  9月 2009 10:08:58 +0800     by root #
++ * Last modified: 五, 25  9月 2009 10:43:37 +0800     by root #
+  ****************************************************************/
+ #include <linux/types.h>
+ #include <linux/kernel.h>
+@@ -115,29 +115,8 @@ static struct cpufreq_driver tcc8902_driver = {
+ 	.owner		= THIS_MODULE,
+ };
+ 
+-extern int tca_ckc_setiobus(unsigned int sel, unsigned int mode);
+ static int __init tcc8902_cpufreq_init(void)
+ {
+-	int i,reg_val;
+-	
+-	for(i = 1; i < 6; i++)
+-	{
+-	    reg_val = *(volatile unsigned long *)(0xf0532008 + 0x100 * i);
+-	    *(volatile unsigned long *)(0xf0532008 + 0x100 * i) = reg_val & ~1;
+-	    reg_val = *(volatile unsigned long *)(0xf0532024 + 0x100 * i);
+-	    *(volatile unsigned long *)(0xf0532024 + 0x100 * i) = reg_val & ~3; 
+-	}
+-
+-	*(volatile unsigned long *)0xF053B004 = 0x0;
+-	*(volatile unsigned long *)0xF0510000 = 0x0;
+-
+-	for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++)	
+-	{
+-	    if((i == 26)||(i == 27)||(i == 24)||(i == 31)||(i == 11)||(i == 0)||(i == 1)||(i == 3)||(i == 4)||(i == 7)||(i == 23)||(i == 8))
+-		continue;
+-	    tca_ckc_setiobus(i,0);
+-	}
+-
+ 	return cpufreq_register_driver(&tcc8902_driver);
+ }
+ 
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 4b7793e..2da9a44 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -62,6 +62,7 @@ EXPORT_SYMBOL(choosedevice);
+ static struct delayed_work headp_detect_work;
+ #endif
+ static struct delayed_work battery_work;
++static struct delayed_work shutdown_work;
+ int current_battery = 0;
+ EXPORT_SYMBOL(current_battery);
+ static int user_disable_speaker = 0;
+@@ -72,6 +73,9 @@ EXPORT_SYMBOL(rtc_wakeup_time);
+ unsigned int wakeup_status = 0;	// 0: waked up by external IRQ; 1: waked up by RTC
+ EXPORT_SYMBOL(wakeup_status);
+ 
++extern void lcd_standby(void);
++extern void lcd_normal(void);
++
+ /*           #################     setting     ##################        */
+ 
+ // HHTECH set system power enable
+@@ -248,6 +252,44 @@ static int get_battery_life(void)
+ 	return battery_life;
+ }
+ 
++static void shutdown_unused_devices(void)
++{
++	unsigned int i,reg_val,addr;
++
++	//disable the uart 1-5
++	for(i = 1; i < 6; i++)
++	{
++	    reg_val = *(volatile unsigned long *)(0xf0532008 + 0x100 * i);
++	    *(volatile unsigned long *)(0xf0532008 + 0x100 * i) = reg_val & ~1;
++	    reg_val = *(volatile unsigned long *)(0xf0532024 + 0x100 * i);
++	    *(volatile unsigned long *)(0xf0532024 + 0x100 * i) = reg_val & ~3;
++	}
++
++	*(volatile unsigned long *)0xF053B004 = 0x0;
++	*(volatile unsigned long *)0xF0510000 = 0x0;
++	*(volatile unsigned long *)0xF0240004 |= 0x80;
++
++	//below is stop the peri clock
++	for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++)
++	{
++	    if((i == 0)||(i == 1)||(i == 3)||(i == 4)||(i == 7)||(i == 8)||(i == 11)||(i == 23)||(i == 24)||(i == 26)||(i == 27)||(i == 31))
++		continue;
++	    tca_ckc_setiobus(i,0);
++	}
++
++	//set the unused devices's source clock to null,start with
++	//LCD0(0x8c),Base Address = 0xF0400000
++	for(i = 0;i < 35; i++)
++	{
++	    addr = 0x8c + i * 4;
++	    if((addr == 0x90)||(addr == 0x94)||(addr == 0xa8)||(addr == 0xac)||(addr == 0xb0)||(addr == 0xb8)||(addr == 0xbc)||(addr == 0xfc)||(addr == 0xec)||(addr == 0x104)||(addr == 0x108)||(addr == 0x10c)||(addr == 0x110))
++		continue;
++	    *(volatile unsigned long *)(0xf040008c + i*4) &= ~(0x0f000000);
++	    *(volatile unsigned long *)(0xf040008c + i*4) |= 0x0e000000;
++	}
++
++}
++
+ static void battery_update_work(struct work_struct* work)
+ {
+ 	int dc_status;
+@@ -334,6 +376,7 @@ static ssize_t hhtech_sysfs_store_memfreq(struct device *dev, struct device_attr
+     return len;
+ }
+ 
++//vbus pm ops 
+ static int vb_st = 1;
+ static int hhtech_sysfs_show_vb(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+@@ -350,19 +393,23 @@ static ssize_t hhtech_sysfs_store_vb(struct device *dev, struct device_attribute
+     if((value) && (!vb_st))
+     {
+ 	vb_st = value;
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x40);
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val | 0x40);
+     }else if((!value) && (vb_st))
+     {
+ 	vb_st = value;
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x40));
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val & (~0x40));
+     }
+ 
+     return len;
+ }
+-static char lcd_buff[0x124];
++
++//dbus pm ops
+ static int db_st = 0;
++static char lcd_buff[0x124];
++//static unsigned long pwdnsave = 0;
++//static unsigned long hdclsave;
+ static int hhtech_sysfs_show_db(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", db_st);
+@@ -383,15 +430,24 @@ static ssize_t hhtech_sysfs_store_db(struct device *dev, struct device_attribute
+ 	gpio_direction_output(GPIO_LCD_PWR_EN, 0);
+ 	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 0);
+ 
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x80);
++//	hdclsave = *(volatile unsigned long *)0xF025102C;
++//	*(volatile unsigned long *)0xF025102C &= ~(0x4000);
++
++//  	pwdnsave = *(volatile unsigned long *)0xF0251030;
++//	*(volatile unsigned long *)0xF0251030 = 0x1ff;
++
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val | 0x80);
+ 
+     }else if((!value) && (db_st))
+     {
+ 	db_st = value;
+ 
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x80));
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val & (~0x80));
++
++//	*(volatile unsigned long *)0xF025102C = hdclsave;
++//	*(volatile unsigned long *)0xF0251030 = pwdnsave;
+ 
+ 	gpio_direction_output(GPIO_LCD_PWR_EN, 1);
+ 	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 1);
+@@ -402,7 +458,9 @@ static ssize_t hhtech_sysfs_store_db(struct device *dev, struct device_attribute
+     return len;
+ }
+ 
++//gbus pm ops
+ static int gb_st = 0;
++static unsigned long gbpd;
+ static int hhtech_sysfs_show_gb(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", gb_st);
+@@ -418,18 +476,23 @@ static ssize_t hhtech_sysfs_store_gb(struct device *dev, struct device_attribute
+     if((value) && (!gb_st))
+     {
+ 	gb_st = value;
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x100);
++	gbpd = *(volatile unsigned long *)0xF0004000; 
++	*(volatile unsigned long *)0xF0004000 = 0x3;//Graphic Bus Power Down Register
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val | 0x100);
+     }else if((!value) && (gb_st))
+     {
+ 	gb_st = value;
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x100));
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val & (~0x100));
++	*(volatile unsigned long *)0xF0004000 = gbpd;//Graphic Bus Power Down Register
++
+     }
+ 
+     return len;
+ }
+ 
++//hdmi ops
+ static int hd_st = 0;
+ static int hhtech_sysfs_show_hd(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+@@ -446,18 +509,23 @@ static ssize_t hhtech_sysfs_store_hd(struct device *dev, struct device_attribute
+     if((value) && (!hd_st))
+     {
+ 	hd_st = value;
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x2);
++	*(volatile unsigned long *)0xF0255000 |= 0x2;// HDMI POWER DOWN
++	*(volatile unsigned long *)0xF0255000 &= ~(0x1);
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val | 0x2);
+     }else if((!value) && (hd_st))
+     {
+ 	hd_st = value;
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x2));
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val & (~0x2));
++	*(volatile unsigned long *)0xF0255000 &= ~(0x2);//HDMI POWER ON
++	*(volatile unsigned long *)0xF0255000 |= 0x1;//HDMI ENABLE
+     }
+ 
+     return len;
+ }
+ 
++//iobus pm ops
+ static int io_st = 0;
+ static int hhtech_sysfs_show_io(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+@@ -473,30 +541,31 @@ static ssize_t hhtech_sysfs_store_io(struct device *dev, struct device_attribute
+ 
+     if(value == 40)
+     {
+-	*(volatile unsigned long *)0xF0400010 = 0x2000b2;
++	*(volatile unsigned long *)0xF0400010 = 0x2000b2;//change io bus to 40M
+ 	printk(KERN_EMERG"!!!dcs: now change io freq to 39M\n");
+ 	return len;
+     }else if(value == 156)
+     {
+-	*(volatile unsigned long *)0xF0400010 = 0x200022;
++	*(volatile unsigned long *)0xF0400010 = 0x200022;//change io bus to 156M
+ 	printk(KERN_EMERG"!!!dcs: now change io freq to 156M\n");
+     }
+ 
+     if((value) && (!io_st))
+     {
+ 	io_st = value;
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x200);
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val | 0x200);
+     }else if((!value) && (io_st))
+     {
+ 	io_st = value;
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x200));
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val & (~0x200));
+     }
+ 
+     return len;
+ }
+ 
++//memory ops
+ static int mb_st = 0;
+ static int hhtech_sysfs_show_mb(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+@@ -513,18 +582,19 @@ static ssize_t hhtech_sysfs_store_mb(struct device *dev, struct device_attribute
+     if((value) && (!mb_st))
+     {
+ 	mb_st = value;
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x20);
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val | 0x20);
+     }else if((!value) && (mb_st))
+     {
+ 	mb_st = value;
+-	reg_val = *(volatile unsigned long *)0xF0404018;
+-	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x20));
++	reg_val = PMU_PWROFF;
++	PMU_PWROFF = (reg_val & (~0x20));
+     }
+ 
+     return len;
+ }
+ 
++//lcd pm ops
+ static int lcd_on = 1;
+ static int hhtech_sysfs_show_lcd(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+@@ -541,10 +611,12 @@ static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribut
+     lcd_on = value;
+ 
+     gpio_direction_output(GPIO_LCD_PWR_EN, value);
++#if 0 	/* comment by csduan */
+     if(!value)
+-	*(volatile unsigned long *)0xF0204000 &= ~(0x1);    
++	*(volatile unsigned long *)0xF0204000 &= ~(0x1); 
+     else
+ 	*(volatile unsigned long *)0xF0204000 |= 0x1;
++#endif	/* comment by csduan */
+ 
+     return len;
+ }
+@@ -555,21 +627,14 @@ static ssize_t hhtech_sysfs_store_peri_on(struct device *dev, struct device_attr
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    int i,value = simple_strtoul(buf, NULL, 10);
++    int value = simple_strtoul(buf, NULL, 10);
+ 
+-    if((value >= RB_USB11H)&&(value < RB_ALLPERIPERALS)) {
++    if((value >= RB_USB11H)&&(value < RB_ALLPERIPERALS))
++    {
+ 	tca_ckc_setiobus(value,1);
+ 	return len;
+     }
+ 
+-    for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++) 
+-    {
+-	if(i == 11)
+-	    continue;
+-	 tca_ckc_setiobus(i,0);
+-	 printk(KERN_EMERG"!!!dcs: %d\n",i);
+-    }
+-   
+     return len;
+ }
+ 
+@@ -578,22 +643,15 @@ static ssize_t hhtech_sysfs_store_peri_off(struct device *dev, struct device_att
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    int i,value = simple_strtoul(buf, NULL, 10);
++    int value = simple_strtoul(buf, NULL, 10);
+ 
+-    if((value >= RB_USB11H)&&(value < RB_ALLPERIPERALS)) {
++    if((value >= RB_USB11H)&&(value < RB_ALLPERIPERALS))
++    {
+ 	tca_ckc_setiobus(value,0);
+ 	return len;
+     }
+ 
+-    for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++) 
+-    {
+-	if((i == 26)||(i == 27)||(i == 24)||(i == 31)||(i == 11)||(i == 0)||(i == 1)||(i == 3)||(i == 4)||(i == 7)||(i == 23)||(i == 8))
+-	    continue;
+-	 tca_ckc_setiobus(i,0);
+-	 printk(KERN_EMERG"!!!dcs: %d\n",i);
+-    }
+- 
+-    return len; 
++    return len;
+ }
+ 
+ extern void ckc_etcblock(unsigned int lMask);
+@@ -620,7 +678,8 @@ static ssize_t hhtech_sysfs_store_etcblock(struct device *dev, struct device_att
+     return len;
+ }
+ 
+-
++//config the wake up method,1 for button,2 for touchscreen,0 for both,set
++//before sleep
+ int sleep_type = 0;
+ EXPORT_SYMBOL(sleep_type);
+ static int hhtech_sysfs_show_sleep_type(struct device *dev, struct device_attribute *attr, char*buf)
+@@ -1095,8 +1154,10 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 	headp_update_mixer(NULL);
+ #endif
+ 	INIT_DELAYED_WORK(&battery_work, battery_update_work);
++	INIT_DELAYED_WORK(&shutdown_work,shutdown_unused_devices);
+ //	battery_update_work(NULL);
+ 	schedule_delayed_work(&battery_work, 4 * HZ);
++	schedule_delayed_work(&shutdown_work, 30 * HZ);
+ 	
+ 	return 0;
+ 
+diff --git a/drivers/char/tcc_pwrkey.c b/drivers/char/tcc_pwrkey.c
+index 3c7e76e..a448c3a 100644
+--- a/drivers/char/tcc_pwrkey.c
++++ b/drivers/char/tcc_pwrkey.c
+@@ -209,7 +209,22 @@ volatile static void tca_off_sleep(int type)
+ 		*(volatile unsigned long *)0xF0404008 = 0x00002000;
+ 		*(volatile unsigned long *)0xF0404004 = 0x00002000;
+ 	    }
+-//    *(volatile unsigned long *)0xF0404018 |= 0x80;
++ 
++    
++#if 0 	/* comment by csduan */
++    *(volatile unsigned long *)0xf0240050 |= 0x1;
++    nCount = 5000;
++    for ( ; nCount > 0 ; nCount --);		// delay
++    //SWRESET ON
++    *(volatile unsigned long *)0xf0400044 |= 0x2;//Ddi Bus
++    nCount = 5000;
++    for ( ; nCount > 0 ; nCount --);		// delay
++    //pmu disable
++    *(volatile unsigned long *)0xf0404018 |= 0x80;//Ddi Bus 
++    nCount = 1000;
++    for ( ; nCount > 0 ; nCount --);		// Wait 
++	
++#endif	/* comment by csduan */
+     
+     *(volatile unsigned long *)0xF0404000 |= 0x00000004; // PMU-CONTROL - Power Off
+ 
+@@ -224,6 +239,19 @@ volatile static void tca_off_sleep(int type)
+         *(volatile unsigned long *)0xF0400028 = *lPLL2;
+         *(volatile unsigned long *)0xF040002c = *lPLL3;
+ 
++#if 0 	/* comment by csduan */
++	nCount = 1000;
++	for ( ; nCount > 0 ; nCount --);		// Wait 
++	//pmu disable
++    	*(volatile unsigned long *)0xf0404018 &= ~(0x80);//Ddi Bus 
++    	nCount = 10000;
++    	for ( ; nCount > 0 ; nCount --);		// delay
++    	//SWRESET OFF
++    	*(volatile unsigned long *)0xf0400044 &= ~(0x2);//Ddi Bus
++    	*(volatile unsigned long *)0xf0240050 &= ~(0x1);
++
++#endif	/* comment by csduan */
++
+         nCount = 10;
+         for ( ; nCount > 0 ; nCount --);        // Wait
+ 
+diff --git a/drivers/video/tccfb_td043mtex.c b/drivers/video/tccfb_td043mtex.c
+index 2ee2a6f..0e66a27 100644
+--- a/drivers/video/tccfb_td043mtex.c
++++ b/drivers/video/tccfb_td043mtex.c
+@@ -107,3 +107,18 @@ void lcd_init_hw(void)
+ 	lcd_write(0x21,0xf0);
+ 	lcd_write(0x22,0x08);
+ }
++
++void lcd_standby(void)
++{
++    lcd_spi_stop();
++    lcd_write(0x03,0x00);
++}
++EXPORT_SYMBOL(lcd_standby);
++
++
++void lcd_normal(void)
++{
++    lcd_spi_stop();
++    lcd_write(0x03,0x5f);
++}
++EXPORT_SYMBOL(lcd_normal);
+-- 
+1.6.3.3
+

@@ -1,0 +1,139 @@
+From a7e262d22583bbc106ff8cab11cd7a28c5abfe70 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Thu, 24 Sep 2009 11:28:16 +0800
+Subject: [PATCH] Add the audio mixer function when speaker on for SmartQV5
+
+---
+ drivers/char/hhtech_gpio.c |   21 +++++++++++++--------
+ sound/soc/codecs/wm8987.c  |   35 +++++++++++++++++++++++++++++++----
+ 2 files changed, 44 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 6344598..4b7793e 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -58,7 +58,9 @@ int choosedevice = 0;
+ #endif
+ EXPORT_SYMBOL(choosedevice);
+ 
+-//static struct delayed_work headp_detect_work;
++#if defined (CONFIG_LCD_4)
++static struct delayed_work headp_detect_work;
++#endif
+ static struct delayed_work battery_work;
+ int current_battery = 0;
+ EXPORT_SYMBOL(current_battery);
+@@ -922,10 +924,8 @@ static int hhtech_sysfs_show_wk_status(struct device *dev, struct device_attribu
+ 	return snprintf(buf, PAGE_SIZE, "%d\n", wakeup_status);
+ }
+ 
+-//extern void headp_update_volume(struct work_struct* work);
+-static void headp_update_volume(struct work_struct* work)
+-{
+-}
++extern void headp_update_mixer(struct work_struct* work);
++
+ /*   headphone plug in and out  Interrupt handle  */
+ static irqreturn_t headp_irq(int irq, void *dev_id)
+ {
+@@ -938,9 +938,11 @@ static irqreturn_t headp_irq(int irq, void *dev_id)
+ 			gpio_set_value(GPIO_SPEAKER_EN, 0);
+ 		else
+ 			gpio_set_value(GPIO_SPEAKER_EN, 1);
++#if defined (CONFIG_LCD_4)
++		cancel_delayed_work(&headp_detect_work);
++		schedule_delayed_work(&headp_detect_work, msecs_to_jiffies(80));
++#endif
+ 	}
+-	//cancel_delayed_work(&headp_detect_work);
+-	//schedule_delayed_work(&headp_detect_work, msecs_to_jiffies(80));
+ 	enable_irq(IRQ_HEADPHONE);
+ 
+ 	return IRQ_HANDLED;
+@@ -1088,7 +1090,10 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 		goto error1;
+ 	}
+ 
+-	//INIT_DELAYED_WORK(&headp_detect_work, headp_update_volume);	
++#if defined (CONFIG_LCD_4)
++	INIT_DELAYED_WORK(&headp_detect_work, headp_update_mixer);
++	headp_update_mixer(NULL);
++#endif
+ 	INIT_DELAYED_WORK(&battery_work, battery_update_work);
+ //	battery_update_work(NULL);
+ 	schedule_delayed_work(&battery_work, 4 * HZ);
+diff --git a/sound/soc/codecs/wm8987.c b/sound/soc/codecs/wm8987.c
+index fd290bd..19f1377 100755
+--- a/sound/soc/codecs/wm8987.c
++++ b/sound/soc/codecs/wm8987.c
+@@ -26,11 +26,17 @@
+ #include <sound/soc.h>
+ #include <sound/soc-dapm.h>
+ #include <sound/initval.h>
++#include <hhtech_gpio.h>
++#include <mach/gpio.h>
+ 
+ #include "wm8987.h"
+ 
+ #define WM8987_VERSION "0.12"
+ 
++#if defined (CONFIG_LCD_4)
++static struct snd_soc_codec *p_codec = NULL;
++#endif
++
+ /* codec private data */
+ struct wm8987_priv {
+ 	unsigned int sysclk;
+@@ -764,6 +770,28 @@ static int wm8987_resume(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
++#if defined (CONFIG_LCD_4)
++void headp_update_mixer(struct work_struct* work)
++{
++	int reg;
++
++	if (p_codec == NULL)
++		return;
++	if (gpio_get_value(GPIO_HEADPHONE_S)) {	// headphone inserted
++		reg = wm8987_read_reg_cache(p_codec, WM8987_ROUTM1);
++		wm8987_write(p_codec, WM8987_ROUTM1, reg & (~0x0100));  // Disable Left DAC to Right Mixer
++		reg = wm8987_read_reg_cache(p_codec, WM8987_LOUTM2);
++		wm8987_write(p_codec, WM8987_LOUTM2, reg & (~0x0100));  // Disable Right DAC to Left Mixer
++	} else {    // headphone out
++		reg = wm8987_read_reg_cache(p_codec, WM8987_ROUTM1);
++		wm8987_write(p_codec, WM8987_ROUTM1, reg |  0x0100);  // Enable Left DAC to Right Mixer
++		reg = wm8987_read_reg_cache(p_codec, WM8987_LOUTM2);
++		wm8987_write(p_codec, WM8987_LOUTM2, reg |  0x0100);  // Enable Right DAC to Left Mixer
++	}
++}
++EXPORT_SYMBOL(headp_update_mixer);
++#endif
++
+ /*
+  * initialise the WM8987 driver
+  * register the mixer and dsp interfaces with the kernel
+@@ -804,10 +832,6 @@ static int wm8987_init(struct snd_soc_device *socdev)
+ 	wm8987_write(codec, WM8987_ADCDAC, reg |  0x008);   // Mute at first
+ 	reg = wm8987_read_reg_cache(codec, WM8987_LOUTM1);
+ 	wm8987_write(codec, WM8987_LOUTM1, reg |  0x0100);  // Enable Left DAC to Left Mixer 
+-	reg = wm8987_read_reg_cache(codec, WM8987_ROUTM1);
+-	wm8987_write(codec, WM8987_ROUTM1, reg |  0x0100);  // Enable Left DAC to Right Mixer 
+-	reg = wm8987_read_reg_cache(codec, WM8987_LOUTM2);
+-	wm8987_write(codec, WM8987_LOUTM2, reg |  0x0100);  // Enable Right DAC to Left Mixer
+ 	reg = wm8987_read_reg_cache(codec, WM8987_ROUTM2);
+ 	wm8987_write(codec, WM8987_ROUTM2, reg |  0x0100);  // Enable Right DAC to Right Mixer
+ 	reg = wm8987_read_reg_cache(codec, WM8987_LDAC);
+@@ -834,6 +858,9 @@ static int wm8987_init(struct snd_soc_device *socdev)
+ 		printk(KERN_ERR "wm8987: failed to register card\n");
+ 		goto card_err;
+ 	}
++#if defined (CONFIG_LCD_4)
++	p_codec = codec;
++#endif
+ 	return ret;
+ 
+ card_err:
+-- 
+1.6.3.3
+

@@ -1,0 +1,33 @@
+From d93ee2287e8f9db5330a47664881b610c62afda9 Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Wed, 30 Dec 2009 14:47:56 +0800
+Subject: [PATCH] Fix V5 usb power
+
+---
+ arch/arm/mach-tcc8900/include/hhtech_gpio.h |    6 ++----
+ 1 files changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/include/hhtech_gpio.h b/arch/arm/mach-tcc8900/include/hhtech_gpio.h
+index d715ca7..8544ebe 100644
+--- a/arch/arm/mach-tcc8900/include/hhtech_gpio.h
++++ b/arch/arm/mach-tcc8900/include/hhtech_gpio.h
+@@ -29,14 +29,12 @@
+ 
+ //USB
+ #if defined(CONFIG_LCD_4)
+-#define GPIO_USB_EN			    	TCC_GPA12   /* USB Improving voltage Enable, 1:open 0:off */
+ #define GPIO_USB_HOSTPWR_EN			TCC_GPF25   /* USB Host drv Enable 1:open 0:off */
+-#define GPIO_USB_OTGDRV_EN			TCC_GPA15   /* USB otg drv Enable, 1:open 0:off */
+ #else
+-#define GPIO_USB_EN			    	TCC_GPA15   /* USB Improving voltage Enable, 1:open 0:off */
+ #define GPIO_USB_HOSTPWR_EN			TCC_GPA2   /* USB Host drv Enable 1:open 0:off */
+-#define GPIO_USB_OTGDRV_EN			TCC_GPA12   /* USB otg drv Enable, 1:open 0:off */
+ #endif
++#define GPIO_USB_EN			    	TCC_GPA15   /* USB Improving voltage Enable, 1:open 0:off */
++#define GPIO_USB_OTGDRV_EN			TCC_GPA12   /* USB otg drv Enable, 1:open 0:off */
+ 
+ //Headphone and Speaker
+ #define GPIO_HEADPHONE_S			TCC_GPD7    /* Headphone insert detect, 0:inserted */
+-- 
+1.6.3.3
+

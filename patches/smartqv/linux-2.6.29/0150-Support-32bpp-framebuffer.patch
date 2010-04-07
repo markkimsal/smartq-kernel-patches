@@ -1,0 +1,83 @@
+From 52f48322b7a4c706515d01b275726a19ddfd38df Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Fri, 5 Feb 2010 11:50:02 +0800
+Subject: [PATCH] Support 32bpp framebuffer
+
+---
+ drivers/video/Kconfig |   22 ++++++++++++++++++++++
+ drivers/video/tccfb.c |   12 +++++++++++-
+ 2 files changed, 33 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/video/Kconfig b/drivers/video/Kconfig
+index c8a540b..51d9526 100644
+--- a/drivers/video/Kconfig
++++ b/drivers/video/Kconfig
+@@ -1917,6 +1917,28 @@ config FB_TCC_TD043MTEX
+ 
+ endchoice
+ 
++config FB_TCC_BPP
++	tristate "Advanced options for TCC8900 Framebuffer"
++	depends on FB_TCC8900
++	default n
++	---help---
++	TBA
++
++choice
++depends on FB_TCC_BPP
++prompt "Select BPP(Bits Per Pixel)"
++default FB_TCC_BPP_16
++config FB_TCC_BPP_16
++	bool "16 BPP"
++	---help---
++	TBA
++
++config FB_TCC_BPP_32
++	bool "32 BPP"
++	---help---
++	TBA
++endchoice
++
+ config FB_SH_MOBILE_LCDC
+ 	tristate "SuperH Mobile LCDC framebuffer support"
+ 	depends on FB && SUPERH
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index 6fb45a7..6a48843 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -150,7 +150,7 @@ static int debug	   = 0;
+ 
+ const unsigned int default_scn_depth[CONFIG_FB_TCC_DEVS_MAX] = 
+ {
+-#if 0
++#if defined (CONFIG_FB_TCC_BPP_32)
+ /* fb0, Layer0: bottom */  (SCREEN_DEPTH_MAX), // 32 or 16
+ /* fb1, Layer1: middle */  (SCREEN_DEPTH_MAX), //  "
+ /* fb2, Layer2: top    */  (SCREEN_DEPTH_MAX)  //  "
+@@ -906,6 +906,12 @@ static int tccfb_check_var(struct fb_var_screeninfo *var,
+ {
+ 	dprintk("check_var(var=%p, info=%p)\n", var, info);
+ 
++#if defined (CONFIG_FB_TCC_BPP_32)
++	var->bits_per_pixel = 32;
++#else
++	var->bits_per_pixel = 16;
++#endif
++
+ 	/* validate bpp */
+ 	if (var->bits_per_pixel > 32)
+ 		var->bits_per_pixel = 32;
+@@ -1691,6 +1697,10 @@ static int tccfb_ioctl(struct fb_info *info, unsigned int cmd,unsigned long arg)
+ 
+ 				copy_from_user((void *)&fmt, (const void *)arg, sizeof(unsigned int));
+ 
++#if defined (CONFIG_FB_TCC_BPP_32)
++				/* if CONFIG_FB_TCC_BPP_32, force fmt to IMGFMT_RGB888 from IMGFMT_RGB565 */
++				if(fmt == 10)	fmt = 12;
++#endif
+ 				parm_lcdcid = MAIN_LCDC_ID;
+ 				parm_imgch = imgch;
+ 
+-- 
+1.6.3.3
+

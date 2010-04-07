@@ -1,0 +1,58 @@
+From 2775655d04ced234f80013cfe93da37e9cc2beac Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Tue, 25 Aug 2009 19:11:39 +0800
+Subject: [PATCH] Make g_file_storage using module parameters
+
+---
+ drivers/usb/gadget/file_storage.c |   18 ++++--------------
+ 1 files changed, 4 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/usb/gadget/file_storage.c b/drivers/usb/gadget/file_storage.c
+index fcd588d..a66e9f2 100644
+--- a/drivers/usb/gadget/file_storage.c
++++ b/drivers/usb/gadget/file_storage.c
+@@ -367,16 +367,6 @@ static struct {
+ 	char		*protocol_name;
+ 
+ } mod_data = {					// Default values
+-#ifdef CONFIG_ARCH_TCC
+-	.file			= {"/dev/ndda1", "", "", "", ""},
+-	.can_ioctl		= {0, 0, 0, 0, 0},
+-	.ro				= {0, 0, 0, 0, 0},
+-	.removable		= {1, 1, 1, 1, 1},
+-	.num_filenames	= 5,
+-	.num_ros		= 5,
+-	.nluns			= 5,
+-#endif
+-
+ 	.transport_parm		= "BBB",
+ 	.protocol_parm		= "SCSI",
+ 	.can_stall		= 1,
+@@ -386,7 +376,7 @@ static struct {
+ 	.buflen			= 16384,
+ 	};
+ 
+-#ifndef CONFIG_ARCH_TCC
++
+ module_param_array_named(file, mod_data.file, charp, &mod_data.num_filenames,
+ 		S_IRUGO);
+ MODULE_PARM_DESC(file, "names of backing files or devices");
+@@ -397,12 +387,12 @@ MODULE_PARM_DESC(ro, "true to force read-only");
+ module_param_named(luns, mod_data.nluns, uint, S_IRUGO);
+ MODULE_PARM_DESC(luns, "number of LUNs");
+ 
+-//module_param_named(removable, mod_data.removable, bool, S_IRUGO);
+-//MODULE_PARM_DESC(removable, "true to simulate removable media");
++module_param_named(removable, mod_data.removable, bool, S_IRUGO);
++MODULE_PARM_DESC(removable, "true to simulate removable media");
+ 
+ module_param_named(stall, mod_data.can_stall, bool, S_IRUGO);
+ MODULE_PARM_DESC(stall, "false to prevent bulk stalls");
+-#endif
++
+ 
+ /* In the non-TEST version, only the module parameters listed above
+  * are available. */
+-- 
+1.6.3.3
+

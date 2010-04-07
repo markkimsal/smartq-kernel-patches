@@ -1,0 +1,43 @@
+From a5d43ccfb5cd5b43e11f975f2c098be4c0ad0599 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Wed, 12 Aug 2009 16:11:12 +0800
+Subject: [PATCH] enlarge the response scope of touchsreen
+
+---
+ drivers/input/touchscreen/tcc_ts.c |   20 ++++----------------
+ 1 files changed, 4 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/input/touchscreen/tcc_ts.c b/drivers/input/touchscreen/tcc_ts.c
+index 6e844a5..01ba2dd 100644
+--- a/drivers/input/touchscreen/tcc_ts.c
++++ b/drivers/input/touchscreen/tcc_ts.c
+@@ -72,22 +72,10 @@
+ 
+ #define TOUCH_COLLECT_NR        16  // (TOUCH_COLLECT_NR-TOUCH_VALID_VALUE) must be even
+ #define TOUCH_VALID_VALUE       2  // among COLLECT_NR samples, OK should be over
+-#if defined(CONFIG_LCD11)
+-#define MAX_X   3850 
+-#define MIN_X   240
+-#define MAX_Y   3700
+-#define MIN_Y   410
+-#elif defined(CONFIG_LCD01)
+-#define MAX_X   3830
+-#define MIN_X   250
+-#define MAX_Y   3830
+-#define MIN_Y   440
+-#elif defined(CONFIG_LCD10)
+-#define MAX_X   3871
+-#define MIN_X   204
+-#define MAX_Y   3660
+-#define MIN_Y   414
+-#endif
++#define MAX_X   6000 
++#define MIN_X   0
++#define MAX_Y   6000
++#define MIN_Y   0
+ 
+ #define PEN_DOWN 1
+ #define PEN_RELEASE 0
+-- 
+1.6.3.3
+

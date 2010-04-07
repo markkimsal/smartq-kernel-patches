@@ -1,0 +1,530 @@
+From e08793e561faaebc8cac833112f1017b55d212ec Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Tue, 22 Sep 2009 12:41:44 +0800
+Subject: [PATCH] Provide sysfs interface for more power management, and add rtc wakeup function from dcs
+
+---
+ arch/arm/plat-tcc/tcc_cpufreq.c        |   24 +++++-
+ drivers/char/hhtech_gpio.c             |  151 +++++++++++++++++++++++++++++---
+ drivers/char/tcc_pwrkey.c              |   76 +++++++++++-----
+ drivers/input/touchscreen/tcc_ts.c     |   10 ++-
+ drivers/usb/dwc_otg/dwc_otg_cil_intr.c |    9 --
+ drivers/usb/dwc_otg/dwc_otg_driver.c   |   12 +++
+ 6 files changed, 232 insertions(+), 50 deletions(-)
+
+diff --git a/arch/arm/plat-tcc/tcc_cpufreq.c b/arch/arm/plat-tcc/tcc_cpufreq.c
+index 3fbba7e..6b1618b 100644
+--- a/arch/arm/plat-tcc/tcc_cpufreq.c
++++ b/arch/arm/plat-tcc/tcc_cpufreq.c
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 五, 18  9月 2009 11:08:32 +0800     by root #
++ * Last modified: 二, 22  9月 2009 10:08:58 +0800     by root #
+  ****************************************************************/
+ #include <linux/types.h>
+ #include <linux/kernel.h>
+@@ -26,6 +26,7 @@
+ #include <asm/io.h>
+ #include <asm/system.h>
+ #include <linux/tcc_ioctl.h>
++#include <mach/tcc_pca953x.h>
+ 
+ #define KHZ_T		1000
+ 
+@@ -114,8 +115,29 @@ static struct cpufreq_driver tcc8902_driver = {
+ 	.owner		= THIS_MODULE,
+ };
+ 
++extern int tca_ckc_setiobus(unsigned int sel, unsigned int mode);
+ static int __init tcc8902_cpufreq_init(void)
+ {
++	int i,reg_val;
++	
++	for(i = 1; i < 6; i++)
++	{
++	    reg_val = *(volatile unsigned long *)(0xf0532008 + 0x100 * i);
++	    *(volatile unsigned long *)(0xf0532008 + 0x100 * i) = reg_val & ~1;
++	    reg_val = *(volatile unsigned long *)(0xf0532024 + 0x100 * i);
++	    *(volatile unsigned long *)(0xf0532024 + 0x100 * i) = reg_val & ~3; 
++	}
++
++	*(volatile unsigned long *)0xF053B004 = 0x0;
++	*(volatile unsigned long *)0xF0510000 = 0x0;
++
++	for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++)	
++	{
++	    if((i == 26)||(i == 27)||(i == 24)||(i == 31)||(i == 11)||(i == 0)||(i == 1)||(i == 3)||(i == 4)||(i == 7)||(i == 23)||(i == 8))
++		continue;
++	    tca_ckc_setiobus(i,0);
++	}
++
+ 	return cpufreq_register_driver(&tcc8902_driver);
+ }
+ 
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 123cc85..a45a677 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -41,6 +41,8 @@
+ #include <mach/gpio.h>
+ 
+ #include <../drivers/usb/dwc_otg/dwc_otg_driver.h>
++#include <mach/globals.h>
++
+ #define IRQ_HEADPHONE INT_EI7
+ 
+ #if defined(CONFIG_LCD_4)
+@@ -351,8 +353,6 @@ static ssize_t hhtech_sysfs_store_vb(struct device *dev, struct device_attribute
+     return len;
+ }
+ static char lcd_buff[0x124];
+-extern void tcc_lcd_on(void);
+-extern void tcc_lcd_off(void);
+ static int db_st = 0;
+ static int hhtech_sysfs_show_db(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+@@ -462,6 +462,17 @@ static ssize_t hhtech_sysfs_store_io(struct device *dev, struct device_attribute
+     int value = simple_strtoul(buf, NULL, 10);
+     int reg_val;
+ 
++    if(value == 40)
++    {
++	*(volatile unsigned long *)0xF0400010 = 0x2000b2;
++	printk(KERN_EMERG"!!!dcs: now change io freq to 39M\n");
++	return len;
++    }else if(value == 156)
++    {
++	*(volatile unsigned long *)0xF0400010 = 0x200022;
++	printk(KERN_EMERG"!!!dcs: now change io freq to 156M\n");
++    }
++
+     if((value) && (!io_st))
+     {
+ 	io_st = value;
+@@ -505,10 +516,123 @@ static ssize_t hhtech_sysfs_store_mb(struct device *dev, struct device_attribute
+     return len;
+ }
+ 
++static int lcd_on = 1;
++static int hhtech_sysfs_show_lcd(struct device *dev, struct device_attribute *attr, char*buf)
++{
++    return snprintf(buf, PAGE_SIZE, "%d\n", lcd_on);
++}
++static ssize_t hhtech_sysfs_store_lcd(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int value = simple_strtoul(buf, NULL, 10);
++
++    value = !!value;
++    lcd_on = value;
++
++    gpio_direction_output(GPIO_LCD_PWR_EN, value);
++    if(!value)
++	*(volatile unsigned long *)0xF0204000 &= ~(0x1);    
++    else
++	*(volatile unsigned long *)0xF0204000 |= 0x1;
++
++    return len;
++}
++
++extern int tca_ckc_setiobus(unsigned int sel, unsigned int mode);
++static ssize_t hhtech_sysfs_store_peri_on(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int i,value = simple_strtoul(buf, NULL, 10);
++
++    if((value >= RB_USB11H)&&(value < RB_ALLPERIPERALS)) {
++	tca_ckc_setiobus(value,1);
++	return len;
++    }
++
++    for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++) 
++    {
++	if(i == 11)
++	    continue;
++	 tca_ckc_setiobus(i,0);
++	 printk(KERN_EMERG"!!!dcs: %d\n",i);
++    }
++   
++    return len;
++}
++
++static ssize_t hhtech_sysfs_store_peri_off(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int i,value = simple_strtoul(buf, NULL, 10);
++
++    if((value >= RB_USB11H)&&(value < RB_ALLPERIPERALS)) {
++	tca_ckc_setiobus(value,0);
++	return len;
++    }
++
++    for(i = RB_USB11H; i < RB_ALLPERIPERALS; i++) 
++    {
++	if((i == 26)||(i == 27)||(i == 24)||(i == 31)||(i == 11)||(i == 0)||(i == 1)||(i == 3)||(i == 4)||(i == 7)||(i == 23)||(i == 8))
++	    continue;
++	 tca_ckc_setiobus(i,0);
++	 printk(KERN_EMERG"!!!dcs: %d\n",i);
++    }
++ 
++    return len; 
++}
++
++extern void ckc_etcblock(unsigned int lMask);
++static unsigned long etcmask = 0;
++
++static int hhtech_sysfs_show_etcblock(struct device *dev, struct device_attribute *attr, char*buf)
++{     
++    return snprintf(buf, PAGE_SIZE, "%x\n", etcmask);
++}
++
++static ssize_t hhtech_sysfs_store_etcblock(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int value = simple_strtoul(buf, NULL, 16);
++
++    etcmask = value;
++
++    ckc_etcblock(value);
++
++    printk(KERN_EMERG"!!!dcs: %x \n", value);
++    
++    return len;
++}
++
++
++int sleep_type = 0;
++EXPORT_SYMBOL(sleep_type);
++static int hhtech_sysfs_show_sleep_type(struct device *dev, struct device_attribute *attr, char*buf)
++{
++    return snprintf(buf, PAGE_SIZE, "%d\n", sleep_type);
++}
++static ssize_t hhtech_sysfs_store_sleep_type(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int value = simple_strtoul(buf, NULL, 10);
++    if((value != 0)&&(value != 1)&&(value != 2))
++	value = 0;
++
++    sleep_type = value;
++
++    return len;
++}
++
+ extern int choosedevice;
+-extern int set_otg_num;
+-extern dwc_otg_device_t *hh_otg_device;
+-extern int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if);
+ static int hhtech_sysfs_show_otgmode(struct device *dev, struct device_attribute *attr, char*buf)
+ {
+     return snprintf(buf, PAGE_SIZE, "%d\n", choosedevice);
+@@ -519,16 +643,9 @@ static ssize_t hhtech_sysfs_store_otgmode(struct device *dev, struct device_attr
+     if(len < 1)
+ 	return -EINVAL;
+ 
+-    set_otg_num = 0;
+     unsigned int value = simple_strtoul(buf, NULL, 10);
+     choosedevice = value;
+ 
+-    if (!value)
+-    {
+-	msleep(300);
+-	dwc_otg_handle_conn_id_status_change_intr(hh_otg_device->core_if);
+-    }
+-
+     return len;
+ }
+ 
+@@ -836,6 +953,11 @@ static DEVICE_ATTR(gb_pwoff, 0666, hhtech_sysfs_show_gb, hhtech_sysfs_store_gb);
+ static DEVICE_ATTR(hd_pwoff, 0666, hhtech_sysfs_show_hd, hhtech_sysfs_store_hd);
+ static DEVICE_ATTR(io_pwoff, 0666, hhtech_sysfs_show_io, hhtech_sysfs_store_io);
+ static DEVICE_ATTR(mb_pwoff, 0666, hhtech_sysfs_show_mb, hhtech_sysfs_store_mb);
++static DEVICE_ATTR(lcd_on, 0666, hhtech_sysfs_show_lcd, hhtech_sysfs_store_lcd);
++static DEVICE_ATTR(peri_on, 0666, NULL , hhtech_sysfs_store_peri_on);
++static DEVICE_ATTR(peri_off, 0666, NULL , hhtech_sysfs_store_peri_off);
++static DEVICE_ATTR(etcblock, 0666, hhtech_sysfs_show_etcblock , hhtech_sysfs_store_etcblock);
++static DEVICE_ATTR(sleep_tp, 0666, hhtech_sysfs_show_sleep_type , hhtech_sysfs_store_sleep_type);
+ static DEVICE_ATTR(otg_mode, 0666, hhtech_sysfs_show_otgmode, hhtech_sysfs_store_otgmode);
+ static DEVICE_ATTR(charge_en, 0666, hhtech_sysfs_show_charge, hhtech_sysfs_store_charge);
+ static DEVICE_ATTR(backlight_level, 0666,hhtech_sysfs_show_blight, hhtech_sysfs_store_blight);
+@@ -866,6 +988,11 @@ static struct attribute *attrs[] = {
+ 	&dev_attr_hd_pwoff.attr,
+ 	&dev_attr_io_pwoff.attr,
+ 	&dev_attr_mb_pwoff.attr,
++	&dev_attr_lcd_on.attr,
++	&dev_attr_peri_on.attr,
++	&dev_attr_peri_off.attr,
++	&dev_attr_etcblock.attr,
++	&dev_attr_sleep_tp.attr,
+ #if defined(CONFIG_LCD_7)
+ 	&dev_attr_otg_mode.attr,
+ #endif
+diff --git a/drivers/char/tcc_pwrkey.c b/drivers/char/tcc_pwrkey.c
+index 2c851ef..3c7e76e 100644
+--- a/drivers/char/tcc_pwrkey.c
++++ b/drivers/char/tcc_pwrkey.c
+@@ -54,8 +54,6 @@ extern int plat_tcc_pm(int mode);
+ 
+ extern int arm_changestack(void);
+ extern void arm_restorestack(unsigned int rst);
+-extern void IO_ARM_CleanCACHE(unsigned int val);
+-extern void IO_ARM_FlushCACHE(void);
+ 
+ #define SRAM_ADDR_VAR 0xEFF00600
+ #define SRAM_ADDR_STANDBY 0xEFF00000
+@@ -64,7 +62,7 @@ extern void IO_ARM_FlushCACHE(void);
+ /*****************************************************************************
+ * Function Name : tca_off_sleep()
+ ******************************************************************************/
+-volatile static void tca_off_sleep(void)
++volatile static void tca_off_sleep(int type)
+ {
+ 
+         volatile unsigned int nCount = 0;
+@@ -78,11 +76,7 @@ volatile static void tca_off_sleep(void)
+         int tmpread = *(volatile unsigned long *)0xF0400008;
+         int count = 0;
+ 
+-	*(volatile unsigned long *)0xF0102024 &= ~(0xff0000);
+-	*(volatile unsigned long *)0xF0102004 |= 0x30;
+-	*(volatile unsigned long *)0xF0102000 &= ~(0x30);
+-
+-        tmpread &= ~0x00200000;
++       	tmpread &= ~0x00200000;
+         lmem_source = tmpread & 0xf;
+         tmpread &= 0xf0;
+ 
+@@ -185,17 +179,38 @@ volatile static void tca_off_sleep(void)
+     *(volatile unsigned long *)0xF0400028 &= ~0x80000000; // CKC-PLL2CFG - PLL disable
+     *(volatile unsigned long *)0xF040002c &= ~0x80000000; // CKC-PLL3CFG - PLL disable
+ 
++    
++    //go power down mode......
+ 
++//    *(volatile unsigned long *)0xF0102024 &= ~(0x0000f000); //
++//    *(volatile unsigned long *)0xF0102004 &= ~(0x00000008); //
+ 
++    *(volatile unsigned long *)0xF01020EC &= ~(0x00000f00); 
++    *(volatile unsigned long *)0xF01020C4 &= ~(0x00040000);
+ 
+ 
+-    //go power down mode......
++ //   *(volatile unsigned long *)0xF0404000 |= 0x00000010; // PMU-CONTROL - Download ITCM boot code
+ 
+-    *(volatile unsigned long *)0xF01020EC &= ~(0x00000f00); 
+-    *(volatile unsigned long *)0xF01020C4 &= ~(0x00040000);
++//    *(volatile unsigned long *)0xF0404000 |= 0x00000008; // PMU-CONTROL - Deep Power-Down
+ 
+-    *(volatile unsigned long *)0xF0404008 = 0x00000800; // PMU-WKUPPOL  - SRCS[15](GPIO A3) active low
+-    *(volatile unsigned long *)0xF0404004 = 0x00000800; // PMU-WKUPEN  - SRCS[15](GPIO A3) enable
++//    *(volatile unsigned long *)0xF0404000 |= 0x80000000; // PMU-CONTROL - I/O Retension Enable
++       
++    if(type == 0)
++    {
++	*(volatile unsigned long *)0xF0404008 = 0x00002800; // PMU-WKUPPOL  - SRCS[15](GPIO A3) active low
++	*(volatile unsigned long *)0xF0404004 = 0x00002800; // PMU-WKUPEN  - SRCS[15](GPIO A3) enable
++    }else if(type == 1)
++	{
++	    *(volatile unsigned long *)0xF0404008 = 0x00000800;
++	    *(volatile unsigned long *)0xF0404004 = 0x00000800;
++	
++	}else if(type == 2)
++	    {
++		*(volatile unsigned long *)0xF0404008 = 0x00002000;
++		*(volatile unsigned long *)0xF0404004 = 0x00002000;
++	    }
++//    *(volatile unsigned long *)0xF0404018 |= 0x80;
++    
+     *(volatile unsigned long *)0xF0404000 |= 0x00000004; // PMU-CONTROL - Power Off
+ 
+     
+@@ -324,15 +339,13 @@ volatile static void tca_off_sleep(void)
+         *(volatile unsigned long *)0xF0302004 = 0x00000000; // PL341_GO
+         while (((*(volatile unsigned long *)0xF0302000) & 0x3)!=1); //Wait PL34X_STATUS_READY
+ 
+-	*(volatile unsigned long *)0xF0102000 |= 0x30;
+-
+-
+ }
++typedef void (*lpfunc)(int);
++static  lpfunc sleep;
++extern int noneed_respond;
++//static char lcd_buff[0x124];
+ 
+-typedef void (*lpfunc)(void);
+-extern lpfunc lpSelfRefresh;
+-
+-volatile static void tca_off_copysram(void)
++volatile static void tca_off_copysram(int type)
+ {
+     // Setup Pointer
+     volatile unsigned int   *fptr;
+@@ -343,7 +356,8 @@ volatile static void tca_off_copysram(void)
+ 
+     // Copy Function Contents to SRAM
+     fptr = (volatile unsigned int*)tca_off_sleep;
+-    lpSelfRefresh = (lpfunc)(SRAM_ADDR_STANDBY);
++    // Copy Function Contents to SRAM
++    sleep = (lpfunc)(SRAM_ADDR_STANDBY);
+ 
+     p = (volatile unsigned int*)SRAM_ADDR_STANDBY;
+ 
+@@ -357,12 +371,24 @@ volatile static void tca_off_copysram(void)
+     while(--i);
+ 
+     // Jump to Function Start Point
+-    lpSelfRefresh();
+-}
++//    memcpy(lcd_buff,(char *)0xF0204000,0x124);
++  
++    if(type != 1)
++	noneed_respond = 1;
+ 
++    *(volatile unsigned long *)0xF0102024 &= ~(0xff0000);
++    *(volatile unsigned long *)0xF0102004 |= 0x30;
++    *(volatile unsigned long *)0xF0102000 &= ~(0x30);
++
++    sleep(type);
++//    memcpy((char *)0xF0204000,lcd_buff,0x124);
++    
++    *(volatile unsigned long *)0xF0102000 |= 0x30;
++
++}
++extern int sleep_type;
+ void selfrefresh_test(void)
+ {
+-    int i;
+     unsigned long flags; 
+     unsigned int retstack = 0;
+     volatile PLCDC	pLCDC_BASE0 = (volatile PLCDC)tcc_p2v(HwLCDC0_BASE);
+@@ -381,7 +407,7 @@ void selfrefresh_test(void)
+     
+     retstack = arm_changestack();
+ 
+-    tca_off_copysram();
++    tca_off_copysram(sleep_type);
+ 
+     arm_restorestack(retstack);
+ 
+diff --git a/drivers/input/touchscreen/tcc_ts.c b/drivers/input/touchscreen/tcc_ts.c
+index f401296..858296a 100644
+--- a/drivers/input/touchscreen/tcc_ts.c
++++ b/drivers/input/touchscreen/tcc_ts.c
+@@ -384,6 +384,8 @@ static inline void tcc_pen_pressure(struct tcc_ts* ts_data, struct input_dev *de
+ #define ADCDAT0_XPDATA_MASK	(0x03FF)
+ #define ADCDAT1_YPDATA_MASK	(0x03FF)
+ 
++int noneed_respond = 0;
++EXPORT_SYMBOL(noneed_respond);
+ static void ts_fetch_thread(struct work_struct *work)
+ {
+     struct tcc_ts* ts_data = container_of(work, struct tcc_ts, work_q);
+@@ -417,6 +419,7 @@ static void ts_fetch_thread(struct work_struct *work)
+         add_timer(&ts_timer);
+ 
+ #else
++	noneed_respond = 0;
+         tcc_pen_release(ts_data, dev);
+         ts_data->running = 0;
+         dbg("(work_q_1)enable_irq\n");
+@@ -431,9 +434,10 @@ static void ts_fetch_thread(struct work_struct *work)
+         valid = ts_data->x | ts_data->y;
+ 
+         if ((flag == 0) && valid) {
+-            tcc_pen_pressure(ts_data, dev);
+-            ts_timer.expires = jiffies + 1;
+-            add_timer(&ts_timer);
++	    if(noneed_respond == 0)
++		tcc_pen_pressure(ts_data, dev);
++	    ts_timer.expires = jiffies + 1;
++	    add_timer(&ts_timer);
+         } else {
+             tcc_pen_release(ts_data, dev);
+             ts_data->running = 0;
+diff --git a/drivers/usb/dwc_otg/dwc_otg_cil_intr.c b/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
+index a2873e6..7e38073 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
++++ b/drivers/usb/dwc_otg/dwc_otg_cil_intr.c
+@@ -349,8 +349,6 @@ int32_t dwc_otg_handle_otg_intr(dwc_otg_core_if_t *_core_if)
+  *
+  * @param _core_if Programming view of DWC_otg controller.
+  */
+-int set_otg_num = 1;
+-EXPORT_SYMBOL(set_otg_num);
+ extern void set_usb_syspwr_en(int sw);
+ extern void set_usb_otgdrv_en(int sw);
+ int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if)
+@@ -361,12 +359,6 @@ int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if)
+ 	gintmsk_data_t gintmsk = { .d32 = 0 };
+ 	gotgctl_data_t gotgctl = { .d32 = 0 };
+ 
+-	if(set_otg_num == -1)
+-	    return;
+-
+-	if(!set_otg_num)
+-	    set_otg_num = -1;
+-
+ 	/*
+ 	 * Need to disable SOF interrupt immediately. If switching from device
+ 	 * to host, the PCD interrupt handler won't handle the interrupt if
+@@ -430,7 +422,6 @@ int32_t dwc_otg_handle_conn_id_status_change_intr(dwc_otg_core_if_t *_core_if)
+ 
+ 	return 1;
+ }
+-EXPORT_SYMBOL(dwc_otg_handle_conn_id_status_change_intr);
+ /**
+  * This interrupt indicates that a device is initiating the Session
+  * Request Protocol to request the host to turn on bus power so a new
+diff --git a/drivers/usb/dwc_otg/dwc_otg_driver.c b/drivers/usb/dwc_otg/dwc_otg_driver.c
+index bd35df8..2dcd1d3 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_driver.c
++++ b/drivers/usb/dwc_otg/dwc_otg_driver.c
+@@ -87,7 +87,11 @@
+ #define DWC_DRIVER_DESC		"HS OTG USB Controller driver"
+ 
+ static const char dwc_driver_name[] = "dwc_otg";
++#if defined (CONFIG_LCD_4)
+ int choosedevice = 1;
++#else
++int choosedevice = 0;
++#endif
+ EXPORT_SYMBOL(choosedevice);
+ /* For Signature */
+ #define DWC_OTG_DRIVER_SIGNATURE			'D','W','C','_','O','T','G','_','D','R','I','V','E','R','_'
+@@ -95,6 +99,9 @@ EXPORT_SYMBOL(choosedevice);
+ static const unsigned char DWC_OTG_DRIVER_C_Version[] =
+     {SIGBYAHONG, DWC_OTG_DRIVER_SIGNATURE, SIGN_OS ,SIGN_CHIPSET, DWC_OTG_DRIVER_VERSION, 0};
+ 
++extern void set_usb_syspwr_en(int sw);
++extern void set_usb_otgdrv_en(int sw);
++
+ /*-------------------------------------------------------------------------*/
+ /* Encapsulate the module parameter settings */
+ 
+@@ -1175,6 +1182,11 @@ static int dwc_otg_driver_probe(struct device *dev)
+ 	/* add power control functions */
+ 	insert_pwm_node(DEVICE_OTG, otg_pwr_ctl, dwc_otg_device);
+ 
++#if defined (CONFIG_LCD_7)
++	/* OTG power on */
++	set_usb_syspwr_en(1);
++	set_usb_otgdrv_en(1);
++#endif
+ 	return 0;
+ 
+ fail:
+-- 
+1.6.3.3
+

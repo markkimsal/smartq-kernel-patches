@@ -1,0 +1,29 @@
+From 7f189b34e6a5e2501bc102e5a5a4b0ea4a47053b Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Mon, 7 Dec 2009 09:22:33 +0800
+Subject: [PATCH] prevent the last video image left on the LCD screen, when the video ended and the user unplug the TV-out cable
+
+---
+ drivers/video/tca_tvout.c |    6 +++++-
+ 1 files changed, 5 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/video/tca_tvout.c b/drivers/video/tca_tvout.c
+index 183bd48..5607d35 100644
+--- a/drivers/video/tca_tvout.c
++++ b/drivers/video/tca_tvout.c
+@@ -873,7 +873,11 @@ void tca_tvo_settv2lcd(void)
+ 	if(gTvoutLcdcId)
+ 	{
+ 		pLCDC->LI1C	    = gRegLI1C;
+-		pLCDC->LI2C	    = gRegLI2C;
++		/* When the video ended, and the user unplug the TV-out cable, should  disable the Chroma-Keying Function in order to prevent the last video image left on the LCD screen */
++		if((pLCDC->LI2C & (1<<29)) == 0)
++		    pLCDC->LI2C	    = gRegLI2C & ~(1<<29);
++		else
++		    pLCDC->LI2C	    = gRegLI2C;
+ 	}
+ 
+ 	pLCDC->LI0S	    = gRegLI0S;
+-- 
+1.6.3.3
+

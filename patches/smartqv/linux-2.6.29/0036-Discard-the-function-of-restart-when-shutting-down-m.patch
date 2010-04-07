@@ -1,0 +1,30 @@
+From 23d6e362cf315c75eab509e3fb092b2fc287f145 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Thu, 10 Sep 2009 16:49:11 +0800
+Subject: [PATCH] Discard the function of restart when shutting down machine with dc on
+
+---
+ arch/arm/mach-tcc8900/board-tcc8900.c |    7 +------
+ 1 files changed, 1 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/board-tcc8900.c b/arch/arm/mach-tcc8900/board-tcc8900.c
+index 18f372a..7d7a0e4 100644
+--- a/arch/arm/mach-tcc8900/board-tcc8900.c
++++ b/arch/arm/mach-tcc8900/board-tcc8900.c
+@@ -62,12 +62,7 @@ static struct i2c_board_info __initdata tcc8900_i2c_board_info[] = {
+ 
+ static void tcc8900_power_off(void)
+ {
+-	int dc_status = !gpio_get_value(GPIO_DC_DETE);
+-
+-	if(dc_status)
+-	    machine_restart(NULL);
+-	else
+-	    gpio_direction_output(GPIO_PWR_EN, 0);
++	gpio_direction_output(GPIO_PWR_EN, 0);
+ }
+ 
+ static void __init tcc8900_map_io(void)
+-- 
+1.6.3.3
+

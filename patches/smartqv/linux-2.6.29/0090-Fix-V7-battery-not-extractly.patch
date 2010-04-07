@@ -1,0 +1,28 @@
+From 0159d1e1a48ba0e29c2cc3aa4c511b173841cf7d Mon Sep 17 00:00:00 2001
+From: YouSheng <david.ysh@gmail.com>
+Date: Thu, 12 Nov 2009 14:01:19 +0800
+Subject: [PATCH] Fix V7 battery not extractly
+
+---
+ drivers/char/hhtech_gpio.c |    4 ++++
+ 1 files changed, 4 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 3b601a2..af72179 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -242,7 +242,11 @@ static int read_battery(void)
+ 	else
+ 	   old_reference_value = reference_value;
+ 
++#ifdef CONFIG_LCD_4
+ 	battery_life = (battery_life * 24684) / (reference_value * 42);
++#else
++	battery_life = (battery_life * 24000) / (reference_value * 42);
++#endif
+ 
+ 	return battery_life;
+ }
+-- 
+1.6.3.3
+

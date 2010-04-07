@@ -1,0 +1,82 @@
+From e2f837b8a9670ca15d1da1b39aff0088301b695d Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Fri, 13 Nov 2009 14:16:53 +0800
+Subject: [PATCH] fix bug when resuming for ohci
+
+---
+ drivers/i2c/chips/tcc_pca953x.c |    2 ++
+ drivers/usb/host/ohci-tcc.c     |    6 ++++++
+ 2 files changed, 8 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/i2c/chips/tcc_pca953x.c b/drivers/i2c/chips/tcc_pca953x.c
+index 24f3465..0d12014 100644
+--- a/drivers/i2c/chips/tcc_pca953x.c
++++ b/drivers/i2c/chips/tcc_pca953x.c
+@@ -155,6 +155,7 @@ EXPORT_SYMBOL(tcc_pca953x_write);
+ 
+ int tcc_pca953x_setup(int slave, int name, int direction, int value, int mode)
+ {
++#if 0 	/* comment by csduan */
+ 	int ret = 0, port_nr = 0, port[2], conf[2];
+ 	unsigned char buf[2];
+ 
+@@ -250,6 +251,7 @@ int tcc_pca953x_setup(int slave, int name, int direction, int value, int mode)
+ 		if (ret == -1)
+ 			return -1;
+ 	}
++#endif	/* comment by csduan */
+ 
+ 	return 0;
+ }
+diff --git a/drivers/usb/host/ohci-tcc.c b/drivers/usb/host/ohci-tcc.c
+index 61e4a50..994c440 100644
+--- a/drivers/usb/host/ohci-tcc.c
++++ b/drivers/usb/host/ohci-tcc.c
+@@ -262,11 +262,13 @@ static int usb_hcd_tcc_probe (const struct hc_driver *driver, struct platform_de
+ 	/* GPIO_EXPAND HVBUS & PWR_GP1 Power-on */
+ 	USBHostVBUSControl(1);
+ 	retval = tcc_pca953x_setup(PCA9538_U4_SLAVE_ADDR, 0, OUTPUT, 0, GET_VALUE);
++#if 0 	/* comment by csduan */
+ 	if (!(retval & PWR_GP1) || !(retval & HVBUS_ON)) {
+ 		printk(KERN_ERR "ohci-tcc: GPIO_EXPAND power failed\n");
+ 		retval = -EIO;
+ 		goto err2;
+ 	}
++#endif	/* comment by csduan */
+ 
+ 	if ((retval = tcc_start_hc(&pdev->dev)) < 0) {
+ 		printk(KERN_ERR "tcc_start_hc failed");
+@@ -399,6 +401,7 @@ static const struct hc_driver ohci_tcc_hc_driver = {
+ #ifdef	CONFIG_PM
+ int ohci_hcd_tcc_drv_suspend(struct platform_device *pdev, pm_message_t state)
+ {
++#if 0 	/* comment by csduan */
+ 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
+ 	struct ohci_hcd *ohci = hcd_to_ohci(hcd);
+ 
+@@ -410,12 +413,14 @@ int ohci_hcd_tcc_drv_suspend(struct platform_device *pdev, pm_message_t state)
+ 	hcd->state = HC_STATE_SUSPENDED;
+ 
+ 	USBHostVBUSControl(0);
++#endif	/* comment by csduan */
+ 
+ 	return 0;
+ }
+ 
+ static int ohci_hcd_tcc_drv_resume(struct platform_device *pdev)
+ {
++#if 0 	/* comment by csduan */
+ 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
+ 	struct ohci_hcd *ohci = hcd_to_ohci(hcd);
+ 	int status;
+@@ -431,6 +436,7 @@ static int ohci_hcd_tcc_drv_resume(struct platform_device *pdev)
+ 	ohci_finish_controller_resume(hcd);
+ 
+ 	ohci_port_power_control();
++#endif	/* comment by csduan */
+ 
+ 	return 0;
+ }
+-- 
+1.6.3.3
+

@@ -1,0 +1,204 @@
+From 30e4db9c3abbd5885009eca4fbf4ec57195fa892 Mon Sep 17 00:00:00 2001
+From: csduan <csduan@hhcn.com>
+Date: Wed, 9 Dec 2009 18:53:05 +0800
+Subject: [PATCH] merge code from 2265 about i2c
+
+---
+ drivers/i2c/busses/i2c-tcc.c |   92 ++++++++++++++++--------------------------
+ 1 files changed, 35 insertions(+), 57 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-tcc.c b/drivers/i2c/busses/i2c-tcc.c
+index 70e7733..0815344 100644
+--- a/drivers/i2c/busses/i2c-tcc.c
++++ b/drivers/i2c/busses/i2c-tcc.c
+@@ -83,21 +83,21 @@ static int wait_intr(struct tcc_i2c *i2c)
+ 	unsigned long cnt = 0;
+ 
+ 	if (i2c->ch == 0 || i2c->ch == 1) {
+-	while (!(tcc_readl(i2c->IRQSTR) & (i2c->ch?Hw1:Hw0))) {
+-		cnt++;
+-		if (cnt > 100000) {
+-			printk("i2c-tcc: time out!\n");
+-			return -1;
++		while (!(tcc_readl(i2c->IRQSTR) & (i2c->ch?Hw1:Hw0))) {
++			cnt++;
++			if (cnt > 100000) {
++				printk("i2c-tcc: time out!\n");
++				return -1;
++			}
+ 		}
+-	}
+ 	} else {
+ 		/* SMU_I2C wait */
+-	while (1) {
++		while (1) {
+ 			cnt = i2c->regs->SR;
+ 			if (!(cnt & Hw1)) break;
+ 		}
+ 		for (cnt = 0; cnt <15; cnt++);
+-		}
++	}
+ 
+ 	return 0;
+ }
+@@ -115,14 +115,10 @@ static int recv_i2c(struct tcc_i2c *i2c)
+ 	BITSET(i2c->regs->CMD, Hw0);	/* Clear a pending interrupt */
+ 
+ 	for (i = 0; i < i2c->msg->len; i++) {
+-		if (i2c->msg->flags & I2C_M_DIBCOM_MODE) {	/* if DIBCOM */
+-			if (i == (i2c->msg->len - 1)) 
+-				i2c->regs->CMD = Hw5 | Hw3;
+-			else
+-				i2c->regs->CMD = Hw5;
+-		} else {
++		if (i == (i2c->msg->len - 1)) 
+ 			i2c->regs->CMD = Hw5 | Hw3;
+-		}
++		else
++			i2c->regs->CMD = Hw5;
+ 
+ 		ret = wait_intr(i2c);
+ 		if (ret != 0)
+@@ -172,10 +168,9 @@ static int send_i2c(struct tcc_i2c *i2c)
+ 	 */
+ 	if (i2c->msg->flags & I2C_M_DIBCOM_WR_RD)
+ 		no_stop = 1;
+-	if (i2c->msg_num == 2)
++	if (i2c->msg_num > 1)
+ 		no_stop = 1;
+ 	
+-	//if ( (!(i2c->msg->flags & I2C_M_DIBCOM_WR_RD)) || (i2c->msg_num == 1) ) {
+ 	if (no_stop == 0) {
+ 		i2c->regs->CMD = Hw6;
+ 		ret = wait_intr(i2c);
+@@ -193,28 +188,8 @@ static int send_i2c(struct tcc_i2c *i2c)
+ */
+ static int tcc_i2c_doxfer(struct tcc_i2c *i2c, struct i2c_msg *msgs, int num)
+ {
+-	int ret;
+-
+-#if 0
+-	spin_lock_irq(&i2c->lock);
+-	i2c->msg     = msgs;
+-	i2c->msg_num = num;
+-	i2c->msg_ptr = 0;
+-	i2c->msg_idx = 0;
+-	i2c->state   = STATE_START;
+-	spin_unlock_irq(&i2c->lock);
+-
+-	if (msgs->flags & I2C_M_RD) {
+-		ret = recv_i2c(i2c);
+-		if (ret != 1)
+-			printk("recv_i2c failed\n");
+-	} else {
+-		ret = send_i2c(i2c);
+-		if (ret != 1)
+-			printk("send_i2c failed\n");
+-	}
+-#else
+-	int i;
++	int ret, i;
++	
+ 	for (i = 0; i < num; i++) {
+ 		spin_lock_irq(&i2c->lock);
+ 		i2c->msg 		= &msgs[i];
+@@ -235,7 +210,7 @@ static int tcc_i2c_doxfer(struct tcc_i2c *i2c, struct i2c_msg *msgs, int num)
+ 				printk("send_i2c failed\n");
+ 		}
+ 	}
+-#endif
++	
+ 	return ret;
+ }
+ 
+@@ -255,7 +230,7 @@ static int tcc_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
+ 		ret = tcc_i2c_doxfer(i2c, msgs, num);
+ 
+ 		if (ret == 1)
+-			return ret;
++			return num;
+ 
+ 		dev_dbg(&i2c->adap.dev, "Retrying transmission (%d)\n", retry);
+ 
+@@ -283,11 +258,11 @@ static const struct i2c_algorithm tcc_i2c_algorithm = {
+ static void tcc_i2c_init(struct tcc_i2c *i2c)
+ {
+ 	if (i2c->ch == 0 || i2c->ch == 1) {
+-	/* I2C GPIO setting */
+-	tca_i2c_setgpio(i2c->ch);
++		/* I2C GPIO setting */
++		tca_i2c_setgpio(i2c->ch);
+ 
+-	/* I2C clock setting */
+-	tca_i2c_setclock(i2c->ch, i2c->regs, i2c->clk);
++		/* I2C clock setting */
++		tca_i2c_setclock(i2c->ch, i2c->regs, i2c->clk);
+ 	} else {
+ 		/* SMU_I2C clock setting */
+ 		tcc_writel(0x80000000, i2c->IRQSTR);
+@@ -307,7 +282,6 @@ static int tcc_i2c_probe(struct platform_device *pdev)
+ 	struct tcc_i2c *i2c;
+ 	struct resource *resource_mem, *resource_clk;
+ 	struct resource *resource_mem_smu_i2c, *resource_clk_smu_i2c;
+-//	int irq;
+ 	int i, ret;
+ 
+ 	resource_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+@@ -320,11 +294,6 @@ static int tcc_i2c_probe(struct platform_device *pdev)
+ 		dev_err(&pdev->dev, "no clk resource?\n");
+ 		return -ENODEV;
+ 	}
+-//	irq = platform_get_irq(pdev, 0);
+-//	if (irq < 0) {
+-//	    dev_err(&pdev->dev, "no ieq resource?\n");
+-//	    return -ENODEV;
+-//	}
+ 
+ 	/* SMU_I2C */
+ 	resource_mem_smu_i2c = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+@@ -429,18 +398,27 @@ static int tcc_i2c_remove(struct platform_device *pdev)
+ }
+ 
+ #ifdef CONFIG_PM
+-static int tcc_i2c_suspend(struct platform_device *dev, pm_message_t state)
++static int tcc_i2c_suspend_late(struct platform_device *dev, pm_message_t state)
+ {
++	tca_ckc_setiobus(RB_I2CCONTROLLER, DISABLE);
+ 	return 0;
+ }
+ 
+-static int tcc_i2c_resume(struct platform_device *dev)
++static int tcc_i2c_resume_early(struct platform_device *dev)
+ {
++	struct tcc_i2c *i2c = platform_get_drvdata(dev);
++	int i;
++
++	tca_i2c_reset();
++	for (i = 0; i < I2C_NUM_OF_CH; i++) {
++		tcc_i2c_init(i2c + i);
++	}
++
+ 	return 0;
+ }
+ #else
+-#define tcc_i2c_suspend	NULL
+-#define tcc_i2c_resume	NULL
++#define tcc_i2c_suspend_late	NULL
++#define tcc_i2c_resume_early	NULL
+ #endif
+ 
+ /* device driver for platform bus bits */
+@@ -448,8 +426,8 @@ static int tcc_i2c_resume(struct platform_device *dev)
+ static struct platform_driver tcc_i2c_driver = {
+ 	.probe		= tcc_i2c_probe,
+ 	.remove		= tcc_i2c_remove,
+-	.suspend	= tcc_i2c_suspend,
+-	.resume		= tcc_i2c_resume,
++	.suspend_late	= tcc_i2c_suspend_late,
++	.resume_early	= tcc_i2c_resume_early,
+ 	.driver		= {
+ 		.owner	= THIS_MODULE,
+ 		.name	= "tcc-i2c",
+-- 
+1.6.3.3
+

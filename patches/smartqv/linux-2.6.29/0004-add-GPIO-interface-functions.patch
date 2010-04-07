@@ -1,0 +1,907 @@
+From 66fc4a8db28084c6f92818912100a0613c0128df Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Mon, 13 Jul 2009 13:54:36 +0800
+Subject: [PATCH] add GPIO interface functions
+
+---
+ arch/arm/mach-tcc8900/Makefile      |    3 +-
+ arch/arm/mach-tcc8900/gpio.c        |  157 ++++++++-
+ include/asm-arm/plat-tcc8900/gpio.h |  699 +++++++++++++++++++++++++++++++++++
+ 3 files changed, 856 insertions(+), 3 deletions(-)
+ create mode 100755 include/asm-arm/plat-tcc8900/gpio.h
+
+diff --git a/arch/arm/mach-tcc8900/Makefile b/arch/arm/mach-tcc8900/Makefile
+index b9f830a..d8ab101 100644
+--- a/arch/arm/mach-tcc8900/Makefile
++++ b/arch/arm/mach-tcc8900/Makefile
+@@ -2,7 +2,8 @@
+ # Makefile for the linux kernel.
+ #
+ # Common support
+-obj-$(CONFIG_ARCH_TCC) += io.o irq.o devices.o time.o tca_ckc.o idle.o 
++obj-$(CONFIG_ARCH_TCC) += io.o irq.o devices.o time.o tca_ckc.o idle.o gpio.o
++
+ # Specific board support
+ obj-$(CONFIG_MACH_TCC8900) += board-tcc8900.o
+ 
+diff --git a/arch/arm/mach-tcc8900/gpio.c b/arch/arm/mach-tcc8900/gpio.c
+index a082b59..c3f7609 100644
+--- a/arch/arm/mach-tcc8900/gpio.c
++++ b/arch/arm/mach-tcc8900/gpio.c
+@@ -18,13 +18,166 @@
+ #include <linux/err.h>
+ #include <linux/clk.h>
+ #include <linux/io.h>
+-
+ #include <mach/hardware.h>
+ #include <asm/irq.h>
+ #include <mach/irqs.h>
+-#include <mach/gpio.h>
+ #include <asm/mach/irq.h>
++#include <asm-generic/gpio.h>           /* cansleep wrappers */
++#include <asm-arm/plat-tcc8900/gpio.h>
++
++void tcc_gpio_cfgpin(unsigned int pin, unsigned int function, unsigned int out)
++{
++	unsigned long mask, fn_val, flags, offs, fn_offs, fn_num, en_val;
++        void __iomem *base, *en_addr, *fn_addr;
++
++	base = (void __iomem *)tcc_p2v(HwGPIO_BASE);
++	base += TCC_GPIO_BASE(pin) * 0x40;
++        offs = TCC_GPIO_OFFSET(pin);
++	fn_num = offs / 8;	// Get port configuration register number
++	en_addr = base + 0x4;	// Get output enable register address
++	fn_addr = base + 0x24 + fn_num * 4;	// Get port configuration register adrress
++	fn_offs = (offs % 8) * 4; // Get offset in port configuration register
++	mask = 0xF << fn_offs;
++
++        local_irq_save(flags);
++        local_irq_disable();
++	fn_val  = __raw_readl(fn_addr);
++        fn_val &= ~mask;
++        fn_val |= (function << fn_offs);
++        __raw_writel(fn_val, fn_addr);
++	// When configured into gpio function
++	if(function == 0) {
++	    en_val = __raw_readl(en_addr);
++	    if(out) // output
++		en_val |= (1 << offs);
++	    else
++		en_val &= ~(1 << offs);
++	    __raw_writel(en_val, en_addr);
++	}
++
++        local_irq_restore(flags);
++}
++
++EXPORT_SYMBOL(tcc_gpio_cfgpin);
++
++unsigned int tcc_gpio_getcfg(unsigned int pin)
++{
++	void __iomem *base, *fn_addr;
++        unsigned long mask, offs, fn_offs, fn_num;
++
++	base = (void __iomem *)tcc_p2v(HwGPIO_BASE);
++	base += TCC_GPIO_BASE(pin) * 0x40;
++	offs = TCC_GPIO_OFFSET(pin);
++	fn_num = offs / 8;	// Get port configuration register number
++	fn_addr = base + 0x24 + fn_num * 4;	// Get port configuration register adrress
++	fn_offs = (offs % 8) * 4; // Get offset in port configuration register
++	mask = 0xF << fn_offs;
++
++	return ((__raw_readl(fn_addr) & mask) >> fn_offs);
++}
++
++EXPORT_SYMBOL(tcc_gpio_getcfg);
++
++/* 0: pull-up/down disabled, 1: pull-up enabled, 2: pull-down enabled */
++void tcc_gpio_pullup(unsigned int pin, unsigned int to)
++{
++        unsigned long offs = TCC_GPIO_OFFSET(pin);
++	unsigned long flags, up, mask, pd_num, pd_offs;
++	void __iomem *base, *pd_addr;
++
++	base = (void __iomem *)tcc_p2v(HwGPIO_BASE);
++	base += TCC_GPIO_BASE(pin) * 0x40;
++	pd_num = offs / 16;	// Get pull-up/down function register number
++	pd_addr = base + 0x1C + pd_num * 4;	// Get pull-up/down function register adrress
++	pd_offs = (offs % 16) * 2;	// Get offset in pull-up/down function register
++
++        mask = 0x3 << pd_offs;
++
++	local_irq_save(flags);
++        local_irq_disable();
++
++        up = __raw_readl(pd_addr);
++        up &= ~mask;
++        up |= to << pd_offs;
++        __raw_writel(up, pd_addr);
++
++        local_irq_restore(flags);
++}
++
++EXPORT_SYMBOL(tcc_gpio_pullup);
++
++void tcc_gpio_setpin(unsigned int pin, unsigned int to)
++{
++	void __iomem *base;
++        unsigned long offs = TCC_GPIO_OFFSET(pin);
++        unsigned long flags;
++        unsigned long dat;
++
++	base = (void __iomem *)tcc_p2v(HwGPIO_BASE);
++	base += TCC_GPIO_BASE(pin) * 0x40;
++	local_irq_save(flags);
++        local_irq_disable();
+ 
++        dat = __raw_readl(base);
++        dat &= ~(1 << offs);
++        dat |= to << offs;
++        __raw_writel(dat, base);
++
++        local_irq_restore(flags);
++}
++
++EXPORT_SYMBOL(tcc_gpio_setpin);
++
++unsigned int tcc_gpio_getpin(unsigned int pin)
++{
++	void __iomem *base;
++        unsigned long offs = TCC_GPIO_OFFSET(pin);
++        unsigned long dat;
++
++	base = (void __iomem *)tcc_p2v(HwGPIO_BASE);
++	base += TCC_GPIO_BASE(pin) * 0x40;
++        dat =  __raw_readl(base);
++	dat &= (1 << offs);
++        return (dat >> offs);
++}
++
++EXPORT_SYMBOL(tcc_gpio_getpin);
++
++inline int gpio_request(unsigned int gpio, const char *label)
++{
++        return 0;
++}
++
++inline void gpio_free(unsigned int gpio)
++{
++        return;
++}
++
++int tcc_gpio_direction_input(unsigned int gpio)
++{
++        tcc_gpio_cfgpin(gpio, 0, TCC_GPIO_INPUT);
++        tcc_gpio_pullup(gpio, 0);   // pull-up/down disable
++
++        return 0;
++}
++EXPORT_SYMBOL(tcc_gpio_direction_input);
++
++int tcc_gpio_direction_output(unsigned int gpio, int value)
++{
++        tcc_gpio_cfgpin(gpio, 0, TCC_GPIO_OUTPUT);
++
++        /* REVISIT can we write the value first, to avoid glitching? */
++        tcc_gpio_setpin(gpio, value);
++
++        return 0;
++}
++EXPORT_SYMBOL(tcc_gpio_direction_output);
++
++int gpio_to_irq(unsigned int pin)
++{
++    return 13;
++}
++EXPORT_SYMBOL(gpio_to_irq);
+ 
+ int __init tcc8900_gpio_init(void)
+ {
+diff --git a/include/asm-arm/plat-tcc8900/gpio.h b/include/asm-arm/plat-tcc8900/gpio.h
+new file mode 100755
+index 0000000..5dd3c79
+--- /dev/null
++++ b/include/asm-arm/plat-tcc8900/gpio.h
+@@ -0,0 +1,699 @@
++/*
++ * arch/arm/mach-tcc8900/include/mach/gpio.h
++ *
++ * Written by <linux@telechips.com>
++ * Modified: March 10, 2009
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the
++ * Free Software Foundation; either version 2 of the License, or (at your
++ * option) any later version.
++ *
++ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN
++ * NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
++ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
++ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
++ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
++ * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
++ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 675 Mass Ave, Cambridge, MA 02139, USA.
++ */
++
++#include <linux/kernel.h>
++#include <asm/irq.h>
++#include "../../../arch/arm/mach-tcc8900/include/mach/TCC89x_Physical.h"
++#include <asm-generic/gpio.h>           /* cansleep wrappers */
++
++/* configure GPIO ports A..F */
++#define TCC_GPIOREG(x) ((x) + HWGPIO_BASE)
++
++/* GPIO */
++#define TCC_GPIONO(bank,offset) ((bank) + (offset))
++
++#define TCC_GPIO_BANKA   (32*0)
++#define TCC_GPIO_BANKB   (32*1)
++#define TCC_GPIO_BANKC   (32*2)
++#define TCC_GPIO_BANKD   (32*3)
++#define TCC_GPIO_BANKE   (32*4)
++#define TCC_GPIO_BANKF   (32*5)
++
++#define TCC_GPIO_INPUT		(0)
++#define TCC_GPIO_OUTPUT		(1)
++#define TCC_GPIO_BASE(pin)   ((pin & ~31) >> 5)
++#define TCC_GPIO_OFFSET(pin) (pin & 31)
++
++/* GPA : 16 in/out port */
++#define TCC_GPADAT         TCC_GPIOREG(0x00)
++#define TCC_GPAEN          TCC_GPIOREG(0x04)
++#define TCC_GPASET         TCC_GPIOREG(0x08)
++#define TCC_GPACLR         TCC_GPIOREG(0x0C)
++#define TCC_GPAXOR         TCC_GPIOREG(0x10)
++#define TCC_GPACD0         TCC_GPIOREG(0x14)
++#define TCC_GPACD1         TCC_GPIOREG(0x18)
++#define TCC_GPAPD0         TCC_GPIOREG(0x1C)
++#define TCC_GPAPD1         TCC_GPIOREG(0x20)
++#define TCC_GPAFN0         TCC_GPIOREG(0x24)
++#define TCC_GPAFN1         TCC_GPIOREG(0x28)
++#define TCC_GPAFN2         TCC_GPIOREG(0x2C)
++#define TCC_GPAFN3         TCC_GPIOREG(0x30)
++
++#define TCC_GPA0           TCC_GPIONO(TCC_GPIO_BANKA, 0)
++#define TCC_GPA0_GPIO                   (0)
++#define TCC_GPA0_SCL0                   (1)
++
++#define TCC_GPA1           TCC_GPIONO(TCC_GPIO_BANKA, 1)
++#define TCC_GPA1_GPIO                   (0)
++#define TCC_GPA1_SDA0                   (1)
++
++#define TCC_GPA2           TCC_GPIONO(TCC_GPIO_BANKA, 2)
++#define TCC_GPA2_GPIO                   (0)
++#define TCC_GPA2_CLK_OUT0               (1)
++
++#define TCC_GPA3           TCC_GPIONO(TCC_GPIO_BANKA, 3)
++#define TCC_GPA3_GPIO                   (0)
++#define TCC_GPA3_CLK_OUT1               (1)
++
++#define TCC_GPA4           TCC_GPIONO(TCC_GPIO_BANKA, 4)
++#define TCC_GPA4_GPIO                   (0)
++#define TCC_GPA4_WDTRSTO                (1)
++#define TCC_GPA4_TCO0		        (2)
++
++#define TCC_GPA5           TCC_GPIONO(TCC_GPIO_BANKA, 5)
++#define TCC_GPA5_GPIO                   (0)
++#define TCC_GPA5_IRDI                   (1)
++#define TCC_GPA5_TCO1		        (2)
++
++#define TCC_GPA6           TCC_GPIONO(TCC_GPIO_BANKA, 6)
++#define TCC_GPA6_GPIO                   (0)
++#define TCC_GPA6_HDMI_CECO              (1)
++#define TCC_GPA6_TCO2		        (2)
++#define TCC_GPA6_EDIXA19	        (6)
++
++#define TCC_GPA7           TCC_GPIONO(TCC_GPIO_BANKA, 7)
++#define TCC_GPA7_GPIO                   (0)
++#define TCC_GPA7_HDMI_CECI              (1)
++#define TCC_GPA7_TCO3		        (2)
++#define TCC_GPA7_EDIXA20	        (6)
++
++#define TCC_GPA8           TCC_GPIONO(TCC_GPIO_BANKA, 8)
++#define TCC_GPA8_GPIO                   (0)
++#define TCC_GPA8_SCL1                   (1)
++
++#define TCC_GPA9           TCC_GPIONO(TCC_GPIO_BANKA, 9)
++#define TCC_GPA9_GPIO                   (0)
++#define TCC_GPA9_SCL1                   (1)
++
++#define TCC_GPA10          TCC_GPIONO(TCC_GPIO_BANKA, 10)
++#define TCC_GPA10_GPIO                  (0)
++#define TCC_GPA10_CBCLK0                (1)
++#define TCC_GPA10_CBCLK1                (2)
++
++#define TCC_GPA11          TCC_GPIONO(TCC_GPIO_BANKA, 11)
++#define TCC_GPA11_GPIO                  (0)
++#define TCC_GPA11_CLRCK0                (1)
++#define TCC_GPA11_CLRCK1                (2)
++
++#define TCC_GPA12          TCC_GPIONO(TCC_GPIO_BANKA, 12)
++#define TCC_GPA12_GPIO                  (0)
++#define TCC_GPA12_CDATA0                (1)
++#define TCC_GPA12_CDATA1                (2)
++
++#define TCC_GPA13          TCC_GPIONO(TCC_GPIO_BANKA, 13)
++#define TCC_GPA13_GPIO                  (0)
++#define TCC_GPA13_EXTCLK1               (1)
++
++#define TCC_GPA14          TCC_GPIONO(TCC_GPIO_BANKA, 14)
++#define TCC_GPA14_GPIO                  (0)
++#define TCC_GPA14_HDMI_HPD              (1)
++#define TCC_GPA14_TCO4                  (2)
++
++#define TCC_GPA15          TCC_GPIONO(TCC_GPIO_BANKA, 15)
++#define TCC_GPA15_GPIO                  (0)
++#define TCC_GPA15_UTM_DRVVBUS           (1)
++#define TCC_GPA15_TCO5                  (2)
++
++/* GPB : 32 in/out port */
++#define TCC_GPBDAT         TCC_GPIOREG(0x40)
++#define TCC_GPBEN          TCC_GPIOREG(0x44)
++#define TCC_GPBSET         TCC_GPIOREG(0x48)
++#define TCC_GPBCLR         TCC_GPIOREG(0x4C)
++#define TCC_GPBXOR         TCC_GPIOREG(0x50)
++#define TCC_GPBCD0         TCC_GPIOREG(0x54)
++#define TCC_GPBCD1         TCC_GPIOREG(0x58)
++#define TCC_GPBPD0         TCC_GPIOREG(0x5C)
++#define TCC_GPBPD1         TCC_GPIOREG(0x60)
++#define TCC_GPBFN0         TCC_GPIOREG(0x64)
++#define TCC_GPBFN1         TCC_GPIOREG(0x68)
++#define TCC_GPBFN2         TCC_GPIOREG(0x6C)
++#define TCC_GPBFN3         TCC_GPIOREG(0x70)
++
++#define TCC_GPB0           TCC_GPIONO(TCC_GPIO_BANKB, 0)
++#define TCC_GPB0_GPIO                   (0)
++#define TCC_GPB0_EDIXD8                 (1)
++#define TCC_GPB0_SD_D0_5                (2)
++#define TCC_GPB0_MS_D0_5                (3)
++
++#define TCC_GPB1           TCC_GPIONO(TCC_GPIO_BANKB, 1)
++#define TCC_GPB1_GPIO                   (0)
++#define TCC_GPB1_EDIXD9                 (1)
++#define TCC_GPB1_SD_D1_5                (2)
++#define TCC_GPB1_MS_D1_5                (3)
++
++#define TCC_GPB2           TCC_GPIONO(TCC_GPIO_BANKB, 2)
++#define TCC_GPB2_GPIO                   (0)
++#define TCC_GPB2_EDIXD10                (1)
++#define TCC_GPB2_SD_D2_5                (2)
++#define TCC_GPB2_MS_D2_5                (3)
++
++#define TCC_GPB3           TCC_GPIONO(TCC_GPIO_BANKB, 3)
++#define TCC_GPB3_GPIO                   (0)
++#define TCC_GPB3_EDIXD11                (1)
++#define TCC_GPB3_SD_D3_5                (2)
++#define TCC_GPB3_MS_D3_5                (3)
++
++#define TCC_GPB4           TCC_GPIONO(TCC_GPIO_BANKB, 4)
++#define TCC_GPB4_GPIO                   (0)
++#define TCC_GPB4_EDIXD4                 (1)
++#define TCC_GPB4_SD_D4_5                (2)
++#define TCC_GPB4_MS_D4_5                (3)
++
++#define TCC_GPB5           TCC_GPIONO(TCC_GPIO_BANKB, 5)
++#define TCC_GPB5_GPIO                   (0)
++
++#define TCC_GPB6           TCC_GPIONO(TCC_GPIO_BANKB, 6)
++#define TCC_GPB6_GPIO                   (0)
++
++#define TCC_GPB7           TCC_GPIONO(TCC_GPIO_BANKB, 7)
++#define TCC_GPB7_GPIO                   (0)
++
++#define TCC_GPB8           TCC_GPIONO(TCC_GPIO_BANKB, 8)
++#define TCC_GPB8_GPIO                   (0)
++
++#define TCC_GPB9           TCC_GPIONO(TCC_GPIO_BANKB, 9)
++#define TCC_GPB9_GPIO                   (0)
++
++#define TCC_GPB10          TCC_GPIONO(TCC_GPIO_BANKB, 10)
++#define TCC_GPB10_GPIO                  (0)
++
++#define TCC_GPB11          TCC_GPIONO(TCC_GPIO_BANKB, 11)
++#define TCC_GPB11_GPIO                  (0)
++
++#define TCC_GPB12          TCC_GPIONO(TCC_GPIO_BANKB, 12)
++#define TCC_GPB12_GPIO                  (0)
++
++#define TCC_GPB13          TCC_GPIONO(TCC_GPIO_BANKB, 13)
++#define TCC_GPB13_GPIO                  (0)
++
++#define TCC_GPB14          TCC_GPIONO(TCC_GPIO_BANKB, 14)
++#define TCC_GPB14_GPIO                  (0)
++
++#define TCC_GPB15          TCC_GPIONO(TCC_GPIO_BANKB, 15)
++#define TCC_GPB15_GPIO                  (0)
++
++#define TCC_GPB16          TCC_GPIONO(TCC_GPIO_BANKB, 16)
++#define TCC_GPB16_GPIO                  (0)
++
++#define TCC_GPB17          TCC_GPIONO(TCC_GPIO_BANKB, 17)
++#define TCC_GPB17_GPIO                  (0)
++
++#define TCC_GPB18          TCC_GPIONO(TCC_GPIO_BANKB, 18)
++#define TCC_GPB18_GPIO                  (0)
++
++#define TCC_GPB19          TCC_GPIONO(TCC_GPIO_BANKB, 19)
++#define TCC_GPB19_GPIO                  (0)
++
++#define TCC_GPB20          TCC_GPIONO(TCC_GPIO_BANKB, 20)
++#define TCC_GPB20_GPIO                  (0)
++
++#define TCC_GPB21          TCC_GPIONO(TCC_GPIO_BANKB, 21)
++#define TCC_GPB21_GPIO                  (0)
++
++#define TCC_GPB22          TCC_GPIONO(TCC_GPIO_BANKB, 22)
++#define TCC_GPB22_GPIO                  (0)
++
++#define TCC_GPB23          TCC_GPIONO(TCC_GPIO_BANKB, 23)
++#define TCC_GPB23_GPIO                  (0)
++
++#define TCC_GPB24          TCC_GPIONO(TCC_GPIO_BANKB, 24)
++#define TCC_GPB24_GPIO                  (0)
++
++#define TCC_GPB25          TCC_GPIONO(TCC_GPIO_BANKB, 25)
++#define TCC_GPB25_GPIO                  (0)
++
++#define TCC_GPB26          TCC_GPIONO(TCC_GPIO_BANKB, 26)
++#define TCC_GPB26_GPIO                  (0)
++
++#define TCC_GPB27          TCC_GPIONO(TCC_GPIO_BANKB, 27)
++#define TCC_GPB27_GPIO                  (0)
++
++#define TCC_GPB28          TCC_GPIONO(TCC_GPIO_BANKB, 28)
++#define TCC_GPB28_GPIO                  (0)
++
++#define TCC_GPB29          TCC_GPIONO(TCC_GPIO_BANKB, 29)
++#define TCC_GPB29_GPIO                  (0)
++
++#define TCC_GPB30          TCC_GPIONO(TCC_GPIO_BANKB, 30)
++#define TCC_GPB30_GPIO                  (0)
++
++#define TCC_GPB31          TCC_GPIONO(TCC_GPIO_BANKB, 31)
++#define TCC_GPB31_GPIO                  (0)
++
++/* GPC : 32 in/out port */
++#define TCC_GPCDAT         TCC_GPIOREG(0x80)
++#define TCC_GPCEN          TCC_GPIOREG(0x84)
++#define TCC_GPCSET         TCC_GPIOREG(0x88)
++#define TCC_GPCCLR         TCC_GPIOREG(0x8C)
++#define TCC_GPCXOR         TCC_GPIOREG(0x90)
++#define TCC_GPCCD0         TCC_GPIOREG(0x94)
++#define TCC_GPCCD1         TCC_GPIOREG(0x98)
++#define TCC_GPCPD0         TCC_GPIOREG(0x9C)
++#define TCC_GPCPD1         TCC_GPIOREG(0xA0)
++#define TCC_GPCFN0         TCC_GPIOREG(0xA4)
++#define TCC_GPCFN1         TCC_GPIOREG(0xA8)
++#define TCC_GPCFN2         TCC_GPIOREG(0xAC)
++#define TCC_GPCFN3         TCC_GPIOREG(0xB0)
++
++#define TCC_GPC0           TCC_GPIONO(TCC_GPIO_BANKC, 0)
++#define TCC_GPC0_GPIO                   (0)
++
++#define TCC_GPC1           TCC_GPIONO(TCC_GPIO_BANKC, 1)
++#define TCC_GPC1_GPIO                   (0)
++
++#define TCC_GPC2           TCC_GPIONO(TCC_GPIO_BANKC, 2)
++#define TCC_GPC2_GPIO                   (0)
++
++#define TCC_GPC3           TCC_GPIONO(TCC_GPIO_BANKC, 3)
++#define TCC_GPC3_GPIO                   (0)
++
++#define TCC_GPC4           TCC_GPIONO(TCC_GPIO_BANKC, 4)
++#define TCC_GPC4_GPIO                   (0)
++
++#define TCC_GPC5           TCC_GPIONO(TCC_GPIO_BANKC, 5)
++#define TCC_GPC5_GPIO                   (0)
++
++#define TCC_GPC6           TCC_GPIONO(TCC_GPIO_BANKC, 6)
++#define TCC_GPC6_GPIO                   (0)
++
++#define TCC_GPC7           TCC_GPIONO(TCC_GPIO_BANKC, 7)
++#define TCC_GPC7_GPIO                   (0)
++
++#define TCC_GPC8           TCC_GPIONO(TCC_GPIO_BANKC, 8)
++#define TCC_GPC8_GPIO                   (0)
++
++#define TCC_GPC9           TCC_GPIONO(TCC_GPIO_BANKC, 9)
++#define TCC_GPC9_GPIO                   (0)
++
++#define TCC_GPC10          TCC_GPIONO(TCC_GPIO_BANKC, 10)
++#define TCC_GPC10_GPIO                  (0)
++
++#define TCC_GPC11          TCC_GPIONO(TCC_GPIO_BANKC, 11)
++#define TCC_GPC11_GPIO                  (0)
++
++#define TCC_GPC12          TCC_GPIONO(TCC_GPIO_BANKC, 12)
++#define TCC_GPC12_GPIO                  (0)
++
++#define TCC_GPC13          TCC_GPIONO(TCC_GPIO_BANKC, 13)
++#define TCC_GPC13_GPIO                  (0)
++
++#define TCC_GPC14          TCC_GPIONO(TCC_GPIO_BANKC, 14)
++#define TCC_GPC14_GPIO                  (0)
++
++#define TCC_GPC15          TCC_GPIONO(TCC_GPIO_BANKC, 15)
++#define TCC_GPC15_GPIO                  (0)
++
++#define TCC_GPC16          TCC_GPIONO(TCC_GPIO_BANKC, 16)
++#define TCC_GPC16_GPIO                  (0)
++
++#define TCC_GPC17          TCC_GPIONO(TCC_GPIO_BANKC, 17)
++#define TCC_GPC17_GPIO                  (0)
++
++#define TCC_GPC18          TCC_GPIONO(TCC_GPIO_BANKC, 18)
++#define TCC_GPC18_GPIO                  (0)
++
++#define TCC_GPC19          TCC_GPIONO(TCC_GPIO_BANKC, 19)
++#define TCC_GPC19_GPIO                  (0)
++
++#define TCC_GPC20          TCC_GPIONO(TCC_GPIO_BANKC, 20)
++#define TCC_GPC20_GPIO                  (0)
++
++#define TCC_GPC21          TCC_GPIONO(TCC_GPIO_BANKC, 21)
++#define TCC_GPC21_GPIO                  (0)
++
++#define TCC_GPC22          TCC_GPIONO(TCC_GPIO_BANKC, 22)
++#define TCC_GPC22_GPIO                  (0)
++
++#define TCC_GPC23          TCC_GPIONO(TCC_GPIO_BANKC, 23)
++#define TCC_GPC23_GPIO                  (0)
++
++#define TCC_GPC24          TCC_GPIONO(TCC_GPIO_BANKC, 24)
++#define TCC_GPC24_GPIO                  (0)
++
++#define TCC_GPC25          TCC_GPIONO(TCC_GPIO_BANKC, 25)
++#define TCC_GPC25_GPIO                  (0)
++
++#define TCC_GPC26          TCC_GPIONO(TCC_GPIO_BANKC, 26)
++#define TCC_GPC26_GPIO                  (0)
++
++#define TCC_GPC27          TCC_GPIONO(TCC_GPIO_BANKC, 27)
++#define TCC_GPC27_GPIO                  (0)
++
++#define TCC_GPC28          TCC_GPIONO(TCC_GPIO_BANKC, 28)
++#define TCC_GPC28_GPIO                  (0)
++
++#define TCC_GPC29          TCC_GPIONO(TCC_GPIO_BANKC, 29)
++#define TCC_GPC29_GPIO                  (0)
++
++#define TCC_GPC30          TCC_GPIONO(TCC_GPIO_BANKC, 30)
++#define TCC_GPC30_GPIO                  (0)
++
++#define TCC_GPC31          TCC_GPIONO(TCC_GPIO_BANKC, 31)
++#define TCC_GPC31_GPIO                  (0)
++
++/* GPD : 32 in/out port */
++#define TCC_GPDDAT         TCC_GPIOREG(0xC0)
++#define TCC_GPDEN          TCC_GPIOREG(0xC4)
++#define TCC_GPDSET         TCC_GPIOREG(0xC8)
++#define TCC_GPDCLR         TCC_GPIOREG(0xCC)
++#define TCC_GPDXOR         TCC_GPIOREG(0xD0)
++#define TCC_GPDCD0         TCC_GPIOREG(0xD4)
++#define TCC_GPDCD1         TCC_GPIOREG(0xD8)
++#define TCC_GPDPD0         TCC_GPIOREG(0xDC)
++#define TCC_GPDPD1         TCC_GPIOREG(0xE0)
++#define TCC_GPDFN0         TCC_GPIOREG(0xE4)
++#define TCC_GPDFN1         TCC_GPIOREG(0xE8)
++#define TCC_GPDFN2         TCC_GPIOREG(0xEC)
++#define TCC_GPDFN3         TCC_GPIOREG(0xF0)
++
++#define TCC_GPD0           TCC_GPIONO(TCC_GPIO_BANKD, 0)
++#define TCC_GPD0_GPIO                   (0)
++
++#define TCC_GPD1           TCC_GPIONO(TCC_GPIO_BANKD, 1)
++#define TCC_GPD1_GPIO                   (0)
++
++#define TCC_GPD2           TCC_GPIONO(TCC_GPIO_BANKD, 2)
++#define TCC_GPD2_GPIO                   (0)
++
++#define TCC_GPD3           TCC_GPIONO(TCC_GPIO_BANKD, 3)
++#define TCC_GPD3_GPIO                   (0)
++
++#define TCC_GPD4           TCC_GPIONO(TCC_GPIO_BANKD, 4)
++#define TCC_GPD4_GPIO                   (0)
++
++#define TCC_GPD5           TCC_GPIONO(TCC_GPIO_BANKD, 5)
++#define TCC_GPD5_GPIO                   (0)
++
++#define TCC_GPD6           TCC_GPIONO(TCC_GPIO_BANKD, 6)
++#define TCC_GPD6_GPIO                   (0)
++
++#define TCC_GPD7           TCC_GPIONO(TCC_GPIO_BANKD, 7)
++#define TCC_GPD7_GPIO                   (0)
++
++#define TCC_GPD8           TCC_GPIONO(TCC_GPIO_BANKD, 8)
++#define TCC_GPD8_GPIO                   (0)
++
++#define TCC_GPD9           TCC_GPIONO(TCC_GPIO_BANKD, 9)
++#define TCC_GPD9_GPIO                   (0)
++
++#define TCC_GPD10          TCC_GPIONO(TCC_GPIO_BANKD, 10)
++#define TCC_GPD10_GPIO                  (0)
++
++#define TCC_GPD11          TCC_GPIONO(TCC_GPIO_BANKD, 11)
++#define TCC_GPD11_GPIO                  (0)
++
++#define TCC_GPD12          TCC_GPIONO(TCC_GPIO_BANKD, 12)
++#define TCC_GPD12_GPIO                  (0)
++
++#define TCC_GPD13          TCC_GPIONO(TCC_GPIO_BANKD, 13)
++#define TCC_GPD13_GPIO                  (0)
++
++#define TCC_GPD14          TCC_GPIONO(TCC_GPIO_BANKD, 14)
++#define TCC_GPD14_GPIO                  (0)
++
++#define TCC_GPD15          TCC_GPIONO(TCC_GPIO_BANKD, 15)
++#define TCC_GPD15_GPIO                  (0)
++
++#define TCC_GPD16          TCC_GPIONO(TCC_GPIO_BANKD, 16)
++#define TCC_GPD16_GPIO                  (0)
++
++#define TCC_GPD17          TCC_GPIONO(TCC_GPIO_BANKD, 17)
++#define TCC_GPD17_GPIO                  (0)
++
++#define TCC_GPD18          TCC_GPIONO(TCC_GPIO_BANKD, 18)
++#define TCC_GPD18_GPIO                  (0)
++
++#define TCC_GPD19          TCC_GPIONO(TCC_GPIO_BANKD, 19)
++#define TCC_GPD19_GPIO                  (0)
++
++#define TCC_GPD20          TCC_GPIONO(TCC_GPIO_BANKD, 20)
++#define TCC_GPD20_GPIO                  (0)
++
++#define TCC_GPD21          TCC_GPIONO(TCC_GPIO_BANKD, 21)
++#define TCC_GPD21_GPIO                  (0)
++
++#define TCC_GPD22          TCC_GPIONO(TCC_GPIO_BANKD, 22)
++#define TCC_GPD22_GPIO                  (0)
++
++#define TCC_GPD23          TCC_GPIONO(TCC_GPIO_BANKD, 23)
++#define TCC_GPD23_GPIO                  (0)
++
++#define TCC_GPD24          TCC_GPIONO(TCC_GPIO_BANKD, 24)
++#define TCC_GPD24_GPIO                  (0)
++
++#define TCC_GPD25          TCC_GPIONO(TCC_GPIO_BANKD, 25)
++#define TCC_GPD25_GPIO                  (0)
++
++/* GPE : 32 in/out port */
++#define TCC_GPEDAT         TCC_GPIOREG(0x100)
++#define TCC_GPEEN          TCC_GPIOREG(0x104)
++#define TCC_GPESET         TCC_GPIOREG(0x108)
++#define TCC_GPECLR         TCC_GPIOREG(0x10C)
++#define TCC_GPEXOR         TCC_GPIOREG(0x110)
++#define TCC_GPECD0         TCC_GPIOREG(0x114)
++#define TCC_GPECD1         TCC_GPIOREG(0x118)
++#define TCC_GPEPD0         TCC_GPIOREG(0x11C)
++#define TCC_GPEPD1         TCC_GPIOREG(0x120)
++#define TCC_GPEFN0         TCC_GPIOREG(0x124)
++#define TCC_GPEFN1         TCC_GPIOREG(0x128)
++#define TCC_GPEFN2         TCC_GPIOREG(0x12C)
++#define TCC_GPEFN3         TCC_GPIOREG(0x130)
++
++#define TCC_GPE0           TCC_GPIONO(TCC_GPIO_BANKE, 0)
++#define TCC_GPE0_GPIO                   (0)
++
++#define TCC_GPE1           TCC_GPIONO(TCC_GPIO_BANKE, 1)
++#define TCC_GPE1_GPIO                   (0)
++
++#define TCC_GPE2           TCC_GPIONO(TCC_GPIO_BANKE, 2)
++#define TCC_GPE2_GPIO                   (0)
++
++#define TCC_GPE3           TCC_GPIONO(TCC_GPIO_BANKE, 3)
++#define TCC_GPE3_GPIO                   (0)
++
++#define TCC_GPE4           TCC_GPIONO(TCC_GPIO_BANKE, 4)
++#define TCC_GPE4_GPIO                   (0)
++
++#define TCC_GPE5           TCC_GPIONO(TCC_GPIO_BANKE, 5)
++#define TCC_GPE5_GPIO                   (0)
++
++#define TCC_GPE6           TCC_GPIONO(TCC_GPIO_BANKE, 6)
++#define TCC_GPE6_GPIO                   (0)
++
++#define TCC_GPE7           TCC_GPIONO(TCC_GPIO_BANKE, 7)
++#define TCC_GPE7_GPIO                   (0)
++
++#define TCC_GPE8           TCC_GPIONO(TCC_GPIO_BANKE, 8)
++#define TCC_GPE8_GPIO                   (0)
++
++#define TCC_GPE9           TCC_GPIONO(TCC_GPIO_BANKE, 9)
++#define TCC_GPE9_GPIO                   (0)
++
++#define TCC_GPE10          TCC_GPIONO(TCC_GPIO_BANKE, 10)
++#define TCC_GPE10_GPIO                  (0)
++
++#define TCC_GPE11          TCC_GPIONO(TCC_GPIO_BANKE, 11)
++#define TCC_GPE11_GPIO                  (0)
++
++#define TCC_GPE12          TCC_GPIONO(TCC_GPIO_BANKE, 12)
++#define TCC_GPE12_GPIO                  (0)
++
++#define TCC_GPE13          TCC_GPIONO(TCC_GPIO_BANKE, 13)
++#define TCC_GPE13_GPIO                  (0)
++
++#define TCC_GPE14          TCC_GPIONO(TCC_GPIO_BANKE, 14)
++#define TCC_GPE14_GPIO                  (0)
++
++#define TCC_GPE15          TCC_GPIONO(TCC_GPIO_BANKE, 15)
++#define TCC_GPE15_GPIO                  (0)
++
++#define TCC_GPE16          TCC_GPIONO(TCC_GPIO_BANKE, 16)
++#define TCC_GPE16_GPIO                  (0)
++
++#define TCC_GPE17          TCC_GPIONO(TCC_GPIO_BANKE, 17)
++#define TCC_GPE17_GPIO                  (0)
++
++#define TCC_GPE18          TCC_GPIONO(TCC_GPIO_BANKE, 18)
++#define TCC_GPE18_GPIO                  (0)
++
++#define TCC_GPE19          TCC_GPIONO(TCC_GPIO_BANKE, 19)
++#define TCC_GPE19_GPIO                  (0)
++
++#define TCC_GPE20          TCC_GPIONO(TCC_GPIO_BANKE, 20)
++#define TCC_GPE20_GPIO                  (0)
++
++#define TCC_GPE21          TCC_GPIONO(TCC_GPIO_BANKE, 21)
++#define TCC_GPE21_GPIO                  (0)
++
++#define TCC_GPE22          TCC_GPIONO(TCC_GPIO_BANKE, 22)
++#define TCC_GPE22_GPIO                  (0)
++
++#define TCC_GPE23          TCC_GPIONO(TCC_GPIO_BANKE, 23)
++#define TCC_GPE23_GPIO                  (0)
++
++#define TCC_GPE24          TCC_GPIONO(TCC_GPIO_BANKE, 24)
++#define TCC_GPE24_GPIO                  (0)
++
++#define TCC_GPE25          TCC_GPIONO(TCC_GPIO_BANKE, 25)
++#define TCC_GPE25_GPIO                  (0)
++
++#define TCC_GPE26          TCC_GPIONO(TCC_GPIO_BANKE, 26)
++#define TCC_GPE26_GPIO                  (0)
++
++#define TCC_GPE27          TCC_GPIONO(TCC_GPIO_BANKE, 27)
++#define TCC_GPE27_GPIO                  (0)
++
++#define TCC_GPE28          TCC_GPIONO(TCC_GPIO_BANKE, 28)
++#define TCC_GPE28_GPIO                  (0)
++
++#define TCC_GPE29          TCC_GPIONO(TCC_GPIO_BANKE, 29)
++#define TCC_GPE29_GPIO                  (0)
++
++#define TCC_GPE30          TCC_GPIONO(TCC_GPIO_BANKE, 30)
++#define TCC_GPE30_GPIO                  (0)
++
++#define TCC_GPE31          TCC_GPIONO(TCC_GPIO_BANKE, 31)
++#define TCC_GPE31_GPIO                  (0)
++
++/* GPF : 32 in/out port */
++#define TCC_GPFDAT         TCC_GPIOREG(0x140)
++#define TCC_GPFEN          TCC_GPIOREG(0x144)
++#define TCC_GPFSET         TCC_GPIOREG(0x148)
++#define TCC_GPFCLR         TCC_GPIOREG(0x14C)
++#define TCC_GPFXOR         TCC_GPIOREG(0x150)
++#define TCC_GPFCD0         TCC_GPIOREG(0x154)
++#define TCC_GPFCD1         TCC_GPIOREG(0x158)
++#define TCC_GPFPD0         TCC_GPIOREG(0x15C)
++#define TCC_GPFPD1         TCC_GPIOREG(0x160)
++#define TCC_GPFFN0         TCC_GPIOREG(0x164)
++#define TCC_GPFFN1         TCC_GPIOREG(0x168)
++#define TCC_GPFFN2         TCC_GPIOREG(0x16C)
++#define TCC_GPFFN3         TCC_GPIOREG(0x170)
++
++#define TCC_GPF0           TCC_GPIONO(TCC_GPIO_BANKF, 0)
++#define TCC_GPF0_GPIO                   (0)
++
++#define TCC_GPF1           TCC_GPIONO(TCC_GPIO_BANKF, 1)
++#define TCC_GPF1_GPIO                   (0)
++
++#define TCC_GPF2           TCC_GPIONO(TCC_GPIO_BANKF, 2)
++#define TCC_GPF2_GPIO                   (0)
++
++#define TCC_GPF3           TCC_GPIONO(TCC_GPIO_BANKF, 3)
++#define TCC_GPF3_GPIO                   (0)
++
++#define TCC_GPF4           TCC_GPIONO(TCC_GPIO_BANKF, 4)
++#define TCC_GPF4_GPIO                   (0)
++
++#define TCC_GPF5           TCC_GPIONO(TCC_GPIO_BANKF, 5)
++#define TCC_GPF5_GPIO                   (0)
++
++#define TCC_GPF6           TCC_GPIONO(TCC_GPIO_BANKF, 6)
++#define TCC_GPF6_GPIO                   (0)
++
++#define TCC_GPF7           TCC_GPIONO(TCC_GPIO_BANKF, 7)
++#define TCC_GPF7_GPIO                   (0)
++
++#define TCC_GPF8           TCC_GPIONO(TCC_GPIO_BANKF, 8)
++#define TCC_GPF8_GPIO                   (0)
++
++#define TCC_GPF9           TCC_GPIONO(TCC_GPIO_BANKF, 9)
++#define TCC_GPF9_GPIO                   (0)
++
++#define TCC_GPF10          TCC_GPIONO(TCC_GPIO_BANKF, 10)
++#define TCC_GPF10_GPIO                  (0)
++
++#define TCC_GPF11          TCC_GPIONO(TCC_GPIO_BANKF, 11)
++#define TCC_GPF11_GPIO                  (0)
++
++#define TCC_GPF12          TCC_GPIONO(TCC_GPIO_BANKF, 12)
++#define TCC_GPF12_GPIO                  (0)
++
++#define TCC_GPF13          TCC_GPIONO(TCC_GPIO_BANKF, 13)
++#define TCC_GPF13_GPIO                  (0)
++
++#define TCC_GPF14          TCC_GPIONO(TCC_GPIO_BANKF, 14)
++#define TCC_GPF14_GPIO                  (0)
++
++#define TCC_GPF15          TCC_GPIONO(TCC_GPIO_BANKF, 15)
++#define TCC_GPF15_GPIO                  (0)
++
++#define TCC_GPF16          TCC_GPIONO(TCC_GPIO_BANKF, 16)
++#define TCC_GPF16_GPIO                  (0)
++
++#define TCC_GPF17          TCC_GPIONO(TCC_GPIO_BANKF, 17)
++#define TCC_GPF17_GPIO                  (0)
++
++#define TCC_GPF18          TCC_GPIONO(TCC_GPIO_BANKF, 18)
++#define TCC_GPF18_GPIO                  (0)
++
++#define TCC_GPF19          TCC_GPIONO(TCC_GPIO_BANKF, 19)
++#define TCC_GPF19_GPIO                  (0)
++
++#define TCC_GPF20          TCC_GPIONO(TCC_GPIO_BANKF, 20)
++#define TCC_GPF20_GPIO                  (0)
++
++#define TCC_GPF21          TCC_GPIONO(TCC_GPIO_BANKF, 21)
++#define TCC_GPF21_GPIO                  (0)
++
++#define TCC_GPF22          TCC_GPIONO(TCC_GPIO_BANKF, 22)
++#define TCC_GPF22_GPIO                  (0)
++
++#define TCC_GPF23          TCC_GPIONO(TCC_GPIO_BANKF, 23)
++#define TCC_GPF23_GPIO                  (0)
++
++#define TCC_GPF24          TCC_GPIONO(TCC_GPIO_BANKF, 24)
++#define TCC_GPF24_GPIO                  (0)
++
++#define TCC_GPF25          TCC_GPIONO(TCC_GPIO_BANKF, 25)
++#define TCC_GPF25_GPIO                  (0)
++
++#define TCC_GPF26          TCC_GPIONO(TCC_GPIO_BANKF, 26)
++#define TCC_GPF26_GPIO                  (0)
++
++#define TCC_GPF27          TCC_GPIONO(TCC_GPIO_BANKF, 27)
++#define TCC_GPF27_GPIO                  (0)
++
++#define gpio_set_pin(gpio, function)		tcc_gpio_cfgpin(gpio, function, 0)
++#define gpio_get_pin(gpio)			tcc_gpio_getcfg(gpio)
++#define gpio_pullup(gpio, to)			tcc_gpio_pullup(gpio, to)
++#define gpio_get_value(gpio)			tcc_gpio_getpin(gpio)
++#define gpio_set_value(gpio, value)		tcc_gpio_setpin(gpio, value)
++#define gpio_direction_input(gpio)		tcc_gpio_direction_input(gpio)
++#define gpio_direction_output(gpio, value)	tcc_gpio_direction_output(gpio, value)
++
++extern void tcc_gpio_cfgpin(unsigned int pin, unsigned int function, unsigned int out);
++extern unsigned int tcc_gpio_getcfg(unsigned int pin);
++extern void tcc_gpio_pullup(unsigned int pin, unsigned int to);
++extern void tcc_gpio_setpin(unsigned int pin, unsigned int to);
++extern unsigned int tcc_gpio_getpin(unsigned int pin);
++extern int tcc_gpio_direction_input(unsigned int gpio);
++extern int tcc_gpio_direction_output(unsigned int gpio, int value);
++
++
++
++
+-- 
+1.6.3.3
+

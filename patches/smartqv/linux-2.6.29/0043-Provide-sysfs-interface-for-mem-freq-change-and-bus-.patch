@@ -1,0 +1,274 @@
+From d9cdaafdef49ad3c1dfdf635f23d1e9284cf3250 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Fri, 18 Sep 2009 09:14:17 +0800
+Subject: [PATCH] Provide sysfs interface for mem freq change and bus poweroff from dcs
+
+---
+ drivers/char/hhtech_gpio.c |  216 ++++++++++++++++++++++++++++++++++++++++++++
+ drivers/video/tccfb.c      |    2 +
+ 2 files changed, 218 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index d192a5e..123cc85 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -303,6 +303,208 @@ static ssize_t hhtech_sysfs_store_power(struct device *dev,
+ 	return len;
+ }
+ 
++extern void memchange(unsigned int freq);
++static unsigned long now_memfreq = 3300000;
++static int hhtech_sysfs_show_memfreq(struct device *dev, struct device_attribute *attr, char*buf)
++{
++    return snprintf(buf, PAGE_SIZE, "%d\n", now_memfreq);
++}
++
++static ssize_t hhtech_sysfs_store_memfreq(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    unsigned long value = simple_strtoul(buf, NULL, 10);
++    printk("the mem freq will be change to %lu\n",value);
++    now_memfreq = value;
++    memchange(value);
++
++    return len;
++}
++
++static int vb_st = 1;
++static int hhtech_sysfs_show_vb(struct device *dev, struct device_attribute *attr, char*buf)
++{
++    return snprintf(buf, PAGE_SIZE, "%d\n", vb_st);
++}
++static ssize_t hhtech_sysfs_store_vb(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int value = simple_strtoul(buf, NULL, 10);
++    int reg_val;
++
++    if((value) && (!vb_st))
++    {
++	vb_st = value;
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x40);
++    }else if((!value) && (vb_st))
++    {
++	vb_st = value;
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x40));
++    }
++
++    return len;
++}
++static char lcd_buff[0x124];
++extern void tcc_lcd_on(void);
++extern void tcc_lcd_off(void);
++static int db_st = 0;
++static int hhtech_sysfs_show_db(struct device *dev, struct device_attribute *attr, char*buf)
++{
++    return snprintf(buf, PAGE_SIZE, "%d\n", db_st);
++}
++static ssize_t hhtech_sysfs_store_db(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int value = simple_strtoul(buf, NULL, 10);
++    int reg_val;
++
++    if((value) && (!db_st))
++    {
++	db_st = value;
++
++	memcpy(lcd_buff,(char *)0xF0204000,0x124);
++	gpio_direction_output(GPIO_LCD_PWR_EN, 0);
++	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 0);
++
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x80);
++
++    }else if((!value) && (db_st))
++    {
++	db_st = value;
++
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x80));
++
++	gpio_direction_output(GPIO_LCD_PWR_EN, 1);
++	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 1);
++	memcpy((char *)0xF0204000,lcd_buff,0x124);
++
++    }
++
++    return len;
++}
++
++static int gb_st = 0;
++static int hhtech_sysfs_show_gb(struct device *dev, struct device_attribute *attr, char*buf)
++{
++    return snprintf(buf, PAGE_SIZE, "%d\n", gb_st);
++}
++static ssize_t hhtech_sysfs_store_gb(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int value = simple_strtoul(buf, NULL, 10);
++    int reg_val;
++
++    if((value) && (!gb_st))
++    {
++	gb_st = value;
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x100);
++    }else if((!value) && (gb_st))
++    {
++	gb_st = value;
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x100));
++    }
++
++    return len;
++}
++
++static int hd_st = 0;
++static int hhtech_sysfs_show_hd(struct device *dev, struct device_attribute *attr, char*buf)
++{
++    return snprintf(buf, PAGE_SIZE, "%d\n", hd_st);
++}
++static ssize_t hhtech_sysfs_store_hd(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int value = simple_strtoul(buf, NULL, 10);
++    int reg_val;
++
++    if((value) && (!hd_st))
++    {
++	hd_st = value;
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x2);
++    }else if((!value) && (hd_st))
++    {
++	hd_st = value;
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x2));
++    }
++
++    return len;
++}
++
++static int io_st = 0;
++static int hhtech_sysfs_show_io(struct device *dev, struct device_attribute *attr, char*buf)
++{
++    return snprintf(buf, PAGE_SIZE, "%d\n", io_st);
++}
++static ssize_t hhtech_sysfs_store_io(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int value = simple_strtoul(buf, NULL, 10);
++    int reg_val;
++
++    if((value) && (!io_st))
++    {
++	io_st = value;
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x200);
++    }else if((!value) && (io_st))
++    {
++	io_st = value;
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x200));
++    }
++
++    return len;
++}
++
++static int mb_st = 0;
++static int hhtech_sysfs_show_mb(struct device *dev, struct device_attribute *attr, char*buf)
++{
++    return snprintf(buf, PAGE_SIZE, "%d\n", mb_st);
++}
++static ssize_t hhtech_sysfs_store_mb(struct device *dev, struct device_attribute *attr, const char *buf,size_t len)
++{
++    if(len < 1)
++	return -EINVAL;
++
++    int value = simple_strtoul(buf, NULL, 10);
++    int reg_val;
++
++    if((value) && (!mb_st))
++    {
++	mb_st = value;
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val | 0x20);
++    }else if((!value) && (mb_st))
++    {
++	mb_st = value;
++	reg_val = *(volatile unsigned long *)0xF0404018;
++	*(volatile unsigned long *)0xF0404018 = (reg_val & (~0x20));
++    }
++
++    return len;
++}
++
+ extern int choosedevice;
+ extern int set_otg_num;
+ extern dwc_otg_device_t *hh_otg_device;
+@@ -627,6 +829,13 @@ static DEVICE_ATTR(sd_s, 0444, hhtech_sysfs_show_sd, NULL);
+ static DEVICE_ATTR(charge_s, 0444,hhtech_sysfs_charge_s , NULL);
+ static DEVICE_ATTR(battery_s, 0444, hhtech_sysfs_show_battery, NULL);
+ static DEVICE_ATTR(pwr_en, 0666, hhtech_sysfs_show_power, hhtech_sysfs_store_power);
++static DEVICE_ATTR(memfreq, 0666, hhtech_sysfs_show_memfreq, hhtech_sysfs_store_memfreq);
++static DEVICE_ATTR(vb_pwoff, 0666, hhtech_sysfs_show_vb, hhtech_sysfs_store_vb);
++static DEVICE_ATTR(db_pwoff, 0666, hhtech_sysfs_show_db, hhtech_sysfs_store_db);
++static DEVICE_ATTR(gb_pwoff, 0666, hhtech_sysfs_show_gb, hhtech_sysfs_store_gb);
++static DEVICE_ATTR(hd_pwoff, 0666, hhtech_sysfs_show_hd, hhtech_sysfs_store_hd);
++static DEVICE_ATTR(io_pwoff, 0666, hhtech_sysfs_show_io, hhtech_sysfs_store_io);
++static DEVICE_ATTR(mb_pwoff, 0666, hhtech_sysfs_show_mb, hhtech_sysfs_store_mb);
+ static DEVICE_ATTR(otg_mode, 0666, hhtech_sysfs_show_otgmode, hhtech_sysfs_store_otgmode);
+ static DEVICE_ATTR(charge_en, 0666, hhtech_sysfs_show_charge, hhtech_sysfs_store_charge);
+ static DEVICE_ATTR(backlight_level, 0666,hhtech_sysfs_show_blight, hhtech_sysfs_store_blight);
+@@ -650,6 +859,13 @@ static struct attribute *attrs[] = {
+ 	&dev_attr_charge_s.attr,
+ 	&dev_attr_battery_s.attr,
+ 	&dev_attr_pwr_en.attr,
++	&dev_attr_memfreq.attr,
++	&dev_attr_vb_pwoff.attr,
++	&dev_attr_db_pwoff.attr,
++	&dev_attr_gb_pwoff.attr,
++	&dev_attr_hd_pwoff.attr,
++	&dev_attr_io_pwoff.attr,
++	&dev_attr_mb_pwoff.attr,
+ #if defined(CONFIG_LCD_7)
+ 	&dev_attr_otg_mode.attr,
+ #endif
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index f839957..52d22a4 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -377,6 +377,7 @@ void tcc_lcd_on(void)
+ 	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 1);
+ #endif
+ }
++EXPORT_SYMBOL(tcc_lcd_on);
+ 
+ void tcc_lcd_off(void)
+ {
+@@ -493,6 +494,7 @@ void tcc_lcd_off(void)
+ 	gpio_direction_output(GPIO_LCD_BACKLIGHT_EN, 0);
+ #endif
+ }
++EXPORT_SYMBOL(tcc_lcd_off);
+ 
+ 
+ typedef struct _tccfb_m2m_info {
+-- 
+1.6.3.3
+

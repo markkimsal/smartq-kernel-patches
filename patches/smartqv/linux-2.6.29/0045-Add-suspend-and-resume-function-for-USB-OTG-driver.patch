@@ -1,0 +1,64 @@
+From 5f2e3b77b7374ea711a634b008d600408e1895a7 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Tue, 22 Sep 2009 12:39:52 +0800
+Subject: [PATCH] Add suspend and resume function for USB OTG driver
+
+---
+ drivers/usb/dwc_otg/dwc_otg_hcd.c |   13 +++++++++++++
+ drivers/usb/dwc_otg/dwc_otg_hcd.h |    2 ++
+ 2 files changed, 15 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/usb/dwc_otg/dwc_otg_hcd.c b/drivers/usb/dwc_otg/dwc_otg_hcd.c
+index a7f5fa2..7628de7 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_hcd.c
++++ b/drivers/usb/dwc_otg/dwc_otg_hcd.c
+@@ -83,6 +83,10 @@ static const struct hc_driver dwc_otg_hc_driver = {
+ 
+ 	.hub_status_data =	dwc_otg_hcd_hub_status_data,
+ 	.hub_control =		dwc_otg_hcd_hub_control,
++#ifdef  CONFIG_PM
++	.bus_suspend = 		dwc_otg_hcd_suspend,
++	.bus_resume =		dwc_otg_hcd_resume,
++#endif
+ 	//.hub_suspend =
+ 	//.hub_resume =
+ };
+@@ -639,6 +643,11 @@ int dwc_otg_hcd_start(struct usb_hcd *_hcd)
+ 	return 0;
+ }
+ 
++int dwc_otg_hcd_resume(struct usb_hcd *_hcd)
++{
++	return 0;
++}
++
+ static void qh_list_free(dwc_otg_hcd_t *_hcd, struct list_head *_qh_list)
+ {
+ 	struct list_head 	*item;
+@@ -685,6 +694,10 @@ void dwc_otg_hcd_stop(struct usb_hcd *_hcd)
+ 	return;
+ }
+ 
++int dwc_otg_hcd_suspend (struct usb_hcd *_hcd)
++{
++	return 0;
++}
+ 
+ /** Returns the current frame number. */
+ int dwc_otg_hcd_get_frame_number(struct usb_hcd *_hcd)
+diff --git a/drivers/usb/dwc_otg/dwc_otg_hcd.h b/drivers/usb/dwc_otg/dwc_otg_hcd.h
+index 987a95f..ac91450 100644
+--- a/drivers/usb/dwc_otg/dwc_otg_hcd.h
++++ b/drivers/usb/dwc_otg/dwc_otg_hcd.h
+@@ -411,6 +411,8 @@ extern void dwc_otg_hcd_remove(struct device *dev);
+ 
+ extern int dwc_otg_hcd_start(struct usb_hcd *hcd);
+ extern void dwc_otg_hcd_stop(struct usb_hcd *hcd);
++extern int dwc_otg_hcd_resume(struct usb_hcd *hcd);
++extern int dwc_otg_hcd_suspend(struct usb_hcd *hcd);
+ extern int dwc_otg_hcd_get_frame_number(struct usb_hcd *hcd);
+ extern void dwc_otg_hcd_free(struct usb_hcd *hcd);
+ extern int dwc_otg_hcd_urb_enqueue(struct usb_hcd *hcd,
+-- 
+1.6.3.3
+

@@ -1,0 +1,35 @@
+From 815ad992088c08e76a44982180b899a534d05612 Mon Sep 17 00:00:00 2001
+From: gqwang <gqwang@hhcn.com>
+Date: Fri, 16 Oct 2009 10:53:59 +0800
+Subject: [PATCH] Fix the sound stop problem when playing music
+
+---
+ sound/soc/tcc/tcc-pcm.c |   12 ++++++------
+ 1 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/sound/soc/tcc/tcc-pcm.c b/sound/soc/tcc/tcc-pcm.c
+index a24be38..da8ea9e 100644
+--- a/sound/soc/tcc/tcc-pcm.c
++++ b/sound/soc/tcc/tcc-pcm.c
+@@ -76,12 +76,12 @@ static const struct snd_pcm_hardware tcc_pcm_hardware_play = {
+ #endif
+ 
+ #if 1
+-    .period_bytes_min = __play_buf_size,
+-    .period_bytes_max = __play_buf_size,
+-    .periods_min = __play_buf_cnt,
+-    .periods_max = __play_buf_cnt,
+-    .buffer_bytes_max = __play_buf_cnt * __play_buf_size,
+-    .fifo_size = 16,  //ignored
++    .period_bytes_min = 4096,
++    .period_bytes_max = 4096 * 2,
++    .periods_min = 2,
++    .periods_max = 128,
++    .buffer_bytes_max = 128 * 1024,
++    .fifo_size = 32,  //ignored
+ #else
+     .period_bytes_min = 128,
+     .period_bytes_max = __play_buf_cnt * __play_buf_size,
+-- 
+1.6.3.3
+

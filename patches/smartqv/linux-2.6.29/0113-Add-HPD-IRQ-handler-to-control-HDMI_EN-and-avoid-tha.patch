@@ -1,0 +1,147 @@
+From 7add5dc72ad7e3ec90d94314ddc77c325b83ca7c Mon Sep 17 00:00:00 2001
+From: gqwang2007 <gqwang@hhcn.com>
+Date: Mon, 7 Dec 2009 13:54:07 +0800
+Subject: [PATCH] Add HPD IRQ handler to control HDMI_EN, and avoid that LCD can't be restored if VLC quit unusually when HDMI output
+
+---
+ arch/arm/mach-tcc8900/include/hhtech_gpio.h |    3 +-
+ drivers/char/hhtech_gpio.c                  |   44 +++++++++++++++++++++++++++
+ drivers/video/tca_lcdc.c                    |    2 +-
+ drivers/video/tccfb.c                       |    4 +-
+ 4 files changed, 49 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-tcc8900/include/hhtech_gpio.h b/arch/arm/mach-tcc8900/include/hhtech_gpio.h
+index 5a5e877..d715ca7 100644
+--- a/arch/arm/mach-tcc8900/include/hhtech_gpio.h
++++ b/arch/arm/mach-tcc8900/include/hhtech_gpio.h
+@@ -13,7 +13,7 @@
+  *   you are free to modify and/or redistribute it   	        *
+  *   under the terms of the GNU General Public Licence (GPL).   *
+  *                                                              *
+- * Last modified: 二, 15  9月 2009 11:46:55 +0800     by root #
++ * Last modified: 三, 02 12月 2009 15:21:25 +0800     by root #
+  ****************************************************************/
+ 
+ #ifndef __HHTECH_GPIO_H
+@@ -60,6 +60,7 @@
+ 
+ //HDMI
+ #define GPIO_HDMI_EN				TCC_GPF25   /* HDMI power control, 1:on */
++#define GPIO_HDMI_HPD				TCC_GPA14   /* HDMI line insert Detect, 1:inserted */
+ 
+ //LED
+ #if defined(CONFIG_LCD_4)
+diff --git a/drivers/char/hhtech_gpio.c b/drivers/char/hhtech_gpio.c
+index 1bcc55a..bcf3078 100755
+--- a/drivers/char/hhtech_gpio.c
++++ b/drivers/char/hhtech_gpio.c
+@@ -47,6 +47,7 @@
+ #include <mach/globals.h>
+ #include <bsp.h>
+ 
++#define IRQ_HPD	      INT_EI3
+ #define IRQ_DC	      INT_EI4
+ #define IRQ_HEADPHONE INT_EI7
+ #define HPD_MINOR       244 /* Major 10, Minor 244, /dev/tv_hpd */
+@@ -1205,6 +1206,36 @@ static irqreturn_t dc_irq(int irq, void *dev_id)
+ 	return IRQ_HANDLED;
+ }
+ 
++/*   hpd plug out  Interrupt handle  */
++extern void tcc_lcd_on(void);
++extern void tca_lcdc_setimgchenable(int id, unsigned int ch, unsigned int flag);
++static irqreturn_t hpd_irq(int irq, void *dev_id)
++{
++	volatile PPIC pPIC = (volatile PPIC)tcc_p2v(HwPIC_BASE);
++	unsigned int hpd_s = gpio_get_value(GPIO_HDMI_HPD);
++
++	disable_irq(IRQ_HPD);
++	BITSET(pPIC->CLR0, 1<<IRQ_HPD);
++	if(hpd_s) {
++	    gpio_direction_output(GPIO_USB_EN, 1);  // open USB power
++	    gpio_direction_output(GPIO_HDMI_EN, 1); // open HDMI power
++	} else {
++	    if(gpio_get_value(GPIO_HDMI_EN)) {
++		tca_lcdc_setimgchenable(1, 2, 1);   // open FB2 display
++		tcc_lcd_on();			    // open LCD controller
++#if defined (CONFIG_LCD_7)
++		if(choosedevice)
++		    gpio_direction_output(GPIO_USB_EN, 0);  // close USB power
++#else
++		gpio_direction_output(GPIO_USB_EN, 0);	    // close USB power
++#endif
++	    }
++	}
++	enable_irq(IRQ_HPD);
++
++	return IRQ_HANDLED;
++}
++
+ static DEVICE_ATTR(system_flag, 0444, hhtech_sysfs_show_system_flag, NULL);
+ static DEVICE_ATTR(headphone_s, 0444, hhtech_sysfs_show_headp, NULL);
+ static DEVICE_ATTR(dc_s, 0444, hhtech_sysfs_show_dc, NULL);
+@@ -1362,6 +1393,7 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 	gpio_direction_input(GPIO_CHARG_S1);
+ 	gpio_direction_input(GPIO_CHARG_S2);
+ 	gpio_direction_input(GPIO_PWR_HOLD);
++	gpio_direction_input(GPIO_HDMI_HPD);
+ 	
+ #if defined (CONFIG_LCD_4)
+ 	gpio_direction_output(GPIO_USB_EN, 0);		//close
+@@ -1396,6 +1428,12 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 	BITSET(pPIC->INTMSK0, 1<<IRQ_DC);	    // unmask the interrupt
+ 	BITCLR(pPIC->MODE0, 1<<IRQ_DC);		    // set interrupt as edge-triggered mode
+ 
++	/* Set GPIOA[14](14) to the interrupt source of INT_EI3 */
++	BITCSET(pGPIO->EINTSEL0, Hw31-Hw24, 14<<24);
++	BITSET(pPIC->INTMSK0, 1<<IRQ_HPD);	    // unmask the interrupt
++	BITCLR(pPIC->MODE0, 1<<IRQ_HPD);	    // set interrupt as edge-triggered mode
++	BITSET(pPIC->MODEA0, 1<<IRQ_HPD);	    // set interrupt as both edge triggered mode
++
+ 	if (misc_register(&hpd_misc_device))
+ 	{
+ 		printk(KERN_WARNING "TV_HPD: Couldn't register device 10, %d.\n", HPD_MINOR);
+@@ -1418,6 +1456,12 @@ static int hhtech_gpio_probe(struct platform_device *pdev)
+ 		goto error1;
+ 	}
+ 
++	retval = request_irq(IRQ_HPD, hpd_irq, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "HPD detect", NULL);
++	if (retval) {
++		printk(KERN_ERR "Request HPD detect fail\n");
++		goto error1;
++	}
++
+ #if defined (CONFIG_LCD_4)
+ 	INIT_DELAYED_WORK(&headp_detect_work, headp_update_mixer);
+ 	headp_update_mixer(NULL);
+diff --git a/drivers/video/tca_lcdc.c b/drivers/video/tca_lcdc.c
+index 1d0d4cd..23f75b0 100644
+--- a/drivers/video/tca_lcdc.c
++++ b/drivers/video/tca_lcdc.c
+@@ -71,7 +71,7 @@ void tca_lcdc_setimgchenable(int id, unsigned int ch, unsigned int flag)
+ 			break;
+ 	}
+ }
+-
++EXPORT_SYMBOL(tca_lcdc_setimgchenable);
+ 
+ 
+ /*
+diff --git a/drivers/video/tccfb.c b/drivers/video/tccfb.c
+index 70aa1b7..d4eb63f 100644
+--- a/drivers/video/tccfb.c
++++ b/drivers/video/tccfb.c
+@@ -1231,8 +1231,8 @@ unsigned int tvo_status(void)
+  	1. gTvoStatus = 1
+  	2. HDMI_EN = 1 && LCD_EN = 0
+ 	*/
+-	return gTvoStatus | (gpio_get_value(GPIO_HDMI_EN) 
+-	 & (gLCDOnOffFlag == 0));
++	return gTvoStatus | ((gpio_get_value(GPIO_HDMI_EN)
++		    & (gpio_get_value(GPIO_HDMI_HPD) == 1) & (gLCDOnOffFlag == 0)));
+ }
+ void tvo_powerup(void)
+ {
+-- 
+1.6.3.3
+
