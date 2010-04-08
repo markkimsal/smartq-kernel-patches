@@ -90,7 +90,11 @@
 0078-Support-32000-sample-rate.patch
 0079-high-current-charge-on-suspend.patch
 0080-Reverse-the-setting-of-mem_flag.patch
-0081-Fix-after-reboot-vlc-nosound-problem.patch
+
+#upgrade nand here for flashing
+0137-Upgrade-nand-driver.patch
+0152-Upgrade-nanddriver-to-V7014.patch
+
 0082-merge-code-from-patch-2265-about-dwc_otg-and-add-otg.patch
 0083-Fix-the-sound-problem-with-8KHz-sample-rate.patch
 0084-Fix-host-device-process-crash-problem.patch
@@ -105,12 +109,10 @@
 0093-Reduce-i2c-freq-100-50.patch
 0094-Change-logo.patch
 0095-Refix-i2c.patch
-0096-Support-3G-Card-ZTE-AC560.patch
 0097-Solve-the-problem-WBAR-sometimes-disappears.patch
 0098-Auto-exchange-usb_otg-mode-when-over-current-to-supp.patch
-0099-Add-sysfs-interface-for-lcd-color-image-brightness-a.patch
-0100-decrease-num-of-sync-when-write-data-to-sd-card-from.patch
-0101-Support-3G-Card-DTT-AirCard-901.patch
+
+
 0102-keep-the-freq-of-mem-and-io-when-backlight-is-off-if.patch
 0103-Fix-the-bug-of-battery-detecting-function.patch
 0104-Fix-buggy-otg-driver.patch
@@ -125,7 +127,8 @@
 0113-Add-HPD-IRQ-handler-to-control-HDMI_EN-and-avoid-tha.patch
 0114-Avoid-some-buggy-batteries-can-t-reach-1000-when-ful.patch
 0115-Switch-the-definitions-of-KEY_PAGEUP-and-KEY_PAGEDOW.patch
-0116-changes-for-battery-detection.patch
+
+
 0117-Solve-the-system-crash-problem-when-bluetooth-dialin.patch
 0118-Keep-HMDI_EN-on-to-assure-HPD_IRQ-happened-correctly.patch
 0119-Fix-the-bug-of-battery-detecting.patch
@@ -146,7 +149,6 @@
 0134-improve-power-control-and-back-uart-driver-to-before.patch
 0135-provide-mem-config-support-for-new-board.patch
 0136-get-rid-of-ddi-pwdn-ops-to-avoid-prob-when-resuming.patch
-0137-Upgrade-nand-driver.patch
 0138-Solved-the-problem-that-USB-wired-cable-adapter-can-.patch
 0139-Solve-the-problem-that-MU350-can-t-dial-successfully.patch
 0140-A-little-sdhc-fix.patch
@@ -161,4 +163,15 @@
 0149-Remove-the-pop-and-click-noise-when-playing-music-an.patch
 0150-Support-32bpp-framebuffer.patch
 0151-Remove-kernel-modifications-for-different-hardware-v.patch
-0152-Upgrade-nanddriver-to-V7014.patch
+
+#doesn't apply
+0081-Fix-after-reboot-vlc-nosound-problem.patch
+
+#don't apply
+0096-Support-3G-Card-ZTE-AC560.patch
+0101-Support-3G-Card-DTT-AirCard-901.patch
+
+#hhtech_gpio related
+0099-Add-sysfs-interface-for-lcd-color-image-brightness-a.patch
+0100-decrease-num-of-sync-when-write-data-to-sd-card-from.patch
+0116-changes-for-battery-detection.patch
